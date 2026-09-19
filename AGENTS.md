@@ -49,6 +49,11 @@ comparative claim and do not change the measurement method to make it pass.
 ## Content rules
 
 ```sh
+# Regenerate the bundled starter list (Browsemium's own host list).
+python3 Scripts/generate-starter-rules.py > \
+    Packages/BrowsemiumKit/Sources/BrowsemiumEngine/Resources/StarterContentRules.json
+
+# Convert an external filter list. Requires a recorded licence review.
 python3 Scripts/generate-content-rules.py --input <filter-list.txt> \
     --output <rules.json> --accept-license "<source list and license review note>"
 ```
@@ -56,6 +61,35 @@ python3 Scripts/generate-content-rules.py --input <filter-list.txt> \
 Compiled rules are not bundled until redistribution rights are recorded in
 `ThirdPartyNotices/README.md`. Treat a `WKContentRuleListStore` compile failure as
 a release blocker.
+
+WebKit's content-rule regex engine is a restricted subset:
+
+- **No alternation.** `a|b` fails with "Disjunctions are not supported yet" and
+  the entire list fails to compile. Emit one rule per host. The headless runner
+  asserts this, and `Scripts/generate-starter-rules.py` refuses to emit it.
+- **`if-domain` matches the top-level page, not the request.** Use `url-filter`
+  to match the request host, and `unless-domain` for first-party exceptions.
+
+Verify a rule list compiles before shipping it. `WKContentRuleListStore` writes
+the compiled list to the app container, so a successful launch leaves
+`ContentRuleLists/ContentRuleList-*` behind — an empty directory means the rules
+did not compile.
+
+## Development loop
+
+```sh
+Scripts/dev-loop.sh   # rebuild + relaunch the app whenever sources change
+```
+
+## Keychain behaviour
+
+Opening Settings must never trigger a macOS keychain prompt. Check for stored
+secrets with `KeychainStore.hasSecret(account:)`, which queries attributes only;
+reading `secret(account:)` decrypts the item and macOS asks for permission.
+
+The "… WebCrypto Master Key" prompt is WebKit's own, created when a page uses
+WebCrypto. It repeats on every rebuild because an ad-hoc signature changes each
+time, and stops once the app is signed with a stable Developer ID.
 
 ## Release
 

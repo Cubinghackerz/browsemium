@@ -319,6 +319,9 @@ struct HeadlessRunner {
             try expect(action["type"] as? String == "block", "Only blocking rules are supported here")
             let filter = try require(trigger["url-filter"] as? String, "A rule is missing its url-filter")
             try expect(filter.contains("^https?://"), "url-filter must anchor on the request scheme: \(filter)")
+            // WebKit's rule engine rejects alternation with
+            // "Disjunctions are not supported yet", which fails the whole list.
+            try expect(!filter.contains("|"), "WebKit content-rule regex does not support alternation: \(filter)")
             _ = try NSRegularExpression(pattern: filter)
             try expect(trigger["if-domain"] == nil, "if-domain matches the page, not the request — do not use it to block trackers")
         }
