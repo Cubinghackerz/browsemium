@@ -27,6 +27,17 @@ public final class BrowserRuntimeController: BrowserRuntime {
         WebViewFactory.contentRuleListProvider = { [weak self] configuration in
             self?.contentRules.apply(to: configuration)
         }
+        contentRules.onActivated = { [weak self] in
+            self?.applyRulesToOpenTabs()
+        }
+    }
+
+    /// Rules only affect a page at navigation time, so hand them to the web
+    /// views that are already open. They take effect on the next load.
+    private func applyRulesToOpenTabs() {
+        for runtime in runtimes.values {
+            runtime.applyContentRules()
+        }
     }
 
     /// Keeps one idle WebKit view ready so new tabs open faster.
@@ -78,6 +89,7 @@ public final class BrowserRuntimeController: BrowserRuntime {
             isPrivate: isPrivate,
             factory: factory,
             warmPool: warmPool,
+            contentRules: contentRules,
             captureService: captureService,
             downloadCoordinator: downloads
         )
@@ -150,6 +162,10 @@ public final class BrowserRuntimeController: BrowserRuntime {
 
     public func find(tabID: TabID, query: String, backwards: Bool = false) async -> Bool {
         await runtimes[tabID]?.find(query, backwards: backwards) ?? false
+    }
+
+    public func clearFindHighlight(tabID: TabID) {
+        runtimes[tabID]?.clearFindHighlight()
     }
 
     public func adjustZoom(tabID: TabID, by delta: CGFloat) {

@@ -20,6 +20,13 @@ public final class ContentRuleListManager {
     public private(set) var state: State = .inactive
     public private(set) var ruleCount: Int = 0
 
+    /// Fired once the rules become usable, so pages that are already open can
+    /// pick them up without waiting for the next tab.
+    public var onActivated: (() -> Void)?
+
+    /// The compiled list, once available.
+    public var compiledRuleList: WKContentRuleList? { ruleList }
+
     private static let identifier = "BrowsemiumStarterRules"
     private var ruleList: WKContentRuleList?
     private var compileTask: Task<Void, Never>?
@@ -62,6 +69,7 @@ public final class ContentRuleListManager {
                 self?.ruleList = list
                 self?.ruleCount = Self.countRules(in: source)
                 self?.state = .active
+                self?.onActivated?()
             } catch {
                 self?.state = .failed(error.localizedDescription)
             }

@@ -63,6 +63,51 @@ public final class HistoryRepository: @unchecked Sendable {
         )
     }
 
+    /// URLs already present in history, so an import does not duplicate them.
+    public func existingURLs(among urls: [URL]) throws -> Set<String> {
+        guard !urls.isEmpty else { return [] }
+        do {
+            return try database.databaseQueue.read { db in
+                var found = Set<String>()
+                // Chunked to stay well under SQLite's variable limit.
+                for chunk in stride(from: 0, to: urls.count, by: 400) {
+                    let slice = urls[chunk..<min(chunk + 400, urls.count)].map(\.absoluteString)
+                    let placeholders = Array(repeating: "?", count: slice.count).joined(separator: ", ")
+                    let rows = try String.fetchAll(
+                        db,
+                        sql: "SELECT DISTINCT url FROM history_visits WHERE url IN (\(placeholders))",
+                        arguments: StatementArguments(slice)
+                    )
+                    found.formUnion(rows)
+                }
+                return found
+            }
+        } catch {
+            throw BrowsemiumError.databaseFailure(error.localizedDescription)
+        }
+    }
+
+    /// Records many visits in a single transaction.
+    @discardableResult
+    public func recordMany(_ visits: [(url: URL, title: String, visitedAt: Date)]) throws -> Int {
+        guard !visits.isEmpty else { return 0 }
+        do {
+            return try database.databaseQueue.write { db in
+                var inserted = 0
+                for visit in visits {
+                    try db.execute(
+                        sql: "INSERT INTO history_visits (url, title, visited_at) VALUES (?, ?, ?)",
+                        arguments: [visit.url.absoluteString, visit.title, visit.visitedAt]
+                    )
+                    inserted += 1
+                }
+                return inserted
+            }
+        } catch {
+            throw BrowsemiumError.databaseFailure(error.localizedDescription)
+        }
+    }
+
     public func count() throws -> Int {
         do {
             return try database.databaseQueue.read { db in

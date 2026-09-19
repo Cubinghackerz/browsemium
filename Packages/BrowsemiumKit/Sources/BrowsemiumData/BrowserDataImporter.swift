@@ -97,6 +97,26 @@ public struct BrowserProfileCandidate: Identifiable, Sendable, Hashable {
     }
 }
 
+public enum BrowserImportSourceDetector {
+    /// Works out which browser a folder belongs to from the files it holds, so
+    /// a manually chosen folder can never be parsed with the wrong reader.
+    public static func detect(in folder: URL) -> BrowserImportSource? {
+        let contents = Set(
+            (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        )
+        if contents.contains("places.sqlite") {
+            return .firefox
+        }
+        if contents.contains("Bookmarks.plist") || contents.contains("History.db") {
+            return .safari
+        }
+        if contents.contains("Bookmarks") || contents.contains("History") || contents.contains("Preferences") {
+            return .chrome
+        }
+        return nil
+    }
+}
+
 public enum BrowserProfileLocator {
     public static func candidates() -> [BrowserProfileCandidate] {
         chromeCandidates() + firefoxCandidates() + [safariCandidate()]
@@ -232,33 +252,36 @@ public final class BrowserDataImporter: @unchecked Sendable {
     }
 
     /// Commits a preview using the user's choices. Re-running is safe: existing
-    /// bookmarks are skipped and duplicate history within the batch is dropped.
+    /// bookmarks and already-recorded history URLs are skipped, and duplicates
+    /// inside the batch are dropped before anything is written.
     public func apply(
         _ preview: BrowserImportPreview,
         options: BrowserImportOptions = BrowserImportOptions()
     ) throws -> BrowserImportResult {
         var bookmarkCount = 0
         if options.includesBookmarks {
-            for bookmark in preview.bookmarks {
-                if (try? bookmarks.contains(url: bookmark.url)) == true { continue }
-                if (try? bookmarks.add(url: bookmark.url, title: bookmark.title, folder: bookmark.folder)) != nil {
-                    bookmarkCount += 1
-                }
-            }
+            bookmarkCount = try bookmarks.addMany(
+                preview.bookmarks.map { (url: $0.url, title: $0.title, folder: $0.folder) }
+            )
         }
 
         var historyCount = 0
         if options.includesHistory {
             let cutoff = options.historySince
-            let visits = preview.visits
+            var candidates = preview.visits
                 .filter { cutoff == nil || $0.visitedAt >= cutoff! }
                 .sorted { $0.visitedAt > $1.visitedAt }
-                .prefix(options.historyLimit)
-            for visit in visits {
-                if (try? history.record(url: visit.url, title: visit.title, visitedAt: visit.visitedAt)) != nil {
-                    historyCount += 1
-                }
+            if candidates.count > options.historyLimit {
+                candidates = Array(candidates.prefix(options.historyLimit))
             }
+
+            // Skip anything already in history so importing twice does not
+            // double the timeline.
+            let existing = (try? history.existingURLs(among: candidates.map(\.url))) ?? []
+            let fresh = candidates.filter { !existing.contains($0.url.absoluteString) }
+            historyCount = try history.recordMany(
+                fresh.map { (url: $0.url, title: $0.title, visitedAt: $0.visitedAt) }
+            )
         }
 
         return BrowserImportResult(bookmarks: bookmarkCount, historyVisits: historyCount)
@@ -447,11 +470,38 @@ public final class BrowserDataImporter: @unchecked Sendable {
         return try readSQLite(url, body: body)
     }
 
+    /// Reads a browser's SQLite database from a private copy.
+    ///
+    /// Chrome and Firefox keep their databases open while they run, and a
+    /// read-only open of a live database fails or returns partial data. Copying
+    /// the file (plus its WAL and shared-memory sidecars) is the only reliable
+    /// way to read it, and it never writes to the source browser.
     private func readSQLite<T>(_ url: URL, body: (Database) throws -> T) throws -> T {
+        let workdir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("browsemium-import-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: workdir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workdir) }
+
+        let copy = workdir.appendingPathComponent(url.lastPathComponent)
+        do {
+            try FileManager.default.copyItem(at: url, to: copy)
+            for suffix in ["-wal", "-shm"] {
+                let sidecar = URL(fileURLWithPath: url.path + suffix)
+                if FileManager.default.fileExists(atPath: sidecar.path) {
+                    try? FileManager.default.copyItem(
+                        at: sidecar,
+                        to: URL(fileURLWithPath: copy.path + suffix)
+                    )
+                }
+            }
+        } catch {
+            throw ImportError.unreadableData(error.localizedDescription)
+        }
+
         do {
             var configuration = Configuration()
             configuration.readonly = true
-            let queue = try DatabaseQueue(path: url.path, configuration: configuration)
+            let queue = try DatabaseQueue(path: copy.path, configuration: configuration)
             return try queue.read(body)
         } catch {
             throw ImportError.unreadableData(error.localizedDescription)

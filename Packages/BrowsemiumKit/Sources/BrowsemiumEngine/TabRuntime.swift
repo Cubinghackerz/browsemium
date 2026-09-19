@@ -28,6 +28,7 @@ public final class TabRuntime {
 
     private let factory: WebViewFactory
     private let warmPool: WarmWebViewPool?
+    private let contentRules: ContentRuleListManager?
     private let captureService: ContentCaptureService
     private let downloadCoordinator: DownloadCoordinator
     private let navigationDelegate: WebNavigationDelegate
@@ -42,6 +43,7 @@ public final class TabRuntime {
         isPrivate: Bool,
         factory: WebViewFactory,
         warmPool: WarmWebViewPool? = nil,
+        contentRules: ContentRuleListManager? = nil,
         captureService: ContentCaptureService,
         downloadCoordinator: DownloadCoordinator
     ) {
@@ -49,6 +51,7 @@ public final class TabRuntime {
         self.isPrivate = isPrivate
         self.factory = factory
         self.warmPool = warmPool
+        self.contentRules = contentRules
         self.captureService = captureService
         self.downloadCoordinator = downloadCoordinator
         let navigationDelegate = WebNavigationDelegate()
@@ -152,6 +155,21 @@ public final class TabRuntime {
                 continuation.resume(returning: result.matchFound)
             }
         }
+    }
+
+    /// Adds the compiled content rules to this tab's existing web view so the
+    /// next navigation is filtered without recreating the tab.
+    public func applyContentRules() {
+        guard let webView, let ruleList = contentRules?.compiledRuleList else { return }
+        let controller = webView.configuration.userContentController
+        controller.removeAllContentRuleLists()
+        controller.add(ruleList)
+    }
+
+    /// Clears the find highlight WebKit leaves behind.
+    public func clearFindHighlight() {
+        guard let webView else { return }
+        webView.evaluateJavaScript("window.getSelection && window.getSelection().removeAllRanges();")
     }
 
     public func adjustZoom(by delta: CGFloat) {

@@ -20,9 +20,10 @@ enum ImportAccessStore {
         UserDefaults.standard.set(stored, forKey: defaultsKey)
     }
 
-    /// Returns a URL that is already open for access, or nil when there is no
-    /// usable grant. Callers must call `stopAccessingSecurityScopedResource`.
-    static func resolve(candidateID: String) -> URL? {
+    /// Resolves the remembered folder without opening it. The caller is
+    /// responsible for balancing `startAccessingSecurityScopedResource()` —
+    /// doing it here as well leaked one grant per import.
+    static func resolveURL(candidateID: String) -> URL? {
         guard let data = storedBookmarks()[candidateID] else { return nil }
         var isStale = false
         guard let url = try? URL(
@@ -33,7 +34,7 @@ enum ImportAccessStore {
         ) else {
             return nil
         }
-        guard url.startAccessingSecurityScopedResource() else { return nil }
+        guard !isStale else { return nil }
         return url
     }
 

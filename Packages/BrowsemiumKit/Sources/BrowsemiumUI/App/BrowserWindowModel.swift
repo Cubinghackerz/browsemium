@@ -26,6 +26,12 @@ public final class BrowserWindowModel {
     public let paneID = PaneID()
     public let favicons = FaviconStore()
 
+    /// Serial so history and session writes keep their submission order.
+    private static let persistenceQueue = DispatchQueue(
+        label: "com.browsemium.persistence",
+        qos: .utility
+    )
+
     public private(set) var session: BrowserSessionState
     public var addressText: String
     public var isAIDockVisible: Bool
@@ -247,12 +253,16 @@ public final class BrowserWindowModel {
         environment.runtime.discard(tabID: targetID)
         tabURLs[targetID] = nil
 
+        let closedIndex = session.tabs.firstIndex { $0.id == targetID } ?? 0
         var tabs = session.tabs.filter { $0.id != targetID }
         if tabs.isEmpty {
             let replacement = BrowserTab(spaceID: session.activeSpaceID, title: "New Tab")
             tabs = [replacement]
         }
-        let nextActiveID = session.activeTabID == targetID ? tabs.last?.id : session.activeTabID
+        // Activate the tab that slid into the closed tab's place, falling back
+        // to the one before it — the same behaviour as Chrome and Safari.
+        let neighbourIndex = min(closedIndex, tabs.count - 1)
+        let nextActiveID = session.activeTabID == targetID ? tabs[neighbourIndex].id : session.activeTabID
         session = BrowserSessionState(
             spaces: session.spaces,
             tabs: tabs,
@@ -354,6 +364,10 @@ public final class BrowserWindowModel {
     public func dismissFindBar() {
         isFindBarVisible = false
         findStatus = nil
+        findText = ""
+        if let tabID = session.activeTabID {
+            environment.runtime.clearFindHighlight(tabID: tabID)
+        }
     }
 
     public func findOnPage(backwards: Bool = false) {
@@ -804,6 +818,9 @@ public final class BrowserWindowModel {
         if downloads.count > 20 {
             downloads.removeLast(downloads.count - 20)
         }
+        if info.isFinished || info.failureMessage != nil {
+            scheduleDownloadDismissal(id: progress.id)
+        }
         let record = DownloadRecord(
             id: info.id,
             tabID: info.tabID,
@@ -830,6 +847,15 @@ public final class BrowserWindowModel {
         }
     }
 
+    /// A finished download should not leave a permanent badge in the toolbar.
+    private func scheduleDownloadDismissal(id: UUID) {
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(8))
+            guard let self, !self.hasActiveDownloads else { return }
+            self.downloads.removeAll { $0.id == id && ($0.isFinished || $0.failureMessage != nil) }
+        }
+    }
+
     private func openExternally(_ url: URL) {
         guard let scheme = url.scheme?.lowercased(), !scheme.isEmpty else { return }
         statusMessage = "Opening \(scheme) link in another app…"
@@ -844,9 +870,11 @@ public final class BrowserWindowModel {
             return
         }
         // Disk writes must never block the frame that just painted a page.
+        // A serial queue keeps them in submission order — concurrent tasks
+        // could otherwise land out of order and persist a stale session.
         let repository = environment.historyRepository
         let resolvedTitle = title ?? url.host ?? ""
-        Task.detached(priority: .utility) {
+        Self.persistenceQueue.async {
             _ = try? repository.record(url: url, title: resolvedTitle)
         }
     }
@@ -875,10 +903,11 @@ public final class BrowserWindowModel {
     private func persistSession() {
         guard !session.isPrivate else { return }
         // Serialized off the main thread: session saves happen on every tab
-        // switch and page finish, and SQLite writes are not free.
+        // switch and page finish, and SQLite writes are not free. The queue is
+        // serial on purpose so the newest snapshot always wins.
         let snapshot = session
         let repository = environment.sessionRepository
-        Task.detached(priority: .utility) {
+        Self.persistenceQueue.async {
             try? repository.save(snapshot)
         }
     }

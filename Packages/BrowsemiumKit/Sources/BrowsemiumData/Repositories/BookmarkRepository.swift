@@ -56,6 +56,46 @@ public final class BookmarkRepository: @unchecked Sendable {
         try read(sql: "SELECT * FROM bookmarks ORDER BY sort_order ASC", arguments: [])
     }
 
+    /// Inserts many bookmarks in one transaction, skipping URLs that already
+    /// exist. Used by the browser importer so a large import is a single write
+    /// instead of hundreds of round trips.
+    @discardableResult
+    public func addMany(_ items: [(url: URL, title: String, folder: String?)]) throws -> Int {
+        guard !items.isEmpty else { return 0 }
+        do {
+            return try database.databaseQueue.write { db in
+                let existing = try Set(String.fetchAll(db, sql: "SELECT url FROM bookmarks"))
+                var order = try Int.fetchOne(db, sql: "SELECT COALESCE(MAX(sort_order), 0) FROM bookmarks") ?? 0
+                var inserted = 0
+                var seen = existing
+                for item in items {
+                    let key = item.url.absoluteString
+                    guard !seen.contains(key) else { continue }
+                    seen.insert(key)
+                    order += 1
+                    try db.execute(
+                        sql: """
+                            INSERT INTO bookmarks (id, url, title, folder, sort_order, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            """,
+                        arguments: [
+                            UUID().uuidString,
+                            key,
+                            item.title,
+                            item.folder,
+                            order,
+                            Date()
+                        ]
+                    )
+                    inserted += 1
+                }
+                return inserted
+            }
+        } catch {
+            throw BrowsemiumError.databaseFailure(error.localizedDescription)
+        }
+    }
+
     public func contains(url: URL) throws -> Bool {
         do {
             return try database.databaseQueue.read { db in

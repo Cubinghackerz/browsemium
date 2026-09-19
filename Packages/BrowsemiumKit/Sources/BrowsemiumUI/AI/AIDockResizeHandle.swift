@@ -1,4 +1,4 @@
-import AppKit
+import AppKit 
 import SwiftUI
 
 /// Drag handle for the assistant dock. Keeps its own transient gesture state
@@ -8,6 +8,7 @@ import SwiftUI
 struct AIDockResizeHandle: View {
     @Binding var width: CGFloat
     let maximumWidth: CGFloat
+    let onCommit: () -> Void
 
     @GestureState private var isDragging = false
     @State private var dragStartWidth: CGFloat?
@@ -21,7 +22,7 @@ struct AIDockResizeHandle: View {
     var body: some View {
         Rectangle()
             .fill(Color.clear)
-            .frame(width: 10)
+            .frame(width: 8)
             .contentShape(Rectangle())
             .overlay {
                 Capsule()
@@ -42,6 +43,7 @@ struct AIDockResizeHandle: View {
                     .onEnded { _ in
                         dragStartWidth = nil
                         BrowserHaptics.perform()
+                        onCommit()
                     }
             )
             .onContinuousHover { phase in

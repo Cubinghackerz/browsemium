@@ -131,9 +131,21 @@ public enum BrowserMetrics {
     public static let toolbarHeight: CGFloat = 42
     public static let tabStripHeight: CGFloat = 40
     public static let aiDockWidth: CGFloat = 420
-    public static let aiDockMinimumWidth: CGFloat = 320
+    /// Provider sites are desktop layouts; below this they start to break.
+    public static let aiDockMinimumWidth: CGFloat = 360
     /// The assistant dock never takes more than half the window.
     public static let aiDockMaximumWidthFraction: CGFloat = 0.5
+    /// The page always keeps at least this much room.
+    public static let minimumBrowserPanelWidth: CGFloat = 380
+
+    public static let aiDockWidthDefaultsKey = "browsemium.aiDockWidth"
+
+    /// The dock width from the last session, clamped to a sane range.
+    public static var restoredDockWidth: CGFloat {
+        let stored = UserDefaults.standard.double(forKey: aiDockWidthDefaultsKey)
+        guard stored > 0 else { return aiDockWidth }
+        return min(max(stored, aiDockMinimumWidth), 1200)
+    }
     public static let rowHeight: CGFloat = 29
     public static let tabWidth: CGFloat = 190
     public static let tabMinimumWidth: CGFloat = 120

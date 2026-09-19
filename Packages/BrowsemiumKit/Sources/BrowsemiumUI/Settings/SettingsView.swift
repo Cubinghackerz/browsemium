@@ -489,7 +489,7 @@ struct SettingsView: View {
     /// One click when access was granted before; otherwise macOS asks once and
     /// the grant is remembered for next time.
     private func beginImport(_ candidate: BrowserProfileCandidate) {
-        if let granted = ImportAccessStore.resolve(candidateID: candidate.id) {
+        if let granted = ImportAccessStore.resolveURL(candidateID: candidate.id) {
             loadPreview(folder: granted, candidate: candidate)
             return
         }
@@ -501,7 +501,9 @@ struct SettingsView: View {
             bookmarks: model.environment.bookmarkRepository,
             history: model.environment.historyRepository
         )
-        let source = candidate.source
+        // Trust the folder's contents over the button that was pressed, so a
+        // manually chosen profile is never parsed with the wrong reader.
+        let source = BrowserImportSourceDetector.detect(in: folder) ?? candidate.source
         importingID = candidate.id
         isPreparingPreview = true
         statusMessage = "Reading \(candidate.label)…"
@@ -537,16 +539,17 @@ struct SettingsView: View {
             panel.directoryURL = chrome
         }
         guard panel.runModal() == .OK, let folder = panel.url else { return }
-        let source = importCandidates.first { $0.folder.standardizedFileURL == folder.standardizedFileURL }?.source ?? .chrome
-        loadPreview(
+        let source = BrowserImportSourceDetector.detect(in: folder)
+            ?? importCandidates.first { $0.folder.standardizedFileURL == folder.standardizedFileURL }?.source
+            ?? .chrome
+        let candidate = BrowserProfileCandidate(
+            source: source,
+            label: folder.lastPathComponent,
             folder: folder,
-            candidate: BrowserProfileCandidate(
-                source: source,
-                label: folder.lastPathComponent,
-                folder: folder,
-                isReadable: true
-            )
+            isReadable: true
         )
+        ImportAccessStore.save(folder: folder, for: candidate.id)
+        loadPreview(folder: folder, candidate: candidate)
     }
 
     private func presentImportPanel(startingAt folder: URL, candidate: BrowserProfileCandidate) {

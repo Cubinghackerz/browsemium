@@ -7,9 +7,7 @@ public struct BrowsemiumAppView: View {
     @State private var model: BrowserWindowModel
     @State private var ai: AIDockViewModel
     @State private var showFirstRun: Bool
-    @State private var dockWidth: CGFloat = BrowserMetrics.aiDockWidth
-    @State private var dockDragStartWidth: CGFloat?
-    @State private var isResizingDock = false
+    @State private var dockWidth: CGFloat = BrowserMetrics.restoredDockWidth
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -40,7 +38,8 @@ public struct BrowsemiumAppView: View {
                             .overlay(alignment: .leading) {
                                 AIDockResizeHandle(
                                     width: $dockWidth,
-                                    maximumWidth: geometry.size.width * BrowserMetrics.aiDockMaximumWidthFraction
+                                    maximumWidth: dockMaximumWidth(in: geometry.size.width),
+                                    onCommit: persistDockWidth
                                 )
                             }
                             .transition(dockTransition)
@@ -49,6 +48,11 @@ public struct BrowsemiumAppView: View {
                 .padding(.horizontal, BrowserMetrics.elementSeparation)
                 .padding(.top, BrowserMetrics.windowEdgeInset)
                 .padding(.bottom, BrowserMetrics.windowEdgeInset)
+                .onChange(of: geometry.size.width) {
+                    // A stored width must never squeeze the page out after the
+                    // window shrinks.
+                    dockWidth = min(dockWidth, dockMaximumWidth(in: geometry.size.width))
+                }
             }
 
             if model.isCommandPaletteVisible {
@@ -103,7 +107,18 @@ public struct BrowsemiumAppView: View {
 
     /// Persists the assistant dock width so it survives relaunches.
     private func persistDockWidth() {
-        UserDefaults.standard.set(Double(dockWidth), forKey: "browsemium.aiDockWidth")
+        UserDefaults.standard.set(Double(dockWidth), forKey: BrowserMetrics.aiDockWidthDefaultsKey)
+    }
+
+    /// Half the window at most, and never so wide that the page is squeezed
+    /// below a usable width.
+    private func dockMaximumWidth(in windowWidth: CGFloat) -> CGFloat {
+        let half = windowWidth * BrowserMetrics.aiDockMaximumWidthFraction
+        let leavingRoomForPage = windowWidth - BrowserMetrics.minimumBrowserPanelWidth
+        return max(
+            BrowserMetrics.aiDockMinimumWidth,
+            min(half, leavingRoomForPage)
+        )
     }
 
     private var preferredScheme: ColorScheme? {
