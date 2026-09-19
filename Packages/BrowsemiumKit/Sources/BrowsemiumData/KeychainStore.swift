@@ -126,6 +126,43 @@ public struct KeychainStore: Sendable {
 
     /// Uses an attributes-only lookup so simply opening Settings never asks
     /// macOS for permission to read a stored secret.
+    /// Reads a secret stored by another application, e.g. Chrome's
+    /// "Chrome Safe Storage" key. macOS will ask the user to authorise this.
+    public func secret(service: String) throws -> String? {
+        let result = api.read(service: service, account: "")
+        switch result.status {
+        case errSecSuccess:
+            guard let data = result.data else { return nil }
+            return String(data: data, encoding: .utf8)
+        case errSecItemNotFound:
+            // Some items are stored without an account, so fall back to a
+            // service-only lookup.
+            return try serviceOnlySecret(service: service)
+        default:
+            throw KeychainError.readFailed(result.status)
+        }
+    }
+
+    private func serviceOnlySecret(service: String) throws -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        switch status {
+        case errSecSuccess:
+            guard let data = result as? Data else { return nil }
+            return String(data: data, encoding: .utf8)
+        case errSecItemNotFound:
+            return nil
+        default:
+            throw KeychainError.readFailed(status)
+        }
+    }
+
     public func hasSecret(account: String) throws -> Bool {
         api.exists(service: service, account: account)
     }

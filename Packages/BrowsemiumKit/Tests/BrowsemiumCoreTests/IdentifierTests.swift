@@ -58,6 +58,30 @@ func sleepIntervalReflectsChosenMinutes() {
     #expect(settings.tabSleepInterval == 900)
 }
 
+@Test
+func bangPrefixSelectsOneSearchEngine() {
+    let duck = SearchBangParser.parse("!d swift concurrency")
+    #expect(duck.preset?.name == "DuckDuckGo")
+    #expect(duck.query == "swift concurrency")
+
+    let brave = SearchBangParser.parse("!br rust async")
+    #expect(brave.preset?.name == "Brave")
+    #expect(brave.query == "rust async")
+
+    // Unknown bangs and plain text fall through untouched.
+    #expect(SearchBangParser.parse("!zz hello").preset == nil)
+    #expect(SearchBangParser.parse("!d").preset == nil)
+    #expect(SearchBangParser.parse("swift").query == "swift")
+    #expect(SearchBangParser.parse("!g").preset == nil)
+}
+
+@Test
+func everyPresetHasAUniqueBang() {
+    let bangs = SearchEnginePreset.all.map(\.bang)
+    #expect(bangs.allSatisfy { !$0.isEmpty })
+    #expect(Set(bangs).count == bangs.count)
+}
+
 private func assertRoundTrip<Value: Codable & Equatable>(_ value: Value) throws {
     let data = try JSONEncoder().encode(value)
     let decoded = try JSONDecoder().decode(Value.self, from: data)

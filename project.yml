@@ -21,8 +21,21 @@ targets:
     sources:
       - BrowsemiumApp/App
       - BrowsemiumApp/Assets.xcassets
+    # XcodeGen *generates* this file from the properties below, so they are the
+    # single source of truth — hand edits here are overwritten on every
+    # `xcodegen generate`. Replace SUPublicEDKey with the public key printed by
+    # Sparkle's `generate_keys` before shipping updates.
     info:
       path: BrowsemiumApp/Config/Info.plist
+      properties:
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        LSMinimumSystemVersion: "14.0"
+        NSHumanReadableCopyright: "Browsemium"
+        SUFeedURL: "https://updates.browsemium.app/appcast.xml"
+        SUPublicEDKey: "REPLACE_WITH_EDDSA_PUBLIC_KEY"
+        SUEnableAutomaticChecks: false
+        SUScheduledCheckInterval: 86400
     entitlements:
       path: BrowsemiumApp/Config/Browsemium.entitlements
       properties:
@@ -42,6 +55,11 @@ targets:
     dependencies:
       - package: BrowsemiumKit
         product: BrowsemiumUI
+      # Sparkle powers "Check for Updates…". The feed URL and EdDSA public key
+      # live in Info.plist; without real values the updater stays off rather
+      # than offering a broken menu item.
+      - package: Sparkle
+        product: Sparkle
   BrowsemiumCoreTests:
     type: bundle.unit-test
     platform: macOS

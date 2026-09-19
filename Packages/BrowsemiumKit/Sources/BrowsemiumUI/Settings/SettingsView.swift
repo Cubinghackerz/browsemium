@@ -579,17 +579,25 @@ struct SettingsView: View {
             history: model.environment.historyRepository
         )
         let options = importOptions
+        let keyProvider = ChromeSafeStorageKeyProvider(keychain: model.environment.keychain)
         isImporting = true
         Task {
             do {
                 let result = try await Task.detached {
                     let scoped = folder.startAccessingSecurityScopedResource()
                     defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
-                    return try importer.apply(preview, options: options)
+                    return try importer.apply(
+                        preview,
+                        options: options,
+                        keyProvider: keyProvider,
+                        profile: folder
+                    )
                 }.value
+                storeCredentials(result.credentials)
+                applyImportedSearchEngine(result.searchEngine)
                 model.refreshBookmarks()
                 importLastResult = result
-                statusMessage = "Imported \(result.bookmarks) bookmarks and \(result.historyVisits) history entries"
+                statusMessage = importSummary(result)
             } catch {
                 statusMessage = error.localizedDescription
             }
@@ -597,6 +605,31 @@ struct SettingsView: View {
             importPreview = nil
             importFolder = nil
         }
+    }
+
+    /// Saved logins go straight into the keychain, never to disk in the clear.
+    private func storeCredentials(_ credentials: [ChromeLogin]) {
+        for credential in credentials {
+            model.saveCredential(
+                host: credential.url.host ?? credential.url.absoluteString,
+                username: credential.username,
+                password: credential.password
+            )
+        }
+    }
+
+    private func applyImportedSearchEngine(_ engine: BrowserImportPreview.SearchEngine?) {
+        guard let engine else { return }
+        model.updateSettings { $0.searchEngineTemplate = engine.template }
+    }
+
+    private func importSummary(_ result: BrowserImportResult) -> String {
+        var parts: [String] = []
+        if result.bookmarks > 0 { parts.append("\(result.bookmarks) bookmarks") }
+        if result.historyVisits > 0 { parts.append("\(result.historyVisits) history entries") }
+        if !result.credentials.isEmpty { parts.append("\(result.credentials.count) passwords") }
+        if result.searchEngine != nil { parts.append("default search engine") }
+        return parts.isEmpty ? "Nothing new to import" : "Imported " + parts.joined(separator: ", ")
     }
 
     private func presentPasswordEditor() {
@@ -745,15 +778,31 @@ private struct SettingsRow<Content: View>: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
-            Text(label)
-                .font(.system(size: 12.5))
-                .foregroundStyle(Color.browsemiumPrimary)
-            Spacer(minLength: 12)
-            content
+        // At narrow widths a single line clips the label off-screen, so the
+        // control moves onto its own line instead.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                labelText
+                Spacer(minLength: 12)
+                content
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                labelText
+                content
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .padding(.horizontal, 14)
+        .padding(.vertical, 6)
         .frame(minHeight: 40)
+    }
+
+    private var labelText: some View {
+        Text(label)
+            .font(.system(size: 12.5))
+            .foregroundStyle(Color.browsemiumPrimary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 

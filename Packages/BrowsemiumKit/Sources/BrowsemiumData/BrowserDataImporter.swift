@@ -4,23 +4,103 @@ import GRDB
 
 public enum BrowserImportSource: String, CaseIterable, Identifiable, Sendable {
     case chrome
+    case brave
+    case edge
+    case vivaldi
+    case arc
+    case chromium
     case firefox
     case safari
 
     public var id: String { rawValue }
 
     public var displayName: String {
-        rawValue.capitalized
+        switch self {
+        case .chrome: "Chrome"
+        case .brave: "Brave"
+        case .edge: "Microsoft Edge"
+        case .vivaldi: "Vivaldi"
+        case .arc: "Arc"
+        case .chromium: "Chromium"
+        case .firefox: "Firefox"
+        case .safari: "Safari"
+        }
+    }
+
+    /// Which reader and encryption scheme applies.
+    public enum Family: Sendable {
+        case chromium
+        case firefox
+        case safari
+    }
+
+    public var family: Family {
+        switch self {
+        case .chrome, .brave, .edge, .vivaldi, .arc, .chromium: .chromium
+        case .firefox: .firefox
+        case .safari: .safari
+        }
+    }
+
+    /// The keychain item holding this browser's password-encryption key.
+    /// Chromium-family browsers all use the same scheme with their own item.
+    public var safeStorageService: String? {
+        switch self {
+        case .chrome: "Chrome Safe Storage"
+        case .brave: "Brave Safe Storage"
+        case .edge: "Microsoft Edge Safe Storage"
+        case .vivaldi: "Vivaldi Safe Storage"
+        case .arc: "Arc Safe Storage"
+        case .chromium: "Chromium Safe Storage"
+        case .firefox, .safari: nil
+        }
+    }
+
+    /// Where this browser keeps its profiles, or nil when it does not use one.
+    public var profileRoot: URL? {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let base = home.appendingPathComponent("Library/Application Support", isDirectory: true)
+        switch self {
+        case .chrome: return base.appendingPathComponent("Google/Chrome", isDirectory: true)
+        case .brave: return base.appendingPathComponent("BraveSoftware/Brave-Browser", isDirectory: true)
+        case .edge: return base.appendingPathComponent("Microsoft Edge", isDirectory: true)
+        case .vivaldi: return base.appendingPathComponent("Vivaldi", isDirectory: true)
+        case .arc: return base.appendingPathComponent("Arc/User Data", isDirectory: true)
+        case .chromium: return base.appendingPathComponent("Chromium", isDirectory: true)
+        case .firefox: return base.appendingPathComponent("Firefox/Profiles", isDirectory: true)
+        case .safari: return home.appendingPathComponent("Library/Safari", isDirectory: true)
+        }
+    }
+
+    /// Chromium-family browsers that can have saved passwords read.
+    public var supportsPasswordImport: Bool {
+        safeStorageService != nil
     }
 }
 
 public struct BrowserImportResult: Sendable {
     public let bookmarks: Int
     public let historyVisits: Int
+    /// Decrypted logins for the caller to store. Empty unless the user asked
+    /// for passwords and granted keychain access.
+    public let credentials: [ChromeLogin]
+    /// The source browser's default search engine, when it could be converted.
+    public let searchEngine: BrowserImportPreview.SearchEngine?
 
-    public init(bookmarks: Int, historyVisits: Int) {
+    public init(
+        bookmarks: Int,
+        historyVisits: Int,
+        credentials: [ChromeLogin] = [],
+        searchEngine: BrowserImportPreview.SearchEngine? = nil
+    ) {
         self.bookmarks = bookmarks
         self.historyVisits = historyVisits
+        self.credentials = credentials
+        self.searchEngine = searchEngine
+    }
+
+    public var isEmpty: Bool {
+        bookmarks == 0 && historyVisits == 0 && credentials.isEmpty && searchEngine == nil
     }
 }
 
@@ -38,29 +118,53 @@ public struct BrowserImportPreview: Sendable {
         public let visitedAt: Date
     }
 
+    /// A saved login, listed without its password. The password is only
+    /// decrypted at import time, after the user grants keychain access.
+    public struct Credential: Sendable, Hashable {
+        public let url: URL
+        public let username: String
+    }
+
+    public struct SearchEngine: Sendable, Hashable {
+        public let name: String
+        /// Browsemium's prefix form, e.g. "https://example.com/search?q=".
+        public let template: String
+    }
+
     public let source: BrowserImportSource
     public let bookmarks: [Bookmark]
     public let visits: [Visit]
     public let folders: [String]
+    public let credentials: [Credential]
+    public let searchEngine: SearchEngine?
+    /// What this browser keeps encrypted and Browsemium will not touch.
+    public let notImportable: [String]
 
     public var bookmarkCount: Int { bookmarks.count }
     public var historyCount: Int { visits.count }
+    public var credentialCount: Int { credentials.count }
 
     public var earliestVisit: Date? { visits.map(\.visitedAt).min() }
     public var latestVisit: Date? { visits.map(\.visitedAt).max() }
 
-    public var isEmpty: Bool { bookmarks.isEmpty && visits.isEmpty }
+    public var isEmpty: Bool {
+        bookmarks.isEmpty && visits.isEmpty && credentials.isEmpty && searchEngine == nil
+    }
 }
 
 extension BrowserImportPreview: Identifiable {
     public var id: String {
-        "\(source.rawValue)-\(bookmarkCount)-\(historyCount)"
+        "\(source.rawValue)-\(bookmarkCount)-\(historyCount)-\(credentialCount)"
     }
 }
 
 public struct BrowserImportOptions: Sendable {
     public var includesBookmarks: Bool
     public var includesHistory: Bool
+    /// Decrypts and stores saved logins. Requires keychain access to the source
+    /// browser's key, so this is off unless the user asks for it.
+    public var includesPasswords: Bool
+    public var includesSearchEngine: Bool
     /// Only history at or after this date is imported.
     public var historySince: Date?
     public var historyLimit: Int
@@ -68,14 +172,27 @@ public struct BrowserImportOptions: Sendable {
     public init(
         includesBookmarks: Bool = true,
         includesHistory: Bool = true,
+        includesPasswords: Bool = false,
+        includesSearchEngine: Bool = false,
         historySince: Date? = nil,
         historyLimit: Int = 5_000
     ) {
         self.includesBookmarks = includesBookmarks
         self.includesHistory = includesHistory
+        self.includesPasswords = includesPasswords
+        self.includesSearchEngine = includesSearchEngine
         self.historySince = historySince
         self.historyLimit = historyLimit
     }
+}
+
+/// Supplies the key that unlocks a source browser's encrypted data.
+///
+/// Implemented by the app with a keychain read; tests supply a fixed key. The
+/// importer never reads a keychain itself, so nothing is decrypted unless the
+/// caller was able to obtain the key with the user's permission.
+public protocol BrowserCredentialKeyProviding: Sendable {
+    func safeStorageKey(for source: BrowserImportSource) throws -> Data?
 }
 
 /// A browser profile Browsemium can read, with the standard location it lives
@@ -98,9 +215,31 @@ public struct BrowserProfileCandidate: Identifiable, Sendable, Hashable {
 }
 
 public enum BrowserImportSourceDetector {
-    /// Works out which browser a folder belongs to from the files it holds, so
-    /// a manually chosen folder can never be parsed with the wrong reader.
+    /// Works out which browser a folder belongs to.
+    ///
+    /// The path is checked first because every Chromium-family browser stores
+    /// the same file names but encrypts passwords with its own keychain item —
+    /// guessing "Chrome" for a Brave profile would make decryption fail. The
+    /// file names are the fallback for a folder that was moved elsewhere.
     public static func detect(in folder: URL) -> BrowserImportSource? {
+        let path = folder.standardizedFileURL.path
+        let chromiumFamily = BrowserImportSource.allCases
+            .filter { $0.family == .chromium }
+            .sorted { ($0.profileRoot?.path.count ?? 0) > ($1.profileRoot?.path.count ?? 0) }
+        for source in chromiumFamily {
+            if let root = source.profileRoot?.standardizedFileURL.path, path.hasPrefix(root) {
+                return source
+            }
+        }
+        if let firefoxRoot = BrowserImportSource.firefox.profileRoot?.standardizedFileURL.path,
+           path.hasPrefix(firefoxRoot) {
+            return .firefox
+        }
+        if let safariRoot = BrowserImportSource.safari.profileRoot?.standardizedFileURL.path,
+           path.hasPrefix(safariRoot) {
+            return .safari
+        }
+
         let contents = Set(
             (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
         )
@@ -119,31 +258,36 @@ public enum BrowserImportSourceDetector {
 
 public enum BrowserProfileLocator {
     public static func candidates() -> [BrowserProfileCandidate] {
-        chromeCandidates() + firefoxCandidates() + [safariCandidate()]
+        chromiumCandidates() + firefoxCandidates() + [safariCandidate()]
     }
 
-    private static func chromeCandidates() -> [BrowserProfileCandidate] {
-        let root = home()
-            .appendingPathComponent("Library/Application Support/Google/Chrome", isDirectory: true)
-        var profiles: [BrowserProfileCandidate] = []
+    /// Chrome, Brave, Edge, Vivaldi, Arc, and Chromium all keep profiles in
+    /// `Default` / `Profile N` folders.
+    private static func chromiumCandidates() -> [BrowserProfileCandidate] {
         let names = ["Default"] + (1...8).map { "Profile \($0)" }
-        for name in names {
-            let folder = root.appendingPathComponent(name, isDirectory: true)
-            let exists = FileManager.default.fileExists(atPath: folder.appendingPathComponent("Bookmarks").path)
-                || FileManager.default.fileExists(atPath: folder.appendingPathComponent("History").path)
-            guard exists || name == "Default" else { continue }
-            profiles.append(BrowserProfileCandidate(
-                source: .chrome,
-                label: name == "Default" ? "Chrome" : "Chrome — \(name)",
-                folder: folder,
-                isReadable: exists
-            ))
-        }
-        return profiles
+        return BrowserImportSource.allCases
+            .filter { $0.family == .chromium }
+            .flatMap { source -> [BrowserProfileCandidate] in
+                guard let root = source.profileRoot else { return [] }
+                return names.compactMap { name in
+                    let folder = root.appendingPathComponent(name, isDirectory: true)
+                    let exists = BrowserDataImporter.profileLooksValid(folder, source: source)
+                    // Only offer the default profile of a browser that is not
+                    // installed when nothing else was found for it.
+                    guard exists || name == "Default" else { return nil }
+                    return BrowserProfileCandidate(
+                        source: source,
+                        label: name == "Default" ? source.displayName : "\(source.displayName) — \(name)",
+                        folder: folder,
+                        isReadable: exists
+                    )
+                }
+            }
     }
 
     private static func firefoxCandidates() -> [BrowserProfileCandidate] {
-        let root = home().appendingPathComponent("Library/Application Support/Firefox/Profiles", isDirectory: true)
+        let root = BrowserImportSource.firefox.profileRoot
+            ?? home().appendingPathComponent("Library/Application Support/Firefox/Profiles", isDirectory: true)
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: root,
             includingPropertiesForKeys: nil
@@ -165,20 +309,19 @@ public enum BrowserProfileLocator {
                     source: .firefox,
                     label: "Firefox — \(folder.lastPathComponent)",
                     folder: folder,
-                    isReadable: FileManager.default.fileExists(atPath: folder.appendingPathComponent("places.sqlite").path)
+                    isReadable: BrowserDataImporter.profileLooksValid(folder, source: .firefox)
                 )
             }
     }
 
     private static func safariCandidate() -> BrowserProfileCandidate {
-        let folder = home().appendingPathComponent("Library/Safari", isDirectory: true)
-        let readable = FileManager.default.fileExists(atPath: folder.appendingPathComponent("Bookmarks.plist").path)
-            || FileManager.default.fileExists(atPath: folder.appendingPathComponent("History.db").path)
+        let folder = BrowserImportSource.safari.profileRoot
+            ?? home().appendingPathComponent("Library/Safari", isDirectory: true)
         return BrowserProfileCandidate(
             source: .safari,
             label: "Safari",
             folder: folder,
-            isReadable: readable
+            isReadable: BrowserDataImporter.profileLooksValid(folder, source: .safari)
         )
     }
 
@@ -191,6 +334,7 @@ public final class BrowserDataImporter: @unchecked Sendable {
     public enum ImportError: Error, LocalizedError {
         case unsupportedFolder(String)
         case unreadableData(String)
+        case credentialsLocked(String)
 
         public var errorDescription: String? {
             switch self {
@@ -198,6 +342,8 @@ public final class BrowserDataImporter: @unchecked Sendable {
                 "That folder does not contain \(browser) data. Pick the profile folder itself — for example \(BrowserDataImporter.expectedPathHint(for: browser))."
             case .unreadableData(let message):
                 "Browser data could not be read: \(message)"
+            case .credentialsLocked(let browser):
+                "\(browser) passwords are encrypted with a key in your macOS keychain, and macOS did not allow Browsemium to read it. Everything else was imported."
             }
         }
     }
@@ -233,15 +379,15 @@ public final class BrowserDataImporter: @unchecked Sendable {
             (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
         }
 
-        switch source {
-        case .chrome:
+        switch source.family {
+        case .chromium:
             let preferred = ["Default"] + (1...12).map { "Profile \($0)" }
             let ordered = directories.sorted { lhs, rhs in
                 let left = preferred.firstIndex(of: lhs.lastPathComponent) ?? Int.max
                 let right = preferred.firstIndex(of: rhs.lastPathComponent) ?? Int.max
                 return left < right
             }
-            return ordered.first { profileLooksValid($0, source: .chrome) }
+            return ordered.first { profileLooksValid($0, source: source) }
         case .firefox:
             // A Firefox install keeps its profiles one level deeper.
             if let nested = directories.first(where: { $0.lastPathComponent == "Profiles" }),
@@ -259,9 +405,11 @@ public final class BrowserDataImporter: @unchecked Sendable {
 
     static func profileLooksValid(_ folder: URL, source: BrowserImportSource) -> Bool {
         let contents = Set((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
-        switch source {
-        case .chrome:
-            return contents.contains("Bookmarks") || contents.contains("History")
+        switch source.family {
+        case .chromium:
+            return contents.contains("Bookmarks")
+                || contents.contains("History")
+                || contents.contains("Login Data")
         case .firefox:
             return contents.contains("places.sqlite")
         case .safari:
@@ -298,9 +446,9 @@ public final class BrowserDataImporter: @unchecked Sendable {
         }
 
         let read: ([ImportedBookmark], [ImportedVisit])
-        switch source {
-        case .chrome:
-            read = try readChrome(profile)
+        switch source.family {
+        case .chromium:
+            read = try readChromium(profile)
         case .firefox:
             read = try readFirefox(profile)
         case .safari:
@@ -319,8 +467,62 @@ public final class BrowserDataImporter: @unchecked Sendable {
             visits: dedupedVisits.map {
                 BrowserImportPreview.Visit(url: $0.url, title: $0.title, visitedAt: $0.visitedAt)
             },
-            folders: folders
+            folders: folders,
+            credentials: credentialSummary(in: profile, source: source),
+            searchEngine: searchEngine(in: profile, source: source),
+            notImportable: Self.notImportable(for: source)
         )
+    }
+
+    /// Counts saved logins without decrypting them.
+    private func credentialSummary(
+        in profile: URL,
+        source: BrowserImportSource
+    ) -> [BrowserImportPreview.Credential] {
+        guard source.supportsPasswordImport else { return [] }
+        let databaseURL = profile.appendingPathComponent("Login Data")
+        guard FileManager.default.fileExists(atPath: databaseURL.path) else { return [] }
+        let rows = (try? readSQLite(databaseURL) { db in
+            try ChromeLoginDataReader.summarize(database: db)
+        }) ?? []
+        return rows.map { BrowserImportPreview.Credential(url: $0.url, username: $0.username) }
+    }
+
+    private func searchEngine(in profile: URL, source: BrowserImportSource) -> BrowserImportPreview.SearchEngine? {
+        guard source == .chrome else { return nil }
+        let preferencesURL = profile.appendingPathComponent("Preferences")
+        guard let data = try? Data(contentsOf: preferencesURL),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let providerData = root["default_search_provider_data"] as? [String: Any],
+              let templateURL = providerData["template_url_data"] as? [String: Any],
+              let searchURL = templateURL["search_url"] as? String else {
+            return nil
+        }
+        let name = (templateURL["short_name"] as? String) ?? (templateURL["keyword"] as? String) ?? "Chrome default"
+        // Browsemium stores the query prefix; only a trailing placeholder can be
+        // converted without guessing.
+        guard searchURL.hasSuffix("{searchTerms}") else { return nil }
+        let template = String(searchURL.dropLast("{searchTerms}".count))
+        guard let url = URL(string: template + "test"), url.scheme == "https" else { return nil }
+        return BrowserImportPreview.SearchEngine(name: name, template: template)
+    }
+
+    /// States plainly what each browser encrypts and Browsemium will not move.
+    static func notImportable(for source: BrowserImportSource) -> [String] {
+        switch source.family {
+        case .chromium:
+            ["Cookies are encrypted per profile and are not imported."]
+        case .firefox:
+            [
+                "Passwords are stored in Firefox's own encrypted key database and are not imported.",
+                "Cookies are encrypted per profile and are not imported."
+            ]
+        case .safari:
+            [
+                "Passwords live in your iCloud Keychain and are only readable by Safari.",
+                "Cookies are encrypted per profile and are not imported."
+            ]
+        }
     }
 
     /// Commits a preview using the user's choices. Re-running is safe: existing
@@ -328,8 +530,24 @@ public final class BrowserDataImporter: @unchecked Sendable {
     /// inside the batch are dropped before anything is written.
     public func apply(
         _ preview: BrowserImportPreview,
-        options: BrowserImportOptions = BrowserImportOptions()
+        options: BrowserImportOptions = BrowserImportOptions(),
+        keyProvider: BrowserCredentialKeyProviding? = nil,
+        profile: URL? = nil
     ) throws -> BrowserImportResult {
+        var credentials: [ChromeLogin] = []
+        if options.includesPasswords, !preview.credentials.isEmpty {
+            guard let key = try keyProvider?.safeStorageKey(for: preview.source) else {
+                throw ImportError.credentialsLocked(preview.source.displayName)
+            }
+            guard let profile else {
+                throw ImportError.credentialsLocked(preview.source.displayName)
+            }
+            let databaseURL = profile.appendingPathComponent("Login Data")
+            credentials = try readSQLite(databaseURL) { db in
+                try ChromeLoginDataReader.decryptLogins(database: db, key: key)
+            }
+        }
+
         var bookmarkCount = 0
         if options.includesBookmarks {
             bookmarkCount = try bookmarks.addMany(
@@ -356,7 +574,12 @@ public final class BrowserDataImporter: @unchecked Sendable {
             )
         }
 
-        return BrowserImportResult(bookmarks: bookmarkCount, historyVisits: historyCount)
+        return BrowserImportResult(
+            bookmarks: bookmarkCount,
+            historyVisits: historyCount,
+            credentials: credentials,
+            searchEngine: options.includesSearchEngine ? preview.searchEngine : nil
+        )
     }
 
     /// Convenience for callers that want the old one-shot behaviour.
@@ -391,12 +614,14 @@ public final class BrowserDataImporter: @unchecked Sendable {
         return newest.values.sorted { $0.visitedAt > $1.visitedAt }
     }
 
-    private func readChrome(_ folder: URL) throws -> ([ImportedBookmark], [ImportedVisit]) {
+    /// Chrome, Brave, Edge, Vivaldi, Arc, and Chromium share this layout.
+    private func readChromium(_ folder: URL) throws -> ([ImportedBookmark], [ImportedVisit]) {
         let bookmarksURL = folder.appendingPathComponent("Bookmarks")
         let historyURL = folder.appendingPathComponent("History")
         guard FileManager.default.fileExists(atPath: bookmarksURL.path) ||
-                FileManager.default.fileExists(atPath: historyURL.path) else {
-            throw ImportError.unsupportedFolder("Chrome")
+                FileManager.default.fileExists(atPath: historyURL.path) ||
+                FileManager.default.fileExists(atPath: folder.appendingPathComponent("Login Data").path) else {
+            throw ImportError.unsupportedFolder("Chrome, Brave, Edge, Vivaldi, Arc, or Chromium")
         }
 
         var importedBookmarks: [ImportedBookmark] = []

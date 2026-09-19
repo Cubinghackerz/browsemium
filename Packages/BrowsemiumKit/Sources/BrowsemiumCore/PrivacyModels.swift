@@ -64,6 +64,45 @@ public struct SearchEnginePreset: Hashable, Codable, Sendable, Identifiable {
     public static func name(for template: String) -> String {
         all.first { $0.template == template }?.name ?? "Custom"
     }
+
+    public static func preset(for template: String) -> SearchEnginePreset? {
+        all.first { $0.template == template }
+    }
+
+    /// Short prefix typed before a query to search with one engine only, e.g.
+    /// "!d swift concurrency" searches DuckDuckGo without changing the default.
+    public var bang: String {
+        switch name {
+        case "Google": "g"
+        case "DuckDuckGo": "d"
+        case "Bing": "b"
+        case "Brave": "br"
+        default: ""
+        }
+    }
+
+    public static func preset(forBang bang: String) -> SearchEnginePreset? {
+        all.first { $0.bang == bang.lowercased() }
+    }
+}
+
+/// Splits an address-bar entry into an optional per-query search engine and the
+/// remaining query text.
+public enum SearchBangParser {
+    public static func parse(_ input: String) -> (preset: SearchEnginePreset?, query: String) {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("!"),
+              let space = trimmed.firstIndex(of: " ") else {
+            return (nil, trimmed)
+        }
+        let bang = String(trimmed[trimmed.index(after: trimmed.startIndex)..<space])
+        let remainder = String(trimmed[trimmed.index(after: space)...])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let preset = SearchEnginePreset.preset(forBang: bang), !remainder.isEmpty else {
+            return (nil, trimmed)
+        }
+        return (preset, remainder)
+    }
 }
 
 public struct BrowserSettings: Hashable, Codable, Sendable {

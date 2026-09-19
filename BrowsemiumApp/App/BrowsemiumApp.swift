@@ -5,6 +5,7 @@ import SwiftUI
 @main
 struct BrowsemiumApp: App {
     @State private var model = BrowsemiumApp.makeModel()
+    @State private var updates = UpdateController()
 
     var body: some Scene {
         WindowGroup {
@@ -80,6 +81,17 @@ struct BrowsemiumApp: App {
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") { model.openPanel(.settings) }
                     .keyboardShortcut(",", modifiers: .command)
+            }
+
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { updates.checkForUpdates() }
+                    .disabled(!updates.isConfigured)
+            }
+
+            CommandGroup(replacing: .help) {
+                Button("Browsemium Help") {
+                    model.newTab(url: URL(string: "https://github.com/Cubinghackerz/browsemium"))
+                }
             }
         }
     }

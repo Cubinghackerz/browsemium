@@ -52,6 +52,7 @@ public final class BrowserWindowModel {
     public private(set) var bookmarks: [Bookmark] = []
     public private(set) var savedCredentials: [SavedCredential] = []
     public private(set) var downloads: [DownloadProgress] = []
+    private var bookmarkedURLs: Set<String> = []
     public var isBookmarksBarVisible: Bool = true
 
     public let paletteCommands: [BrowserPaletteCommand] = [
@@ -122,6 +123,7 @@ public final class BrowserWindowModel {
             }
         }
         environment.runtime.apply(storedSettings)
+        applyAppearanceToApp()
         environment.runMaintenance()
         refreshBookmarks()
         refreshSavedCredentials()
@@ -135,6 +137,135 @@ public final class BrowserWindowModel {
 
     public var liveWebViewCount: Int {
         environment.runtime.liveWebViewCount
+    }
+
+    /// One row in the address-bar suggestion list.
+    public struct AddressSuggestion: Identifiable, Sendable, Hashable {
+        public enum Kind: Sendable, Hashable {
+            case history
+            case bookmark
+            case search
+        }
+
+        public let id: String
+        public let kind: Kind
+        public let title: String
+        public let subtitle: String
+        /// What pressing Return does.
+        public let value: String
+    }
+
+    public private(set) var addressSuggestions: [AddressSuggestion] = []
+    public var highlightedSuggestion: Int = 0
+    public var isAddressFocused: Bool = false
+
+    /// Whether the dropdown should be on screen.
+    public var isShowingAddressSuggestions: Bool {
+        isAddressFocused && !addressSuggestions.isEmpty
+    }
+
+    /// Local-only suggestions: your own history and bookmarks, plus a search
+    /// row. Nothing is sent anywhere to build this list.
+    public func updateAddressSuggestions() {
+        let query = addressText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty, !isAddressShowingCurrentPage else {
+            addressSuggestions = []
+            return
+        }
+        // A typed URL is not a search.
+        if query.contains("://") || (query.contains(".") && !query.contains(" ")) {
+            addressSuggestions = []
+            return
+        }
+
+        var seen = Set<String>()
+        var suggestions: [AddressSuggestion] = []
+
+        let visits = (try? environment.historyRepository.search(query, limit: 12)) ?? []
+        for visit in visits {
+            let key = visit.url.absoluteString
+            guard seen.insert(key).inserted else { continue }
+            suggestions.append(
+                AddressSuggestion(
+                    id: "history-\(key)",
+                    kind: .history,
+                    title: visit.title.isEmpty ? (visit.url.host ?? key) : visit.title,
+                    subtitle: visit.url.host ?? key,
+                    value: key
+                )
+            )
+        }
+
+        for bookmark in bookmarks where matches(bookmark, query: query) {
+            let key = bookmark.url.absoluteString
+            guard seen.insert(key).inserted else { continue }
+            suggestions.append(
+                AddressSuggestion(
+                    id: "bookmark-\(key)",
+                    kind: .bookmark,
+                    title: bookmark.title.isEmpty ? (bookmark.url.host ?? key) : bookmark.title,
+                    subtitle: bookmark.url.host ?? key,
+                    value: key
+                )
+            )
+        }
+
+        suggestions.append(
+            AddressSuggestion(
+                id: "search-\(query)",
+                kind: .search,
+                title: "Search for “\(query)”",
+                subtitle: "with \(activeSearchEngineName)",
+                value: query
+            )
+        )
+
+        addressSuggestions = Array(suggestions.prefix(8))
+        highlightedSuggestion = 0
+    }
+
+    private func matches(_ bookmark: Bookmark, query: String) -> Bool {
+        bookmark.title.localizedCaseInsensitiveContains(query)
+            || bookmark.url.absoluteString.localizedCaseInsensitiveContains(query)
+    }
+
+    /// True while the field still shows the page you are on, so opening the
+    /// address bar does not immediately offer suggestions for it.
+    private var isAddressShowingCurrentPage: Bool {
+        guard let tabID = session.activeTabID, let current = tabURLs[tabID] else { return false }
+        return addressText == current.absoluteString
+    }
+
+    public func dismissAddressSuggestions() {
+        addressSuggestions = []
+        highlightedSuggestion = 0
+    }
+
+    public func moveSuggestionSelection(by offset: Int) {
+        guard !addressSuggestions.isEmpty else { return }
+        let count = addressSuggestions.count
+        highlightedSuggestion = ((highlightedSuggestion + offset) % count + count) % count
+    }
+
+    /// Runs the highlighted suggestion, or the raw text when none is shown.
+    public func acceptHighlightedSuggestion() {
+        guard addressSuggestions.indices.contains(highlightedSuggestion) else {
+            submitAddress()
+            return
+        }
+        acceptSuggestion(addressSuggestions[highlightedSuggestion])
+    }
+
+    public func acceptSuggestion(_ suggestion: AddressSuggestion) {
+        addressSuggestions = []
+        switch suggestion.kind {
+        case .history, .bookmark:
+            addressText = suggestion.value
+            submitAddress()
+        case .search:
+            addressText = suggestion.value
+            submitAddress()
+        }
     }
 
     public var activeDownloads: [DownloadProgress] {
@@ -425,6 +556,24 @@ public final class BrowserWindowModel {
         appearance = settings.appearance
         isAIDockVisible = settings.isAIDockEnabled
         environment.runtime.apply(settings)
+        applyAppearanceToApp()
+    }
+
+    /// Keeps the whole process in the chosen appearance.
+    ///
+    /// The palette is built from dynamic `NSColor`s, which resolve against the
+    /// *process* appearance. Forcing only the SwiftUI colour scheme left the
+    /// two disagreeing — light panels with dark controls — so the app-level
+    /// appearance is set as well.
+    public func applyAppearanceToApp() {
+        switch appearance {
+        case .system:
+            NSApplication.shared.appearance = nil
+        case .light:
+            NSApplication.shared.appearance = NSAppearance(named: .aqua)
+        case .dark:
+            NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
+        }
     }
 
     /// Unloads every background tab and drops the warm spare, then reports the
@@ -526,12 +675,31 @@ public final class BrowserWindowModel {
         }
     }
 
+    /// The engine new searches use, from settings.
+    public var activeSearchEngine: SearchEnginePreset? {
+        SearchEnginePreset.preset(for: environment.loadSettings().searchEngineTemplate)
+    }
+
+    public var activeSearchEngineName: String {
+        SearchEnginePreset.name(for: environment.loadSettings().searchEngineTemplate)
+    }
+
+    public func selectSearchEngine(_ preset: SearchEnginePreset) {
+        updateSettings { $0.searchEngineTemplate = preset.template }
+        statusMessage = "Searches now use \(preset.name)"
+    }
+
     public func submitAddress() {
         guard let tabID = session.activeTabID else { return }
         let settings = environment.loadSettings()
-        let resolver = NavigationResolver(searchURL: URL(string: settings.searchEngineTemplate) ?? URL(string: SearchEnginePreset.google.template)!)
+        // "!d query" searches with one engine without changing the default.
+        let (bangPreset, query) = SearchBangParser.parse(addressText)
+        let template = bangPreset?.template ?? settings.searchEngineTemplate
+        let resolver = NavigationResolver(
+            searchURL: URL(string: template) ?? URL(string: SearchEnginePreset.google.template)!
+        )
         do {
-            let request = try resolver.resolve(addressText)
+            let request = try resolver.resolve(bangPreset == nil ? addressText : query)
             tabURLs[tabID] = request.url
             updateTab(tabID) { tab in
                 BrowserTab(
@@ -594,7 +762,12 @@ public final class BrowserWindowModel {
     }
 
     public func refreshBookmarks() {
-        bookmarks = (try? environment.bookmarkRepository.all()) ?? []
+        let loaded = (try? environment.bookmarkRepository.all()) ?? []
+        bookmarks = loaded
+        // Kept in memory so the bookmark star never queries SQLite while the
+        // user types or navigates.
+        bookmarkedURLs = Set(loaded.map(\.url.absoluteString))
+        refreshNavigationState()
     }
 
     public func removeBookmark(_ bookmark: Bookmark) {
@@ -725,6 +898,9 @@ public final class BrowserWindowModel {
                 tabURLs[tabID] = url
                 if session.activeTabID == tabID {
                     addressText = url.absoluteString
+                    // Refresh now so the bookmark star follows the new page
+                    // instead of the one that was open before it.
+                    refreshNavigationState()
                 }
             }
         case .finished(let title, let url):
@@ -893,11 +1069,11 @@ public final class BrowserWindowModel {
         if !isLoading {
             loadingProgress = 0
         }
-        if let url = activeTab?.lastCommittedURL {
-            isBookmarked = (try? environment.bookmarkRepository.contains(url: url)) ?? false
-        } else {
-            isBookmarked = false
-        }
+        // Prefer the URL the tab is actually navigating to. `lastCommittedURL`
+        // still points at the previous page until the new one finishes, which
+        // left the bookmark star filled on sites that were not bookmarked.
+        let currentURL = tabURLs[tabID] ?? activeTab?.lastCommittedURL
+        isBookmarked = currentURL.map { bookmarkedURLs.contains($0.absoluteString) } ?? false
     }
 
     private func persistSession() {

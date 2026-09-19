@@ -63,6 +63,12 @@ struct BrowserToolbar: View {
 
     private var addressField: some View {
         HStack(spacing: 6) {
+            searchEngineMenu
+
+            Rectangle()
+                .fill(Color.browsemiumBorder)
+                .frame(width: 1, height: 14)
+
             Button {
                 BrowserHaptics.perform()
                 model.toggleBookmark()
@@ -79,7 +85,23 @@ struct BrowserToolbar: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 12.5))
                 .focused($addressFocused)
-                .onSubmit { model.submitAddress() }
+                .onSubmit { model.acceptHighlightedSuggestion() }
+                .onChange(of: model.addressText) { model.updateAddressSuggestions() }
+                .onChange(of: addressFocused) { _, focused in
+                    if !focused { model.dismissAddressSuggestions() }
+                }
+                .onKeyPress(.downArrow) {
+                    model.moveSuggestionSelection(by: 1)
+                    return .handled
+                }
+                .onKeyPress(.upArrow) {
+                    model.moveSuggestionSelection(by: -1)
+                    return .handled
+                }
+                .onKeyPress(.escape) {
+                    model.dismissAddressSuggestions()
+                    return .handled
+                }
                 .accessibilityLabel("Address and search")
         }
         .padding(.horizontal, 10)
@@ -115,6 +137,11 @@ struct BrowserToolbar: View {
         .animation(.easeOut(duration: 0.2), value: model.isLoading)
         .onChange(of: model.focusAddressToken) {
             addressFocused = true
+        }
+        .onChange(of: addressFocused) { _, focused in
+            // The browser panel draws the dropdown; it needs to know whether
+            // the field is active so it can hide when focus moves away.
+            model.isAddressFocused = focused
         }
     }
 
@@ -164,6 +191,48 @@ struct BrowserToolbar: View {
                     : "Downloads"
             )
         }
+    }
+
+    /// Quick search-engine switch, right in the address bar. The chosen engine
+    /// becomes the default; typing "!d query" uses one engine for a single
+    /// search without changing it.
+    private var searchEngineMenu: some View {
+        Menu {
+            ForEach(SearchEnginePreset.all) { preset in
+                Button {
+                    model.selectSearchEngine(preset)
+                } label: {
+                    if model.activeSearchEngineName == preset.name {
+                        Label(preset.name, systemImage: "checkmark")
+                    } else {
+                        Text(preset.name)
+                    }
+                }
+            }
+            Divider()
+            Button("Other search engines…") { model.openPanel(.settings) }
+        } label: {
+            HStack(spacing: 4) {
+                Text(searchEngineInitial)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.browsemiumSecondary)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 7, weight: .semibold))
+                    .foregroundStyle(Color.browsemiumTertiary)
+            }
+            .frame(height: 20)
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Search engine: \(model.activeSearchEngineName). Type !g, !d, !b or !br for a one-off search.")
+        .accessibilityLabel("Search engine, \(model.activeSearchEngineName)")
+    }
+
+    private var searchEngineInitial: String {
+        let name = model.activeSearchEngineName
+        return name == "Custom" ? "…" : String(name.prefix(1))
     }
 
     private var credentialMenu: some View {

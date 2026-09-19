@@ -40,6 +40,9 @@ public final class BrowserEnvironment {
         let directory = try applicationSupportDirectory()
         let databaseURL = directory.appendingPathComponent("browsemium.sqlite")
         let database = try AppDatabase(path: databaseURL.path)
+        // Done before any web view exists, so WebKit never has to ask macOS for
+        // permission to read its WebCrypto key. Ad-hoc builds only.
+        WebCryptoKeychainItem.claimForAdHocBuilds()
         return try BrowserEnvironment(database: database)
     }
 

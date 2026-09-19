@@ -50,16 +50,38 @@ struct ImportPreviewSheet: View {
                 }
             }
 
+            if preview.credentialCount > 0 {
+                scopeRow(
+                    title: "Passwords",
+                    detail: "\(preview.credentialCount) saved logins. macOS will ask to read Chrome's key; they are stored in your keychain.",
+                    isOn: $options.includesPasswords
+                )
+            }
+
+            if preview.searchEngine != nil {
+                scopeRow(
+                    title: "Default search engine",
+                    detail: preview.searchEngine.map { "Use \($0.name) for new searches" } ?? "",
+                    isOn: $options.includesSearchEngine
+                )
+            }
+
             if preview.isEmpty {
-                Text("No bookmarks or history were found in this profile.")
+                Text("No bookmarks, history, or passwords were found in this profile.")
                     .font(.system(size: 12))
                     .foregroundStyle(Color.browsemiumWarning)
             }
 
-            Text("Passwords and cookies are never imported — they are encrypted per browser and moving them would be unsafe.")
-                .font(.system(size: 10.5))
-                .foregroundStyle(Color.browsemiumTertiary)
-                .fixedSize(horizontal: false, vertical: true)
+            if !preview.notImportable.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(preview.notImportable, id: \.self) { note in
+                        Text("• \(note)")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(Color.browsemiumTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
 
             HStack {
                 BrowsemiumTextButton("Cancel", action: onCancel)
@@ -84,6 +106,7 @@ struct ImportPreviewSheet: View {
             summaryTile("\(preview.bookmarkCount)", "Bookmarks")
             summaryTile("\(preview.historyCount)", "History entries")
             summaryTile("\(preview.folders.count)", "Folders")
+            summaryTile("\(preview.credentialCount)", "Passwords")
         }
     }
 

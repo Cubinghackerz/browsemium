@@ -165,6 +165,89 @@ func importingAFolderThatIsNotAProfileFailsClearly() throws {
 }
 
 @Test
+func chromePasswordDecryptionRoundTrips() throws {
+    let key = try ChromeCredentialCrypto.derivedKey(safeStoragePassword: "a-safe-storage-secret")
+    #expect(key.count == 16)
+
+    let blob = try ChromeCredentialCrypto.encryptForTesting("correct horse battery staple", key: key)
+    #expect(blob.prefix(3) == Data("v10".utf8))
+    #expect(try ChromeCredentialCrypto.decrypt(blob, key: key) == "correct horse battery staple")
+
+    // A different key must not produce the original plaintext.
+    let wrongKey = try ChromeCredentialCrypto.derivedKey(safeStoragePassword: "something-else")
+    let decryptedWithWrongKey = try? ChromeCredentialCrypto.decrypt(blob, key: wrongKey)
+    #expect(decryptedWithWrongKey != "correct horse battery staple")
+
+    #expect(throws: ChromeCredentialCrypto.CryptoError.self) {
+        _ = try ChromeCredentialCrypto.decrypt(Data("v11nonsense".utf8), key: key)
+    }
+}
+
+@Test
+func passwordImportNeedsTheKeyAndStoresNothingWithoutIt() throws {
+    // A Chrome profile with one saved login.
+    let folder = FileManager.default.temporaryDirectory
+        .appendingPathComponent("browsemium-logins-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+
+    let key = try ChromeCredentialCrypto.derivedKey(safeStoragePassword: "secret")
+    let blob = try ChromeCredentialCrypto.encryptForTesting("s3cret!", key: key)
+
+    let queue = try DatabaseQueue(path: folder.appendingPathComponent("Login Data").path)
+    try queue.write { db in
+        try db.execute(sql: """
+            CREATE TABLE logins (
+                origin_url TEXT NOT NULL,
+                username_value TEXT NOT NULL,
+                password_value BLOB
+            )
+            """)
+        try db.execute(
+            sql: "INSERT INTO logins (origin_url, username_value, password_value) VALUES (?, ?, ?)",
+            arguments: ["https://example.com/login", "person@example.com", blob]
+        )
+        try db.execute(
+            sql: "INSERT INTO logins (origin_url, username_value, password_value) VALUES (?, ?, ?)",
+            arguments: ["https://never-saved.example", "other@example.com", Data()]
+        )
+    }
+    try Data("{}".utf8).write(to: folder.appendingPathComponent("Bookmarks"))
+
+    let (importer, _, _, _) = try makeImporter()
+    let preview = try importer.preview(at: folder, source: .chrome)
+
+    // The preview counts logins without decrypting anything.
+    #expect(preview.credentialCount == 1, "Empty password blobs are not logins")
+    #expect(preview.credentials.first?.username == "person@example.com")
+
+    // Without a key, passwords are refused rather than silently skipped.
+    var options = BrowserImportOptions()
+    options.includesBookmarks = false
+    options.includesHistory = false
+    options.includesPasswords = true
+    #expect(throws: BrowserDataImporter.ImportError.self) {
+        _ = try importer.apply(preview, options: options, keyProvider: nil, profile: folder)
+    }
+
+    // With the key, the password is decrypted.
+    let result = try importer.apply(
+        preview,
+        options: options,
+        keyProvider: StubKeyProvider(key: key),
+        profile: folder
+    )
+    #expect(result.credentials.count == 1)
+    #expect(result.credentials.first?.password == "s3cret!")
+    #expect(result.credentials.first?.username == "person@example.com")
+}
+
+private struct StubKeyProvider: BrowserCredentialKeyProviding {
+    let key: Data?
+    func safeStorageKey(for source: BrowserImportSource) throws -> Data? { key }
+}
+
+@Test
 func choosingTheParentFolderFindsTheProfileInside() throws {
     let profile = try FakeChromeProfile(
         bookmarks: [["type": "url", "name": "Swift", "url": "https://swift.org"]],

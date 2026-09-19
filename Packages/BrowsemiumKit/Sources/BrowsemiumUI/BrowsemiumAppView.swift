@@ -153,6 +153,15 @@ public struct BrowsemiumAppView: View {
 
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .top) {
+                    if model.isShowingAddressSuggestions {
+                        // Drawn above the page and the bookmarks bar, centred
+                        // under the address field.
+                        AddressSuggestionList(model: model)
+                            .padding(.top, 6)
+                            .transition(.opacity)
+                    }
+                }
                 .overlay(alignment: .topTrailing) {
                     if model.isFindBarVisible {
                         FindBar(model: model)
