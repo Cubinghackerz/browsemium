@@ -77,8 +77,15 @@ public enum WebCryptoKeychainItem {
         // password; reading the old item would.
         SecItemDelete(base as CFDictionary)
 
+        // `&key` would hand SecRandomCopyBytes a pointer to the Data *struct*
+        // and overwrite its internal buffer pointer, corrupting memory. The
+        // bytes have to be filled through withUnsafeMutableBytes.
         var key = Data(count: 16)
-        guard SecRandomCopyBytes(kSecRandomDefault, key.count, &key) == errSecSuccess else {
+        let randomStatus = key.withUnsafeMutableBytes { buffer -> Int32 in
+            guard let base = buffer.baseAddress else { return errSecParam }
+            return SecRandomCopyBytes(kSecRandomDefault, buffer.count, base)
+        }
+        guard randomStatus == errSecSuccess else {
             return false
         }
 
