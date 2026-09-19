@@ -541,14 +541,30 @@
     </p>
 
     <div class="actions">
-      <a class="button" href="https://github.com/Cubinghackerz/browsemium/releases/latest">
+      <a class="button" href="https://github.com/Cubinghackerz/browsemium/releases/latest/download/Browsemium-1.0.dmg">
         Download for macOS
         <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
           <path d="M8 2v8m0 0 3-3m-3 3L5 7M3 13h10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </a>
       <a class="button button--quiet" href="https://github.com/Cubinghackerz/browsemium">Read the source</a>
-      <p class="note">Signed and notarized builds are published to Releases. Until the first release ships, build from source in a few minutes. See Install.</p>
+      <p class="note">
+        6.7 MB · macOS 14 or newer · Apple silicon. Signed ad-hoc, not yet notarized:
+        the first launch asks you to allow it once in System Settings, Privacy &amp; Security.
+        <a href="https://github.com/Cubinghackerz/browsemium/releases/latest">All releases</a>.
+      </p>
+    </div>
+
+    <div class="rows" style="margin-top: 2.5rem;">
+      <div class="row">
+        <h3>Verify your download</h3>
+        <p>
+          Compare the SHA-256 of the DMG with the value published on the release page before
+          opening it:
+        </p>
+        <pre style="margin-top: 0.8rem;"><b>shasum -a 256 ~/Downloads/Browsemium-1.0.dmg</b>
+70df8d20337a6f095332e5579511a74d70e24c9b34b19e208db1197dae54817e</pre>
+      </div>
     </div>
 
     <div class="browser" role="img" aria-label="The Browsemium window: a horizontal tab strip, a centered address field with a search-engine switcher, and the assistant dock open on the right showing ChatGPT.">
