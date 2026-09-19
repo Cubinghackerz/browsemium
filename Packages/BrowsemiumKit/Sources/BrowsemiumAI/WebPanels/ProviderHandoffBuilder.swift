@@ -41,6 +41,18 @@ public struct ProviderHandoffBuilder: Sendable {
             ? " The screenshot goes on your clipboard — press ⌘V in the chat to attach it."
             : ""
 
+        if includesImage && descriptor.prefillReliability == .community {
+            // Unofficial prompt links can silently drop the text. With an image
+            // attached the clipboard carries everything in a single paste.
+            return ProviderHandoff(
+                provider: provider,
+                method: .clipboardOnly,
+                prompt: prompt,
+                note: "Prompt links for \(descriptor.displayName) are unofficial, so the message and screenshot were copied together — paste them into the chat with ⌘V.",
+                includesImage: true
+            )
+        }
+
         if let url = descriptor.prefillURL(prompt: prompt) {
             let note: String?
             if descriptor.prefillReliability == .community {
