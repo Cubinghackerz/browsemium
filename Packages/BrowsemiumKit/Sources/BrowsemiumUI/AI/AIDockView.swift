@@ -8,6 +8,7 @@ import WebKit
 struct AIDockView: View {
     @Bindable var model: BrowserWindowModel
     @Bindable var ai: AIDockViewModel
+    @FocusState private var composerFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -151,14 +152,19 @@ struct AIDockView: View {
             if !ai.attachments.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
-                        ForEach(Array(ai.attachmentLabels.enumerated()), id: \.offset) { index, label in
-                            AttachmentChip(label: label) {
+                        ForEach(Array(ai.attachments.enumerated()), id: \.offset) { index, attachment in
+                            AttachmentChip(
+                                label: ai.label(for: attachment),
+                                thumbnail: ai.thumbnail(for: attachment)
+                            ) {
                                 ai.removeAttachment(at: index)
                             }
+                            .transition(.opacity.combined(with: .scale(scale: 0.9)))
                         }
                     }
                     .padding(.horizontal, 2)
                 }
+                .animation(.easeOut(duration: 0.15), value: ai.attachments.count)
             }
 
             HStack(alignment: .bottom, spacing: 8) {
@@ -167,6 +173,7 @@ struct AIDockView: View {
                         .font(.system(size: 12.5))
                         .lineLimit(1...4)
                         .textFieldStyle(.plain)
+                        .focused($composerFocused)
                         .accessibilityLabel("Assistant prompt")
                         .onSubmit { if ai.canSend { ai.beginReview() } }
                 }
@@ -203,13 +210,13 @@ struct AIDockView: View {
 
             HStack(spacing: 6) {
                 contextButton(systemName: "text.cursor", label: "Selection") {
-                    Task { await ai.attach(.selection, tabID: model.session.activeTabID) }
+                    attachContext(.selection, confirmation: "Selection attached")
                 }
                 contextButton(systemName: "doc.text", label: "Page") {
-                    Task { await ai.attach(.readablePage, tabID: model.session.activeTabID) }
+                    attachContext(.readablePage, confirmation: "Page text attached")
                 }
                 contextButton(systemName: "camera.viewfinder", label: "Capture") {
-                    Task { await ai.attach(.viewportImage, tabID: model.session.activeTabID) }
+                    attachContext(.viewportImage, confirmation: "Screenshot attached — describe what to do with it")
                 }
                 Spacer()
             }
@@ -226,6 +233,18 @@ struct AIDockView: View {
         .padding(.horizontal, 10)
         .padding(.top, 4)
         .padding(.bottom, 10)
+    }
+
+    private func attachContext(_ kind: CaptureKind, confirmation: String) {
+        Task {
+            await ai.attach(kind, tabID: model.session.activeTabID)
+            // A successful capture lands in the composer immediately — focus the
+            // field and confirm visibly so it never looks like nothing happened.
+            if ai.errorMessage == nil {
+                composerFocused = true
+                model.statusMessage = confirmation
+            }
+        }
     }
 
     private func contextButton(systemName: String, label: String, action: @escaping () -> Void) -> some View {
@@ -304,15 +323,25 @@ private struct CurrentPageBar: View {
 @MainActor
 private struct AttachmentChip: View {
     let label: String
+    var thumbnail: NSImage? = nil
     let onRemove: () -> Void
 
     @State private var isHovering = false
 
     var body: some View {
         HStack(spacing: 5) {
-            Image(systemName: "paperclip")
-                .font(.system(size: 9))
-                .foregroundStyle(Color.browsemiumTertiary)
+            if let thumbnail {
+                Image(nsImage: thumbnail)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 30, height: 18)
+                    .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                    .accessibilityHidden(true)
+            } else {
+                Image(systemName: "paperclip")
+                    .font(.system(size: 9))
+                    .foregroundStyle(Color.browsemiumTertiary)
+            }
             Text(label)
                 .font(.system(size: 10.5))
                 .foregroundStyle(Color.browsemiumSecondary)
@@ -569,8 +598,15 @@ struct AIContextReviewSheet: View {
                 BrowsemiumPrimaryButton(confirmButtonTitle) {
                     Task {
                         await ai.confirmSend(tabID: model.session.activeTabID)
-                        if ai.mode == .web, ai.handoff?.method == .clipboardOnly {
-                            model.statusMessage = "Context copied — paste it into \(ai.descriptor.displayName) with ⌘V"
+                        if ai.mode == .web, let handoff = ai.handoff {
+                            switch handoff.method {
+                            case .clipboardOnly:
+                                model.statusMessage = "Context copied — paste it into \(ai.descriptor.displayName) with ⌘V"
+                            case .prefilledURL where handoff.includesImage:
+                                model.statusMessage = "Prompt opened — the screenshot is on your clipboard, press ⌘V in \(ai.descriptor.displayName) to attach it"
+                            case .prefilledURL:
+                                break
+                            }
                         }
                     }
                 }

@@ -60,16 +60,23 @@ public final class AIDockViewModel {
     }
 
     public var attachmentLabels: [String] {
-        attachments.map { attachment in
-            switch attachment {
-            case .selection(let context):
-                "Selection · \(context.text.count) characters\(source(of: context))"
-            case .readablePage(let context):
-                "Page text · \(context.text.count) characters\(context.isTruncated ? " (trimmed)" : "")\(source(of: context))"
-            case .viewportImage(let image):
-                "Screenshot · \(image.width)×\(image.height)"
-            }
+        attachments.map(label(for:))
+    }
+
+    public func label(for attachment: AIContextAttachment) -> String {
+        switch attachment {
+        case .selection(let context):
+            "Selection · \(context.text.count) characters\(source(of: context))"
+        case .readablePage(let context):
+            "Page text · \(context.text.count) characters\(context.isTruncated ? " (trimmed)" : "")\(source(of: context))"
+        case .viewportImage(let image):
+            "Screenshot · \(image.width)×\(image.height)"
         }
+    }
+
+    public func thumbnail(for attachment: AIContextAttachment) -> NSImage? {
+        guard case .viewportImage(let image) = attachment else { return nil }
+        return NSImage(data: image.data)
     }
 
     private func source(of context: PageTextContext) -> String {
@@ -229,6 +236,11 @@ public final class AIDockViewModel {
         switch handoff.method {
         case .prefilledURL(let url):
             providerPanel.open(url: url, provider: provider)
+            // The prompt travels inside the URL; images cannot. Put them on the
+            // pasteboard so a single ⌘V attaches them in the provider's composer.
+            if handoff.includesImage {
+                copyImagesToPasteboard()
+            }
         case .clipboardOnly:
             copyToPasteboard(handoff)
         }
@@ -250,6 +262,17 @@ public final class AIDockViewModel {
             }
         }
         pasteboard.writeObjects(objects)
+    }
+
+    private func copyImagesToPasteboard() {
+        let images: [NSPasteboardWriting] = attachments.compactMap { attachment in
+            guard case .viewportImage(let image) = attachment,
+                  let nsImage = NSImage(data: image.data) else { return nil }
+            return nsImage
+        }
+        guard !images.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects(images)
     }
 
     private func sendViaAPI(prompt: String) async {

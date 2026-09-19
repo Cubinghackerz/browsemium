@@ -38,7 +38,7 @@ public struct ProviderHandoffBuilder: Sendable {
             return false
         }
         let imageNote = includesImage
-            ? " Screenshots cannot travel through a link; copy the image and attach it in the panel."
+            ? " The screenshot goes on your clipboard — press ⌘V in the chat to attach it."
             : ""
 
         if let url = descriptor.prefillURL(prompt: prompt) {
