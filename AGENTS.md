@@ -130,3 +130,7 @@ SPARKLE_BIN=<sparkle bin> DOWNLOAD_URL_PREFIX=https://… Scripts/release/genera
 
 Signing and notarization credentials live in the keychain or CI secrets; never in
 the repository or in build logs.
+
+After each published release, update `Site/checksum.txt` with the DMG's SHA-256.
+`Site/install.sh` verifies downloads against that file, which is served from a
+different host than the release asset.
