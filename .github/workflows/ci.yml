@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  package:
+    name: Swift package verification
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select the newest installed Xcode
+        run: |
+          set -euo pipefail
+          newest=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1 || true)
+          if [[ -n "$newest" ]]; then
+            sudo xcode-select -s "$newest"
+          fi
+          xcodebuild -version
+
+      - name: Resolve, build, and verify the package
+        run: |
+          set -euo pipefail
+          BROWSEMIUM_HEADLESS=1 swift package resolve --package-path Packages/BrowsemiumKit
+          BROWSEMIUM_HEADLESS=1 swift build --package-path Packages/BrowsemiumKit
+          BROWSEMIUM_HEADLESS=1 swift run --package-path Packages/BrowsemiumKit BrowsemiumHeadlessTests
+
+      - name: Build and test the full package, including SwiftUI
+        run: |
+          set -euo pipefail
+          swift build --package-path Packages/BrowsemiumKit
+          swift test --package-path Packages/BrowsemiumKit
+
+      - name: Verify benchmark tooling
+        run: |
+          set -euo pipefail
+          python3 Benchmarks/generate-fixtures.py
+          bash -n Benchmarks/benchmark-memory.sh
+          python3 -c "import ast; [ast.parse(open(p).read()) for p in ['Benchmarks/generate-fixtures.py','Benchmarks/serve-fixtures.py','Scripts/generate-content-rules.py']]"
+
+  app:
+    name: Xcode app build and tests
+    runs-on: macos-15
+    needs: package
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select the newest installed Xcode
+        run: |
+          set -euo pipefail
+          newest=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1 || true)
+          if [[ -n "$newest" ]]; then
+            sudo xcode-select -s "$newest"
+          fi
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the project
+        run: xcodegen generate --spec project.yml
+
+      - name: Verify the committed project matches project.yml
+        run: Scripts/verify-project.sh || echo "::warning::Commit the regenerated Browsemium.xcodeproj"
+
+      - name: Build and test
+        run: |
+          set -euo pipefail
+          xcodebuild -project Browsemium.xcodeproj \
+            -scheme Browsemium \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -resultBundlePath build/TestResults.xcresult \
+            test
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcresult
+          path: build/TestResults.xcresult

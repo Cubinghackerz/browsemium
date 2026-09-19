@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Canvas</title>
+<style>body{margin:0;background:#111;color:#eee;font:13px -apple-system,system-ui}
+canvas{display:block;width:100%;height:80vh}</style></head>
+<body><canvas id="c" width="1600" height="900"></canvas>
+<script>
+const ctx = document.getElementById("c").getContext("2d");
+for (let i = 0; i < 2000; i++) {
+  ctx.fillStyle = `hsl(${(i * 7) % 360},70%,50%)`;
+  ctx.fillRect((i * 13) % 1600, (i * 29) % 900, 12, 12);
+}
+</script></body></html>

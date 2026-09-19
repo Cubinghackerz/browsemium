@@ -1,0 +1,225 @@
+import BrowsemiumCore
+import SwiftUI
+
+@MainActor
+struct BrowserToolbar: View {
+    @Bindable var model: BrowserWindowModel
+
+    @FocusState private var addressFocused: Bool
+    @State private var isFieldHovering = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            BrowsemiumIconButton(systemName: "chevron.left", label: "Go back", isDisabled: !model.canGoBack) {
+                model.goBack()
+            }
+
+            BrowsemiumIconButton(systemName: "chevron.right", label: "Go forward", isDisabled: !model.canGoForward) {
+                model.goForward()
+            }
+
+            BrowsemiumIconButton(
+                systemName: model.isLoading ? "xmark" : "arrow.clockwise",
+                label: model.isLoading ? "Stop loading" : "Reload",
+                isDisabled: !model.canReload
+            ) {
+                if model.isLoading {
+                    model.stopLoading()
+                } else {
+                    model.reload()
+                }
+            }
+
+            Spacer(minLength: 4)
+
+            addressField
+                .frame(maxWidth: 600)
+
+            Spacer(minLength: 4)
+
+            downloadIndicator
+
+            credentialMenu
+
+            BrowsemiumIconButton(systemName: "command", label: "Commands") {
+                model.toggleCommandPalette()
+            }
+
+            BrowsemiumIconButton(
+                systemName: "sparkles",
+                label: "Toggle assistant",
+                isActive: model.isAIDockVisible
+            ) {
+                BrowserHaptics.perform()
+                model.toggleAIDock()
+            }
+
+            overflowMenu
+        }
+        .padding(.horizontal, 8)
+        .frame(height: BrowserMetrics.toolbarHeight)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var addressField: some View {
+        HStack(spacing: 6) {
+            Button {
+                BrowserHaptics.perform()
+                model.toggleBookmark()
+            } label: {
+                Image(systemName: model.isBookmarked ? "bookmark.fill" : "bookmark")
+                    .font(.system(size: 11))
+                    .foregroundStyle(model.isBookmarked ? Color.browsemiumPrimary : Color.browsemiumTertiary)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(model.isBookmarked ? "Remove bookmark" : "Bookmark this page")
+
+            TextField("Search or enter address", text: $model.addressText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12.5))
+                .focused($addressFocused)
+                .onSubmit { model.submitAddress() }
+                .accessibilityLabel("Address and search")
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 28)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(isFieldHovering || addressFocused ? Color.browsemiumSelection : Color.browsemiumField)
+        )
+        .overlay(alignment: .bottom) {
+            if model.isLoading {
+                GeometryReader { geometry in
+                    Capsule(style: .continuous)
+                        .fill(Color.browsemiumPrimary.opacity(0.45))
+                        .frame(
+                            width: max(geometry.size.width * min(max(model.loadingProgress, 0.03), 1), 8),
+                            height: 1.5
+                        )
+                        .frame(maxWidth: .infinity, alignment: .bottomLeading)
+                        .animation(.easeOut(duration: 0.25), value: model.loadingProgress)
+                }
+                .frame(height: 1.5)
+                .padding(.horizontal, 13)
+                .padding(.bottom, 3)
+                .allowsHitTesting(false)
+                .transition(.opacity)
+            }
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(addressFocused ? Color.browsemiumFocus : Color.browsemiumBorder, lineWidth: addressFocused ? 1.5 : 1)
+        }
+        .onHover { isFieldHovering = $0 }
+        .animation(.easeOut(duration: 0.2), value: model.isLoading)
+        .onChange(of: model.focusAddressToken) {
+            addressFocused = true
+        }
+    }
+
+    /// Top-right download status: a progress ring while something is arriving,
+    /// and a menu of recent downloads.
+    @ViewBuilder
+    private var downloadIndicator: some View {
+        if !model.downloads.isEmpty {
+            Menu {
+                ForEach(model.downloads.prefix(8)) { download in
+                    if download.failureMessage != nil {
+                        Text("\(download.filename) — failed")
+                    } else if download.isFinished {
+                        Text("\(download.filename) — done")
+                    } else {
+                        Text("\(download.filename) — \(download.percentText)")
+                    }
+                }
+                Divider()
+                Button("Show All Downloads") { model.openPanel(.downloads) }
+            } label: {
+                ZStack {
+                    Image(systemName: model.hasActiveDownloads ? "arrow.down.circle.fill" : "arrow.down.circle")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(
+                            model.hasActiveDownloads ? Color.browsemiumPrimary : Color.browsemiumSecondary
+                        )
+
+                    if let fraction = model.downloadProgressFraction {
+                        Circle()
+                            .trim(from: 0, to: fraction)
+                            .stroke(Color.browsemiumPrimary, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                            .frame(width: 20, height: 20)
+                            .animation(.easeOut(duration: 0.2), value: fraction)
+                    }
+                }
+                .frame(width: 26, height: 26)
+                .contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel(
+                model.hasActiveDownloads
+                    ? "Downloading \(model.activeDownloads.count) file"
+                    : "Downloads"
+            )
+        }
+    }
+
+    private var credentialMenu: some View {
+        Menu {
+            let credentials = model.credentialsForActiveSite()
+            if credentials.isEmpty {
+                Text("No saved passwords for this site")
+            } else {
+                ForEach(credentials) { credential in
+                    Button("Fill \(credential.username)") {
+                        model.fillCredential(credential)
+                    }
+                }
+            }
+            Divider()
+            Button("Manage Passwords…") { model.openPanel(.settings) }
+        } label: {
+            Image(systemName: "key")
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(
+                    model.credentialsForActiveSite().isEmpty
+                        ? Color.browsemiumTertiary
+                        : Color.browsemiumSecondary
+                )
+                .frame(width: 26, height: 26)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel("Passwords")
+    }
+
+    private var overflowMenu: some View {
+        Menu {
+            Button("New Tab") { model.newTab() }
+            Button("Reopen Closed Tab") { model.reopenClosedTab() }
+            Divider()
+            Button("History") { model.openPanel(.history) }
+            Button("Bookmarks") { model.openPanel(.bookmarks) }
+            Button(model.isBookmarksBarVisible ? "Hide Bookmarks Bar" : "Show Bookmarks Bar") {
+                model.toggleBookmarksBar()
+            }
+            Button("Downloads") { model.openPanel(.downloads) }
+            Divider()
+            Button("Settings…") { model.openPanel(.settings) }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(Color.browsemiumSecondary)
+                .frame(width: 26, height: 26)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel("More actions")
+    }
+}

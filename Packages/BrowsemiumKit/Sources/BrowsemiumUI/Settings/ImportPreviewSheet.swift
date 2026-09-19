@@ -1,0 +1,156 @@
+import BrowsemiumData
+import SwiftUI
+
+/// Shows exactly what a browser profile contains before anything is written.
+@MainActor
+struct ImportPreviewSheet: View {
+    let preview: BrowserImportPreview
+    @Binding var options: BrowserImportOptions
+    let isImporting: Bool
+    let onCancel: () -> Void
+    let onImport: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Import from \(preview.source.displayName)")
+                    .font(.system(size: 15, weight: .semibold))
+                Text("Review what was found. Nothing has been added yet.")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Color.browsemiumSecondary)
+            }
+
+            summary
+
+            if preview.bookmarkCount > 0 {
+                scopeRow(
+                    title: "Bookmarks",
+                    detail: bookmarkDetail,
+                    isOn: $options.includesBookmarks
+                )
+            }
+
+            if preview.historyCount > 0 {
+                scopeRow(
+                    title: "History",
+                    detail: historyDetail,
+                    isOn: $options.includesHistory
+                )
+
+                if options.includesHistory {
+                    Picker("History range", selection: rangeBinding) {
+                        Text("Everything").tag(0)
+                        Text("Last 90 days").tag(90)
+                        Text("Last 30 days").tag(30)
+                        Text("Last 7 days").tag(7)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .accessibilityLabel("History range")
+                }
+            }
+
+            if preview.isEmpty {
+                Text("No bookmarks or history were found in this profile.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.browsemiumWarning)
+            }
+
+            Text("Passwords and cookies are never imported — they are encrypted per browser and moving them would be unsafe.")
+                .font(.system(size: 10.5))
+                .foregroundStyle(Color.browsemiumTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack {
+                BrowsemiumTextButton("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                BrowsemiumPrimaryButton(
+                    isImporting ? "Importing…" : "Import",
+                    isDisabled: isImporting || preview.isEmpty || (!options.includesBookmarks && !options.includesHistory),
+                    action: onImport
+                )
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 460)
+        .background(Color.browsemiumSurface)
+        .foregroundStyle(Color.browsemiumPrimary)
+    }
+
+    private var summary: some View {
+        HStack(spacing: 10) {
+            summaryTile("\(preview.bookmarkCount)", "Bookmarks")
+            summaryTile("\(preview.historyCount)", "History entries")
+            summaryTile("\(preview.folders.count)", "Folders")
+        }
+    }
+
+    private func summaryTile(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.system(size: 17, weight: .semibold))
+            Text(label)
+                .font(.system(size: 10.5))
+                .foregroundStyle(Color.browsemiumTertiary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous)
+                .fill(Color.browsemiumField)
+        )
+    }
+
+    private func scopeRow(title: String, detail: String, isOn: Binding<Bool>) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 12.5))
+                Text(detail)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.browsemiumTertiary)
+            }
+            Spacer()
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .tint(Color.browsemiumAccentFill)
+                .accessibilityLabel(title)
+        }
+    }
+
+    private var bookmarkDetail: String {
+        preview.folders.isEmpty
+            ? "Folder structure is not preserved in this profile."
+            : "Folders preserved: \(preview.folders.prefix(4).joined(separator: ", "))\(preview.folders.count > 4 ? "…" : "")"
+    }
+
+    private var historyDetail: String {
+        guard let earliest = preview.earliestVisit, let latest = preview.latestVisit else {
+            return "No dated history found."
+        }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return "\(formatter.string(from: earliest)) – \(formatter.string(from: latest))"
+    }
+
+    /// 0 means "everything".
+    private var rangeBinding: Binding<Int> {
+        Binding(
+            get: {
+                guard let since = options.historySince else { return 0 }
+                let days = Calendar.current.dateComponents([.day], from: since, to: Date()).day ?? 0
+                return [90, 30, 7].first { abs($0 - days) <= 1 } ?? 0
+            },
+            set: { days in
+                options.historySince = days == 0
+                    ? nil
+                    : Calendar.current.date(byAdding: .day, value: -days, to: Date())
+            }
+        )
+    }
+}
