@@ -247,6 +247,10 @@ struct SettingsView: View {
                                 Text("Ready")
                                     .font(.system(size: 11))
                                     .foregroundStyle(Color.browsemiumSuccess)
+                            } else {
+                                Text("Asks permission once")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Color.browsemiumTertiary)
                             }
                             BrowsemiumTextButton(importingID == candidate.id ? "Importing…" : "Import") {
                                 beginImport(candidate)
@@ -555,15 +559,14 @@ struct SettingsView: View {
     private func presentImportPanel(startingAt folder: URL, candidate: BrowserProfileCandidate) {
         let panel = NSOpenPanel()
         panel.title = "Allow Access to \(candidate.label)"
-        panel.message = "macOS needs your permission once. Browsemium remembers it for next time."
+        panel.message = "macOS needs your permission once. Pick the profile folder — or the folder that contains it, such as Chrome or Profiles."
+        panel.prompt = "Allow"
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        if FileManager.default.fileExists(atPath: folder.path) {
-            panel.directoryURL = folder
-        } else {
-            panel.directoryURL = folder.deletingLastPathComponent()
-        }
+        // Navigate as close to the profile as the sandbox allows; the importer
+        // descends into the profile if a parent folder is chosen instead.
+        panel.directoryURL = folder
         guard panel.runModal() == .OK, let granted = panel.url else { return }
         ImportAccessStore.save(folder: granted, for: candidate.id)
         loadPreview(folder: granted, candidate: candidate)

@@ -195,10 +195,77 @@ public final class BrowserDataImporter: @unchecked Sendable {
         public var errorDescription: String? {
             switch self {
             case .unsupportedFolder(let browser):
-                "The selected folder does not look like a \(browser) profile."
+                "That folder does not contain \(browser) data. Pick the profile folder itself — for example \(BrowserDataImporter.expectedPathHint(for: browser))."
             case .unreadableData(let message):
                 "Browser data could not be read: \(message)"
             }
+        }
+    }
+
+    /// Tells the user where the profile actually lives, so a wrong pick is
+    /// self-correcting instead of a dead end.
+    static func expectedPathHint(for browser: String) -> String {
+        switch browser {
+        case "Chrome":
+            "~/Library/Application Support/Google/Chrome/Default"
+        case "Firefox":
+            "~/Library/Application Support/Firefox/Profiles"
+        case "Safari":
+            "~/Library/Safari"
+        default:
+            "the browser's profile folder"
+        }
+    }
+
+    /// Accepts either the profile itself or a parent folder that contains one,
+    /// so choosing `…/Google/Chrome` works as well as `…/Chrome/Default`.
+    static func resolveProfileFolder(_ folder: URL, source: BrowserImportSource) -> URL? {
+        if profileLooksValid(folder, source: source) {
+            return folder
+        }
+        let children = (try? FileManager.default.contentsOfDirectory(
+            at: folder,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+
+        let directories = children.filter {
+            (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+        }
+
+        switch source {
+        case .chrome:
+            let preferred = ["Default"] + (1...12).map { "Profile \($0)" }
+            let ordered = directories.sorted { lhs, rhs in
+                let left = preferred.firstIndex(of: lhs.lastPathComponent) ?? Int.max
+                let right = preferred.firstIndex(of: rhs.lastPathComponent) ?? Int.max
+                return left < right
+            }
+            return ordered.first { profileLooksValid($0, source: .chrome) }
+        case .firefox:
+            // A Firefox install keeps its profiles one level deeper.
+            if let nested = directories.first(where: { $0.lastPathComponent == "Profiles" }),
+               let profile = resolveProfileFolder(nested, source: .firefox) {
+                return profile
+            }
+            return directories
+                .filter { profileLooksValid($0, source: .firefox) }
+                .sorted { $0.lastPathComponent < $1.lastPathComponent }
+                .first
+        case .safari:
+            return directories.first { profileLooksValid($0, source: .safari) }
+        }
+    }
+
+    static func profileLooksValid(_ folder: URL, source: BrowserImportSource) -> Bool {
+        let contents = Set((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
+        switch source {
+        case .chrome:
+            return contents.contains("Bookmarks") || contents.contains("History")
+        case .firefox:
+            return contents.contains("places.sqlite")
+        case .safari:
+            return contents.contains("Bookmarks.plist") || contents.contains("History.db")
         }
     }
 
@@ -225,14 +292,19 @@ public final class BrowserDataImporter: @unchecked Sendable {
     /// Reads the profile without writing anything, so the user can see exactly
     /// what would be imported before it happens.
     public func preview(at folder: URL, source: BrowserImportSource) throws -> BrowserImportPreview {
+        // Accept a parent folder as well as the profile itself.
+        guard let profile = Self.resolveProfileFolder(folder, source: source) else {
+            throw ImportError.unsupportedFolder(source.displayName)
+        }
+
         let read: ([ImportedBookmark], [ImportedVisit])
         switch source {
         case .chrome:
-            read = try readChrome(folder)
+            read = try readChrome(profile)
         case .firefox:
-            read = try readFirefox(folder)
+            read = try readFirefox(profile)
         case .safari:
-            read = try readSafari(folder)
+            read = try readSafari(profile)
         }
 
         let dedupedBookmarks = Self.dedupeBookmarks(read.0)

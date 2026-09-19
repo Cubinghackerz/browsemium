@@ -165,6 +165,46 @@ func importingAFolderThatIsNotAProfileFailsClearly() throws {
 }
 
 @Test
+func choosingTheParentFolderFindsTheProfileInside() throws {
+    let profile = try FakeChromeProfile(
+        bookmarks: [["type": "url", "name": "Swift", "url": "https://swift.org"]],
+        visits: [("https://swift.org", "Swift", chromeMicros(Date()))]
+    )
+    defer { profile.cleanUp() }
+
+    // Move the profile into a parent folder that looks like a real install:
+    // Chrome/Default, where the user might select "Chrome" instead of "Default".
+    let parent = FileManager.default.temporaryDirectory
+        .appendingPathComponent("browsemium-chrome-\(UUID().uuidString)", isDirectory: true)
+    let nested = parent.appendingPathComponent("Default", isDirectory: true)
+    try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+    try FileManager.default.moveItem(at: profile.folder, to: nested)
+    defer { try? FileManager.default.removeItem(at: parent) }
+
+    let (importer, _, _, _) = try makeImporter()
+    let preview = try importer.preview(at: parent, source: .chrome)
+    #expect(preview.bookmarkCount == 1, "A parent folder should resolve to the profile inside it")
+    #expect(preview.historyCount == 1)
+}
+
+@Test
+func aFolderWithNoBrowserDataExplainsWhatToPick() throws {
+    let empty = FileManager.default.temporaryDirectory
+        .appendingPathComponent("browsemium-nothing-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: empty) }
+
+    let (importer, _, _, _) = try makeImporter()
+    do {
+        _ = try importer.preview(at: empty, source: .chrome)
+        Issue.record("Expected an unsupported-folder error")
+    } catch let error as BrowserDataImporter.ImportError {
+        let message = error.errorDescription ?? ""
+        #expect(message.contains("Default"), "The message should name the folder to pick: \(message)")
+    }
+}
+
+@Test
 func sourceDetectionIdentifiesEachBrowserFromItsFiles() throws {
     let profile = try FakeChromeProfile(bookmarks: [], visits: [])
     defer { profile.cleanUp() }
