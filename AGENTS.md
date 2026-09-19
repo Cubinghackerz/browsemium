@@ -87,9 +87,37 @@ Opening Settings must never trigger a macOS keychain prompt. Check for stored
 secrets with `KeychainStore.hasSecret(account:)`, which queries attributes only;
 reading `secret(account:)` decrypts the item and macOS asks for permission.
 
-The "… WebCrypto Master Key" prompt is WebKit's own, created when a page uses
-WebCrypto. It repeats on every rebuild because an ad-hoc signature changes each
-time, and stops once the app is signed with a stable Developer ID.
+## The "… WebCrypto Master Key" prompt
+
+WebKit creates a keychain item named `<App> WebCrypto Master Key` (account
+`com.apple.WebKit.WebCrypto.master+<bundle id>`) the first time a page uses
+WebCrypto. It encrypts WebCrypto keys that sites keep in IndexedDB. This app
+never reads that item itself.
+
+macOS ties keychain access to the code signature:
+
+- **Ad-hoc signing** (the default for local Debug builds, `Signature=adhoc`,
+  `TeamIdentifier=not set`) produces a different signature on every build, so
+  macOS treats each rebuild as a new app and asks for permission again.
+  "Always Allow" only holds until the next rebuild.
+- **Stable signing** keeps the designated requirement constant, so permission
+  is granted once and never asked again. Release builds sign with a Developer
+  ID via `Scripts/release/build-archive.sh`, so **end users never see this
+  prompt**.
+
+Do not try to silence it by weakening the item's ACL, and do not delete the
+item automatically — it is the user's keychain. `Scripts/create-dev-signing-identity.sh`
+can create a stable local identity, but macOS requires the login keychain
+password to authorize the key the first time; without that password the build
+fails with `errSecInternalComponent`, so ad-hoc signing is the safe default.
+
+If the prompt is in the way during development, either click **Always Allow**
+(if the keychain password is known) or delete the stale item once so WebKit
+recreates it under the current build:
+
+```sh
+security delete-generic-password -s "Browsemium WebCrypto Master Key"
+```
 
 ## Release
 
