@@ -20,6 +20,7 @@
 		8C5AC0D06C71F6636DAA4338 /* BrowsemiumEngine in Frameworks */ = {isa = PBXBuildFile; productRef = A424C1BA7D6F396127FF0C25 /* BrowsemiumEngine */; };
 		97403D9301DC5206D2EEDB37 /* AppDatabaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7206BEC4825DEA806A7B0DE /* AppDatabaseTests.swift */; };
 		A651E4DD7B2E5C5400F77CA1 /* BrowsemiumCore in Frameworks */ = {isa = PBXBuildFile; productRef = F3BB75BC0DCBDD0426DE9EAF /* BrowsemiumCore */; };
+		AAA074F8764F212E79358B5D /* ConversationRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E9285A7A7C2E1AEB180C5F5 /* ConversationRepositoryTests.swift */; };
 		ACFEC59B41795B06CAC9D6DB /* BrowsemiumCore in Frameworks */ = {isa = PBXBuildFile; productRef = FD1A0372E69607B627DBAE54 /* BrowsemiumCore */; };
 		B06E6451CDC1A4209651D063 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = CD982532970BC579981F6AD1 /* Sparkle */; };
 		C3AF1FFCA43B28002086D64A /* ProfileDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FA377ECC8415F876E09E730 /* ProfileDiscoveryTests.swift */; };
@@ -39,6 +40,7 @@
 		4C3F425E3D016D89BAE9E398 /* BrowsemiumApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsemiumApp.swift; sourceTree = "<group>"; };
 		53143E61AD7BB670D4CB652F /* BrowsemiumKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrowsemiumKit; path = Packages/BrowsemiumKit; sourceTree = SOURCE_ROOT; };
 		87FF9C65B6C9681BA0AE440E /* BrowserWindowModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowModelTests.swift; sourceTree = "<group>"; };
+		8E9285A7A7C2E1AEB180C5F5 /* ConversationRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationRepositoryTests.swift; sourceTree = "<group>"; };
 		92B44FFBF228F83A32A326F5 /* BrowsemiumUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BrowsemiumUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AAC4411A48E29C66F3EE532C /* BrowsemiumCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BrowsemiumCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C3C9246D617D18F8DD99717F /* BrowserImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserImportTests.swift; sourceTree = "<group>"; };
@@ -182,6 +184,7 @@
 			children = (
 				D7206BEC4825DEA806A7B0DE /* AppDatabaseTests.swift */,
 				C3C9246D617D18F8DD99717F /* BrowserImportTests.swift */,
+				8E9285A7A7C2E1AEB180C5F5 /* ConversationRepositoryTests.swift */,
 				2FA377ECC8415F876E09E730 /* ProfileDiscoveryTests.swift */,
 				F2637D77BAD284CF0902651C /* ProfileStoreTests.swift */,
 			);
@@ -348,6 +351,7 @@
 			files = (
 				97403D9301DC5206D2EEDB37 /* AppDatabaseTests.swift in Sources */,
 				80E2437BE28C2532E75A04A0 /* BrowserImportTests.swift in Sources */,
+				AAA074F8764F212E79358B5D /* ConversationRepositoryTests.swift in Sources */,
 				C3AF1FFCA43B28002086D64A /* ProfileDiscoveryTests.swift in Sources */,
 				3A94F1E8F12590971F2797A9 /* ProfileStoreTests.swift in Sources */,
 			);
@@ -408,6 +412,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CURRENT_PROJECT_VERSION = 102;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0.2;
 				ONLY_ACTIVE_ARCH = YES;
@@ -466,6 +471,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CURRENT_PROJECT_VERSION = 102;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0.2;
 				SDKROOT = macosx;

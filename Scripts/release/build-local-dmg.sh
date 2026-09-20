@@ -107,6 +107,51 @@ if grep -qiE "fatal error|Trace/BPT trap|Segmentation fault" "$LOG"; then
 fi
 echo "  launched and stayed up for 10s"
 
+# Crash recovery: the session must survive an abrupt kill. The app is started,
+# killed with SIGKILL (no chance to flush anything), restarted, and the tab
+# rows in its profile database are compared. A session that only survives a
+# clean quit is not crash recovery.
+echo "Crash-recovery test…"
+CONTAINER_DB="${HOME}/Library/Containers/com.browsemium.browser/Data/Library/Application Support/Browsemium"
+PROFILE_DB="$(ls -t "${CONTAINER_DB}"/profiles/*.sqlite 2>/dev/null | head -1 || true)"
+CRASH_STARTED_AT=$(date +%s)
+"$APP_PATH/Contents/MacOS/Browsemium" > "${BUILD_DIR}/local/crash-test-1.log" 2>&1 &
+CRASH_PID=$!
+sleep 6
+kill -9 "$CRASH_PID" 2>/dev/null || true
+wait "$CRASH_PID" 2>/dev/null || true
+TABS_BEFORE=""
+if [ -n "$PROFILE_DB" ]; then
+  TABS_BEFORE="$(sqlite3 "$PROFILE_DB" 'SELECT COUNT(*) FROM tabs' 2>/dev/null || true)"
+fi
+sleep 1
+"$APP_PATH/Contents/MacOS/Browsemium" > "${BUILD_DIR}/local/crash-test-2.log" 2>&1 &
+CRASH_PID=$!
+sleep 8
+if ! kill -0 "$CRASH_PID" 2>/dev/null; then
+  echo "The app did not survive a relaunch after SIGKILL — refusing to package." >&2
+  tail -20 "${BUILD_DIR}/local/crash-test-2.log" >&2
+  exit 1
+fi
+kill "$CRASH_PID" 2>/dev/null || true
+wait "$CRASH_PID" 2>/dev/null || true
+if [ -n "$PROFILE_DB" ] && [ -n "$TABS_BEFORE" ]; then
+  TABS_AFTER="$(sqlite3 "$PROFILE_DB" 'SELECT COUNT(*) FROM tabs' 2>/dev/null || true)"
+  if [ "$TABS_BEFORE" != "$TABS_AFTER" ]; then
+    echo "The session changed across a crash: $TABS_BEFORE tabs before, $TABS_AFTER after." >&2
+    exit 1
+  fi
+  echo "  relaunched cleanly after SIGKILL, session intact ($TABS_AFTER tabs)"
+else
+  echo "  relaunched cleanly after SIGKILL (no profile database yet)"
+fi
+CRASH_LOGS="$(find "${HOME}/Library/Logs/DiagnosticReports" -name 'Browsemium*' -newermt "@${CRASH_STARTED_AT}" 2>/dev/null | wc -l | tr -d ' ')"
+if [ "$CRASH_LOGS" != "0" ]; then
+  echo "A crash report was written during the recovery test — refusing to package." >&2
+  find "${HOME}/Library/Logs/DiagnosticReports" -name 'Browsemium*' -newermt "@${CRASH_STARTED_AT}" >&2
+  exit 1
+fi
+
 cp -R "$APP_PATH" "$STAGING/"
 ln -s /Applications "$STAGING/Applications"
 

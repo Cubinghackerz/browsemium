@@ -1,0 +1,171 @@
+name: Release
+
+# Publishing a release is a tag push: git tag v2.0.0 && git push origin v2.0.0.
+# The workflow builds the DMG, signs it for Sparkle, publishes the GitHub
+# release, refreshes the appcast and checksum, deploys the site, and updates
+# the Homebrew cask. No manual steps.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (for example 2.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing $VERSION"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Restore the Sparkle signing key
+        run: |
+          if [ -z "${{ secrets.SPARKLE_ED25519_KEY }}" ]; then
+            echo "SPARKLE_ED25519_KEY secret is not set; updates could not be signed." >&2
+            exit 1
+          fi
+          mkdir -p "$HOME/.config/browsemium"
+          printf '%s' "${{ secrets.SPARKLE_ED25519_KEY }}" > "$HOME/.config/browsemium/sparkle-ed25519.key"
+          chmod 600 "$HOME/.config/browsemium/sparkle-ed25519.key"
+
+      - name: Generate the project
+        run: xcodegen generate --spec project.yml
+
+      - name: Build the DMG (with launch and crash-recovery gates)
+        run: Scripts/release/build-local-dmg.sh "${{ steps.version.outputs.version }}"
+
+      - name: Sign the DMG for Sparkle
+        id: sign
+        run: |
+          DMG="build/Browsemium-${{ steps.version.outputs.version }}.dmg"
+          SIGNATURE="$(swift Scripts/release/sparkle-eddsa.swift sign "$DMG")"
+          SHA="$(shasum -a 256 "$DMG" | awk '{print $1}')"
+          SIZE="$(stat -f%z "$DMG")"
+          echo "signature=$SIGNATURE" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release upload "v$VERSION" "build/Browsemium-$VERSION.dmg" --clobber
+          else
+            gh release create "v$VERSION" "build/Browsemium-$VERSION.dmg" \
+              --title "Browsemium $VERSION" \
+              --notes "See the release page for details. Update notes are maintained in the repository."
+          fi
+
+      - name: Refresh the appcast and checksum
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BUILD="${VERSION//./}"
+          python3 - "$VERSION" "$BUILD" "${{ steps.sign.outputs.signature }}" "${{ steps.sign.outputs.size }}" <<'PY'
+          import sys, pathlib
+          version, build, signature, size = sys.argv[1:5]
+          appcast = pathlib.Path("Site/appcast.xml")
+          text = appcast.read_text()
+          item = f'''    <item>
+              <title>Browsemium {version}</title>
+              <sparkle:releaseNotesLink>https://github.com/Cubinghackerz/browsemium/releases/tag/v{version}</sparkle:releaseNotesLink>
+              <pubDate>{__import__("email.utils", fromlist=["formatdate"]).formatdate(localtime=True)}</pubDate>
+              <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+              <enclosure
+                url="https://github.com/Cubinghackerz/browsemium/releases/download/v{version}/Browsemium-{version}.dmg"
+                sparkle:version="{build}"
+                sparkle:shortVersionString="{version}"
+                sparkle:edSignature="{signature}"
+                length="{size}"
+                type="application/octet-stream" />
+            </item>
+          '''
+          marker = "    <item>"
+          end = text.index("</item>") + len("</item>") + 1
+          appcast.write_text(text[:text.index(marker)] + item + text[end:])
+          pathlib.Path("Site/checksum.txt").write_text(
+              f"{{}}  Browsemium-{version}.dmg\n".format(sys.argv[6] if len(sys.argv) > 6 else "")
+          ) if False else pathlib.Path("Site/checksum.txt").write_text(
+              f"${{SHA}}  Browsemium-{version}.dmg\n"
+          )
+          PY
+          echo "note: checksum.txt is written from the signed hash below"
+        env:
+          SHA: ${{ steps.sign.outputs.sha }}
+
+      - name: Commit the refreshed site files
+        run: |
+          git config user.name "Browsemium Release"
+          git config user.email "releases@browsemium.local"
+          git add Site/appcast.xml Site/checksum.txt
+          git diff --cached --quiet || git commit -m "Publish ${{ steps.version.outputs.version }} appcast and checksum"
+          git push
+
+      - name: Deploy the site
+        if: ${{ secrets.VERCEL_TOKEN != '' }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx --yes vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN" --cwd Site
+
+      - name: Update the Homebrew cask
+        env:
+          GH_TOKEN: ${{ secrets.TAP_TOKEN != '' && secrets.TAP_TOKEN || github.token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA="${{ steps.sign.outputs.sha }}"
+          TAP="Cubinghackerz/homebrew-tap"
+          if ! gh repo view "$TAP" >/dev/null 2>&1; then
+            echo "Tap repository $TAP does not exist yet; skipping." >&2
+            exit 0
+          fi
+          TMP="$(mktemp -d)"
+          git clone --depth 1 "https://x-access-token:$GH_TOKEN@github.com/$TAP.git" "$TMP"
+          mkdir -p "$TMP/Casks"
+          cat > "$TMP/Casks/browsemium.rb" <<EOF
+          cask "browsemium" do
+            version "$VERSION"
+            sha256 "$SHA"
+
+            url "https://github.com/Cubinghackerz/browsemium/releases/download/v#{version}/Browsemium-#{version}.dmg"
+            name "Browsemium"
+            desc "macOS browser built around AI assistants"
+            homepage "https://browsemium.vercel.app"
+
+            app "Browsemium.app"
+
+            caveats <<~EOS
+              Browsemium is signed ad-hoc rather than with a Developer ID, so the
+              first launch is blocked once. Allow it under System Settings →
+              Privacy & Security → Open Anyway, or install with no warning at all:
+                curl -fsSL https://browsemium.vercel.app/install.sh | bash
+            EOS
+          end
+          EOF
+          cd "$TMP"
+          git config user.name "Browsemium Release"
+          git config user.email "releases@browsemium.local"
+          git add Casks/browsemium.rb
+          git diff --cached --quiet || git commit -m "browsemium $VERSION"
+          git push

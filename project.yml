@@ -16,6 +16,9 @@ settings:
     MACOSX_DEPLOYMENT_TARGET: 14.0
     MARKETING_VERSION: "1.0.2"
     CURRENT_PROJECT_VERSION: "102"
+    # Xcode's default for app targets. Without it the embedded Sparkle
+    # framework cannot be found at launch (dyld: Library not loaded).
+    LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
   # Debug builds only the native architecture, like Xcode's own default. Without
   # this a Debug build tries to compile x86_64 as well, and the local package's
   # modules (built for arm64) cannot satisfy it.

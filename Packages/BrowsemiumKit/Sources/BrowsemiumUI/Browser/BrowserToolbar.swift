@@ -273,12 +273,8 @@ struct BrowserToolbar: View {
             Button("Other search engines…") { model.openPanel(.settings) }
         } label: {
             HStack(spacing: 4) {
-                if let icon = Self.engineIconName(for: model.activeSearchEngineName) {
-                    Image(icon, bundle: .module)
-                        .renderingMode(.template)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 12, height: 12)
+                if let icon = Self.engineIcon(for: model.activeSearchEngineName) {
+                    Image(nsImage: icon)
                         .foregroundStyle(Color.browsemiumSecondary)
                 } else {
                     Text(searchEngineInitial)
@@ -301,6 +297,24 @@ struct BrowserToolbar: View {
 
     /// Brand marks for the four presets. Sources are CC0 (simple-icons and
     /// the SVG Logos collection); see ThirdPartyNotices.
+    ///
+    /// The image is resized up front rather than with `.resizable()`: SwiftUI
+    /// menu labels rasterise their content at intrinsic size, so a 96px asset
+    /// rendered as a 96pt glyph regardless of any frame around it.
+    static func engineIcon(for engineName: String) -> NSImage? {
+        guard let name = engineIconName(for: engineName),
+              let source = Bundle.module.image(forResource: name) else {
+            return nil
+        }
+        let size = NSSize(width: 12, height: 12)
+        let resized = NSImage(size: size)
+        resized.lockFocus()
+        source.draw(in: NSRect(origin: .zero, size: size))
+        resized.unlockFocus()
+        resized.isTemplate = true
+        return resized
+    }
+
     static func engineIconName(for engineName: String) -> String? {
         switch engineName {
         case "Google": "EngineGoogle"
