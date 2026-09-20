@@ -127,19 +127,41 @@ public enum AIRequestBuilder {
         let bounded = boundedText(context.text, limit: policy.maxTextCharacters)
         var attributes = "kind=\"\(label)\""
         if policy.includeSourceURL, let url = context.url {
-            attributes += " source=\"\(url.absoluteString)\""
+            attributes += " source=\"\(boundedSource(url))\""
         }
         if let title = context.title, !title.isEmpty {
-            attributes += " title=\"\(sanitizedAttribute(title))\""
+            attributes += " title=\"\(escapedAttribute(title))\""
         }
         if context.isTruncated || bounded.truncated {
             attributes += " truncated=\"true\""
         }
+        // The body is untrusted page content: it could itself contain the
+        // closing tag and break out of the marked region, so neutralize it.
+        let body = bounded.text.replacingOccurrences(
+            of: "</shared_page_context",
+            with: "< /shared_page_context"
+        )
         return """
             <shared_page_context \(attributes)>
-            \(bounded.text)
+            \(body)
             </shared_page_context>
             """
+    }
+
+    /// Query strings on search pages can run for hundreds of characters of
+    /// tracking parameters. The URL still identifies the page once capped.
+    /// Escaping happens before the cap so `&` → `&amp;` expansion cannot
+    /// push the attribute past the bound; a dangling partial entity is
+    /// trimmed at the cut.
+    private static func boundedSource(_ url: URL) -> String {
+        var escaped = escapedAttribute(url.absoluteString)
+        guard escaped.count > 200 else { return escaped }
+        escaped = String(escaped.prefix(200))
+        if let cut = escaped.range(of: "&", options: .backwards),
+           !escaped[cut.lowerBound...].contains(";") {
+            escaped = String(escaped[..<cut.lowerBound])
+        }
+        return escaped + "…"
     }
 
     private static func boundedText(_ text: String, limit: Int) -> (text: String, truncated: Bool) {
@@ -148,10 +170,11 @@ public enum AIRequestBuilder {
         return (String(text[..<endIndex]), true)
     }
 
-    private static func sanitizedAttribute(_ value: String) -> String {
+    private static func escapedAttribute(_ value: String) -> String {
         value
-            .replacingOccurrences(of: "\"", with: "'")
-            .replacingOccurrences(of: "<", with: "")
-            .replacingOccurrences(of: ">", with: "")
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
     }
 }

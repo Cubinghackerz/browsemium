@@ -86,7 +86,7 @@ public final class AIDockViewModel {
     }
 
     public var canSend: Bool {
-        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isStreaming
+        (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty) && !isStreaming
     }
 
     private var credentialAccount: String {
@@ -219,6 +219,11 @@ public final class AIDockViewModel {
     public func removeAttachment(at index: Int) {
         guard attachments.indices.contains(index) else { return }
         attachments.remove(at: index)
+        // If the review sheet is open the handoff was built with the removed
+        // attachment — rebuild it so the note matches what will actually send.
+        if isReviewPresented {
+            rebuildHandoff()
+        }
     }
 
     /// Adopts context captured outside the dock (the page context menu),
@@ -327,18 +332,25 @@ public final class AIDockViewModel {
 
     public func beginReview() {
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty || !attachments.isEmpty else { return }
         reviewPrompt = trimmed
+        rebuildHandoff()
+        isReviewPresented = true
+    }
+
+    /// Builds (or clears) the pending web handoff from the current prompt and
+    /// attachments. Called when the review opens and again whenever an
+    /// attachment is removed while it is open.
+    private func rebuildHandoff() {
         if mode == .web {
             handoff = ProviderHandoffBuilder().makeHandoff(
                 provider: provider,
-                userPrompt: trimmed,
+                userPrompt: reviewPrompt,
                 attachments: attachments
             )
         } else {
             handoff = nil
         }
-        isReviewPresented = true
     }
 
     public func cancelReview() {
@@ -382,6 +394,7 @@ public final class AIDockViewModel {
         persistUserMessage(prompt)
         let note = handoff.note ?? "Sent to \(descriptor.displayName)."
         messages.append(AIMessage(role: .assistant, content: note))
+        persistAssistantMessage(note)
         draft = ""
         attachments.removeAll()
     }
@@ -431,6 +444,7 @@ public final class AIDockViewModel {
         messages.append(AIMessage(role: .assistant, content: ""))
         let request = AIRequest(model: model, messages: Array(messages.prefix(assistantIndex)), attachments: attachments)
         let adapter = makeAdapter(credential: credential)
+        let sentAttachments = attachments
         isStreaming = true
         errorMessage = nil
         draft = ""
@@ -450,7 +464,15 @@ public final class AIDockViewModel {
                 }
             } catch {
                 guard let self else { return }
-                self.errorMessage = error.localizedDescription
+                // A user-initiated stop is not an error worth shouting about;
+                // keep whatever partial answer arrived and stay quiet.
+                if !(error is CancellationError) {
+                    self.errorMessage = error.localizedDescription
+                    // Give the attachments back so a retry keeps its context.
+                    if self.attachments.isEmpty {
+                        self.attachments = sentAttachments
+                    }
+                }
                 if self.messages.indices.contains(assistantIndex),
                    !self.messages[assistantIndex].content.isEmpty {
                     // Keep the partial answer rather than losing it.

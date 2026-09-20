@@ -38,6 +38,9 @@ struct AIDockView: View {
             ai.errorMessage = nil
         }
         .onChange(of: ai.provider) {
+            // A stream belonging to the previous provider must not keep
+            // writing into the transcript after the switch.
+            ai.stop()
             ai.providerPanel.release(except: ai.provider)
             ai.refreshCredentialState()
         }
