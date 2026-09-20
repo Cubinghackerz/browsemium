@@ -15,6 +15,7 @@
 		49D5315F497BC71C8F8A6D90 /* BrowsemiumCore in Frameworks */ = {isa = PBXBuildFile; productRef = 09ADB7EBA008AAE2B56D065D /* BrowsemiumCore */; };
 		5CDF3E22A43C81BB20E92D2F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F08B8B1A92C60E9FA0044EC7 /* Assets.xcassets */; };
 		6230419FE1562DA9D4AF117C /* BrowsemiumCore in Frameworks */ = {isa = PBXBuildFile; productRef = 06125E57E2D8218D879F58E4 /* BrowsemiumCore */; };
+		7E646D0C7D789EDD072EC025 /* AIDockViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDF00CF17E59A77022CF3539 /* AIDockViewModelTests.swift */; };
 		80E2437BE28C2532E75A04A0 /* BrowserImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3C9246D617D18F8DD99717F /* BrowserImportTests.swift */; };
 		859238E56FED5BF627BBF810 /* UpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D411139AF1254E75BB95D935 /* UpdateController.swift */; };
 		8C5AC0D06C71F6636DAA4338 /* BrowsemiumEngine in Frameworks */ = {isa = PBXBuildFile; productRef = A424C1BA7D6F396127FF0C25 /* BrowsemiumEngine */; };
@@ -43,6 +44,7 @@
 		8E9285A7A7C2E1AEB180C5F5 /* ConversationRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationRepositoryTests.swift; sourceTree = "<group>"; };
 		92B44FFBF228F83A32A326F5 /* BrowsemiumUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BrowsemiumUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AAC4411A48E29C66F3EE532C /* BrowsemiumCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BrowsemiumCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		BDF00CF17E59A77022CF3539 /* AIDockViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIDockViewModelTests.swift; sourceTree = "<group>"; };
 		C3C9246D617D18F8DD99717F /* BrowserImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserImportTests.swift; sourceTree = "<group>"; };
 		D411139AF1254E75BB95D935 /* UpdateController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateController.swift; sourceTree = "<group>"; };
 		D7206BEC4825DEA806A7B0DE /* AppDatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabaseTests.swift; sourceTree = "<group>"; };
@@ -133,6 +135,7 @@
 		4F72B61D970E7A977177F2AD /* BrowsemiumUITests */ = {
 			isa = PBXGroup;
 			children = (
+				BDF00CF17E59A77022CF3539 /* AIDockViewModelTests.swift */,
 				87FF9C65B6C9681BA0AE440E /* BrowserWindowModelTests.swift */,
 				19B22CFE5D0235239124921C /* TabGroupTests.swift */,
 			);
@@ -361,6 +364,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7E646D0C7D789EDD072EC025 /* AIDockViewModelTests.swift in Sources */,
 				1CCC8774B335AFC4CD409793 /* BrowserWindowModelTests.swift in Sources */,
 				DD706E0D06C743A5DE4785B6 /* TabGroupTests.swift in Sources */,
 			);
@@ -415,10 +419,10 @@
 		14569B59376B0A5E925AFB06 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CURRENT_PROJECT_VERSION = 201;
+				CURRENT_PROJECT_VERSION = 202;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.0.1;
+				MARKETING_VERSION = 2.0.2;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
 				SWIFT_STRICT_CONCURRENCY = complete;
@@ -480,10 +484,10 @@
 		5D6F4A0E65F9427F230DF50B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CURRENT_PROJECT_VERSION = 201;
+				CURRENT_PROJECT_VERSION = 202;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.0.1;
+				MARKETING_VERSION = 2.0.2;
 				SDKROOT = macosx;
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;

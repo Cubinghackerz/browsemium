@@ -1,4 +1,5 @@
-import BrowsemiumUI
+@testable import BrowsemiumUI
+import BrowsemiumCore
 import Foundation
 import Testing
 
@@ -21,4 +22,28 @@ func composerPreparationsGetIndependentDefaultIdentities() {
     let second = ProviderComposerPreparation(text: "second")
 
     #expect(first.id != second.id)
+}
+
+@Test
+func automaticWebContextIsTextOnly() {
+    let kinds = WebAIContextPolicy.automaticCaptureKinds(
+        includePageContext: true,
+        hasReadablePage: false,
+        pageURL: URL(string: "https://example.com/article")
+    )
+
+    #expect(kinds == [.readablePage])
+    #expect(!kinds.contains(.viewportImage))
+    #expect(!kinds.contains(.fullPageImage))
+}
+
+@Test
+func automaticWebContextDoesNotCaptureUnsupportedPages() {
+    let kinds = WebAIContextPolicy.automaticCaptureKinds(
+        includePageContext: true,
+        hasReadablePage: false,
+        pageURL: URL(string: "file:///tmp/page.html")
+    )
+
+    #expect(kinds.isEmpty)
 }

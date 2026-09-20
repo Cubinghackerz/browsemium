@@ -514,7 +514,7 @@ struct SettingsView: View {
         SettingsCard("Assistant", systemImage: "sparkles") {
             SettingsToggleRow("Show the assistant", isOn: settingBinding(\.isAIDockEnabled))
             SettingsToggleRow("Save conversations on this Mac", isOn: settingBinding(\.persistAIConversations))
-            SettingsToggleRow("Include automatic page context in web AI", isOn: settingBinding(\.includePageMetadataInWebAI))
+            SettingsToggleRow("Include automatic page text + metadata in web AI", isOn: settingBinding(\.includePageMetadataInWebAI))
 
             ForEach(AIProviderID.allCases, id: \.self) { provider in
                 SettingsRow(ProviderPanelDescriptor.descriptor(for: provider).displayName) {

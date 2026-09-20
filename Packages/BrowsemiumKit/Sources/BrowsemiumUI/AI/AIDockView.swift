@@ -79,7 +79,7 @@ struct AIDockView: View {
             if ai.mode == .web,
                model.environment.loadSettings().includePageMetadataInWebAI,
                !UserDefaults.standard.bool(forKey: "browsemium.webAI.pageMetadataNotice.v1") {
-                model.statusMessage = "Web AI adds this page's safe context and a verified screenshot when you send. Change it in Settings."
+                model.statusMessage = "Web AI adds this page's safe text and metadata when you send. Screenshots are only attached when you choose Capture."
                 UserDefaults.standard.set(true, forKey: "browsemium.webAI.pageMetadataNotice.v1")
             }
         }
@@ -202,9 +202,9 @@ struct AIDockView: View {
 
     private var webContextMenu: some View {
         Menu {
-            Text("Automatic context")
+            Text("Automatic text + metadata")
             Toggle(
-                "Include page title + URL",
+                "Include automatic page text + title + URL",
                 isOn: Binding(
                     get: { model.environment.loadSettings().includePageMetadataInWebAI },
                     set: { enabled in

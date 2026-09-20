@@ -114,9 +114,9 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
     public var protectionLevel: ProtectionLevel
     public var persistAIConversations: Bool
     public var isAIDockEnabled: Bool
-    /// Adds sanitized page metadata and bounded page context to web-provider
-    /// sends. Automatic screenshots are uploaded only after provider
-    /// attachment verification succeeds.
+    /// Adds sanitized page metadata and bounded readable page text to
+    /// web-provider sends. Screenshots and files are always explicit user
+    /// attachments.
     public var includePageMetadataInWebAI: Bool
 
     /// Memory saver unloads background tabs aggressively.

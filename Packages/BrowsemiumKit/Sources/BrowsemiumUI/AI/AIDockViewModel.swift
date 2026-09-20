@@ -556,54 +556,33 @@ public final class AIDockViewModel {
             ? PageMetadataContext(title: tab?.title, url: tab?.lastCommittedURL)
             : nil
 
-        if settings.includePageMetadataInWebAI,
-           let tab,
-           let url = tab.lastCommittedURL,
-           let scheme = url.scheme?.lowercased(),
-           scheme == "http" || scheme == "https" {
-            let hasReadablePage = attachments.contains { attachment in
-                if case .readablePage = attachment { return true }
-                return false
-            }
-            let hasFullPageImage = attachments.contains { attachment in
-                if case .fullPageImage = attachment { return true }
-                return false
-            }
+        let hasReadablePage = attachments.contains { attachment in
+            if case .readablePage = attachment { return true }
+            return false
+        }
+        let automaticKinds = WebAIContextPolicy.automaticCaptureKinds(
+            includePageContext: settings.includePageMetadataInWebAI,
+            hasReadablePage: hasReadablePage,
+            pageURL: tab?.lastCommittedURL
+        )
 
-            // Rich context is deliberately best-effort. A page without an
-            // article, a browser PDF, or a transient WebKit snapshot failure
-            // must not prevent the provider from receiving the user's query
-            // and sanitized metadata. Each capture is independent so a text
-            // extraction failure cannot suppress a usable screenshot.
-            if !hasReadablePage {
-                do {
-                    let captured = try await environment.runtime.capture(
-                        tabID: tab.id,
-                        request: CaptureRequest(kinds: [.readablePage])
-                    )
-                    try verifyContextIsCurrent()
-                    generatedAttachments.append(contentsOf: captured.attachments)
-                    attachments.append(contentsOf: captured.attachments)
-                } catch is CancellationError {
-                    throw CancellationError()
-                } catch {
-                    // Readable text is best-effort; keep trying the screenshot.
-                }
-            }
-            if !hasFullPageImage {
-                do {
-                    let captured = try await environment.runtime.capture(
-                        tabID: tab.id,
-                        request: CaptureRequest(kinds: [.fullPageImage])
-                    )
-                    try verifyContextIsCurrent()
-                    generatedAttachments.append(contentsOf: captured.attachments)
-                    attachments.append(contentsOf: captured.attachments)
-                } catch is CancellationError {
-                    throw CancellationError()
-                } catch {
-                    // A screenshot failure must not block the user's query.
-                }
+        if automaticKinds.contains(.readablePage), let tab {
+            // Automatic context is deliberately text and sanitized metadata
+            // only. Screenshots and files remain explicit user attachments,
+            // so a normal Send can never trigger an unexpected image upload.
+            do {
+                let captured = try await environment.runtime.capture(
+                    tabID: tab.id,
+                    request: CaptureRequest(kinds: [.readablePage])
+                )
+                try verifyContextIsCurrent()
+                generatedAttachments.append(contentsOf: captured.attachments)
+                attachments.append(contentsOf: captured.attachments)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // Readable text is best-effort; metadata and the user's query
+                // still proceed when a page has no extractable article text.
             }
         }
 
