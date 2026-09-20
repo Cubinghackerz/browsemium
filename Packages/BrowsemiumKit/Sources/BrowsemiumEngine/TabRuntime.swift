@@ -101,7 +101,7 @@ public final class TabRuntime {
         // Audio state is reported by an injected script. The handler is added
         // before the first real navigation, so nothing is missed.
         let proxy = TabAudioMessageProxy(runtime: self)
-        view.configuration.userContentController.addUserScript(TabAudioMonitor.userScript)
+        view.configuration.userContentController.addUserScript(TabAudioMonitor.makeUserScript())
         view.configuration.userContentController.add(proxy, name: TabAudioMonitor.messageHandlerName)
         audioProxy = proxy
         progressObservation = view.observe(\.estimatedProgress, options: [.new]) { [weak self] webView, _ in
