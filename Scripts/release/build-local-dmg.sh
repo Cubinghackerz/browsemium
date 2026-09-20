@@ -120,7 +120,12 @@ echo "  launched and stayed up for 10s"
 echo "Crash-recovery test…"
 CONTAINER_DB="${HOME}/Library/Containers/com.browsemium.browser/Data/Library/Application Support/Browsemium"
 PROFILE_DB="$(ls -t "${CONTAINER_DB}"/profiles/*.sqlite 2>/dev/null | head -1 || true)"
-CRASH_STARTED_AT=$(date +%s)
+# A marker file rather than a timestamp: `find -newermt "@epoch"` is not
+# portable across the BSD find versions on CI runners, and a failing find
+# inside a command substitution kills the script under `set -e` with no
+# message at all.
+CRASH_MARKER="${BUILD_DIR}/local/crash-marker"
+touch "$CRASH_MARKER"
 "$APP_PATH/Contents/MacOS/Browsemium" > "${BUILD_DIR}/local/crash-test-1.log" 2>&1 &
 CRASH_PID=$!
 sleep 6
@@ -151,10 +156,10 @@ if [ -n "$PROFILE_DB" ] && [ -n "$TABS_BEFORE" ]; then
 else
   echo "  relaunched cleanly after SIGKILL (no profile database yet)"
 fi
-CRASH_LOGS="$(find "${HOME}/Library/Logs/DiagnosticReports" -name 'Browsemium*' -newermt "@${CRASH_STARTED_AT}" 2>/dev/null | wc -l | tr -d ' ')"
-if [ "$CRASH_LOGS" != "0" ]; then
+CRASH_LOGS="$(find "${HOME}/Library/Logs/DiagnosticReports" -name 'Browsemium*' -newer "$CRASH_MARKER" 2>/dev/null | wc -l | tr -d ' ' || true)"
+if [ -n "$CRASH_LOGS" ] && [ "$CRASH_LOGS" -gt 0 ]; then
   echo "A crash report was written during the recovery test — refusing to package." >&2
-  find "${HOME}/Library/Logs/DiagnosticReports" -name 'Browsemium*' -newermt "@${CRASH_STARTED_AT}" >&2
+  find "${HOME}/Library/Logs/DiagnosticReports" -name 'Browsemium*' -newer "$CRASH_MARKER" >&2 || true
   exit 1
 fi
 
