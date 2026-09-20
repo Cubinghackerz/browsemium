@@ -19,11 +19,24 @@ public final class MemoryPressureCoordinator {
             eventMask: [.warning, .critical],
             queue: DispatchQueue.global(qos: .utility)
         )
-        // The handler fires on the source's utility queue, not the main actor.
-        // Reading `self.source`/`self.handler` here would trap the runtime
-        // isolation check (EXC_BREAKPOINT), so only the captured source is
-        // touched and the callback hops to the main actor explicitly.
-        source.setEventHandler { [weak self, weak source] in
+        Self.installEventHandler(on: source, coordinator: self)
+        source.resume()
+        self.source = source
+    }
+
+    /// The handler is installed from a `nonisolated` static function on
+    /// purpose. A closure literal formed inside a `@MainActor` method keeps
+    /// that isolation, and the compiler guards it with a runtime check —
+    /// `swift_task_isCurrentExecutor` → `dispatch_assert_queue` →
+    /// EXC_BREAKPOINT — the first time the dispatch source fires it on the
+    /// utility queue. Moving the closure here guarantees it is formed with no
+    /// inherited isolation, so only the captured source is touched off-main
+    /// and the callback hops to the main actor explicitly.
+    private nonisolated static func installEventHandler(
+        on source: DispatchSourceMemoryPressure,
+        coordinator: MemoryPressureCoordinator
+    ) {
+        source.setEventHandler { [weak source, weak coordinator] in
             guard let source else { return }
             let event = source.data
             let level: MemoryPressureLevel
@@ -34,12 +47,10 @@ public final class MemoryPressureCoordinator {
             } else {
                 return
             }
-            Task { @MainActor [weak self] in
-                self?.handler?(level)
+            Task { @MainActor [weak coordinator] in
+                coordinator?.handler?(level)
             }
         }
-        source.resume()
-        self.source = source
     }
 
     public func stop() {

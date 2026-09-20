@@ -1376,10 +1376,15 @@ public final class BrowserWindowModel {
     public func switchProfile(to profile: BrowserProfile) {
         guard profile.id != environment.activeProfile.id else { return }
         persistSession()
+        let previous = environment.activeProfile
         environment.runtime.teardownForProfileSwitch()
         do {
             try environment.activate(profile)
         } catch {
+            // The runtime was already torn down — fall back to the previous
+            // profile rather than leaving the window with no web views.
+            try? environment.activate(previous)
+            resetForActiveProfile()
             statusMessage = "Could not open \(profile.name): \(error.localizedDescription)"
             return
         }
@@ -1437,6 +1442,8 @@ public final class BrowserWindowModel {
             if let fallback {
                 try? environment.activate(fallback)
             }
+            // Rebuild the session either way so the window is never left with
+            // a dead runtime after deleting the active profile.
             resetForActiveProfile()
         }
         profileSwitchToken += 1

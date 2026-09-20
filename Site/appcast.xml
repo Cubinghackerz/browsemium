@@ -6,6 +6,19 @@
     <description>Latest Browsemium builds for macOS.</description>
     <language>en</language>
     <item>
+      <title>Browsemium 2.0.0</title>
+      <sparkle:releaseNotesLink>https://github.com/Cubinghackerz/browsemium/releases/tag/v2.0.0</sparkle:releaseNotesLink>
+      <pubDate>Sun, 20 Sep 2026 15:13:55 +0800</pubDate>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure
+        url="https://github.com/Cubinghackerz/browsemium/releases/download/v2.0.0/Browsemium-2.0.0.dmg"
+        sparkle:version="200"
+        sparkle:shortVersionString="2.0.0"
+        sparkle:edSignature="/K9zzi9dsHSXQMAfb1HrlGSFcxC9Fjh7JX6T0LAPhnRPDoiU+WGdn69FF/I6DmQ3vu8dWJlcOkKle6giIwjIDw=="
+        length="7523143"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Browsemium 1.0.2</title>
       <sparkle:releaseNotesLink>https://github.com/Cubinghackerz/browsemium/releases/tag/v1.0.2</sparkle:releaseNotesLink>
       <pubDate>Sun, 20 Sep 2026 00:00:00 +0800</pubDate>

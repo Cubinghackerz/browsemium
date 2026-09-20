@@ -99,7 +99,8 @@ jobs:
           git config user.email "releases@browsemium.local"
           git add Site/appcast.xml Site/checksum.txt
           git diff --cached --quiet || git commit -m "Publish ${{ steps.version.outputs.version }} appcast and checksum"
-          git push
+          # The tag checkout leaves HEAD detached, so push explicitly to main.
+          git push origin HEAD:main
 
       - name: Deploy the site
         env:
