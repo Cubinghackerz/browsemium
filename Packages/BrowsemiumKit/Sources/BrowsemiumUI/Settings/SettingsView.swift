@@ -25,6 +25,11 @@ struct SettingsView: View {
     @State private var importFolder: URL?
     @State private var importLastResult: BrowserImportResult?
     @State private var isPreparingPreview = false
+    @State private var isAddingProfile = false
+    @State private var newProfileNameText = ""
+    @State private var profileRenameTarget: BrowserProfile?
+    @State private var profileRenameText = ""
+    @State private var profileDeleteTarget: BrowserProfile?
 
     private let retentionOptions: [(label: String, days: Int?)] = [
         ("7 days", 7),
@@ -41,6 +46,7 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     generalSection
+                    profilesSection
                     browsingSection
                     performanceSection
                     importSection
@@ -110,6 +116,51 @@ struct SettingsView: View {
         } message: {
             Text("Stored in your macOS keychain. Sent only to this provider.")
         }
+        .alert("New Profile", isPresented: $isAddingProfile) {
+            TextField("Name", text: $newProfileNameText)
+            Button("Create") {
+                let name = newProfileNameText
+                newProfileNameText = ""
+                model.createProfile(named: name.isEmpty ? "Profile \(model.profiles.count + 1)" : name)
+            }
+            Button("Cancel", role: .cancel) { newProfileNameText = "" }
+        } message: {
+            Text("Starts empty, with its own logins and browsing data.")
+        }
+        .alert(
+            "Rename Profile",
+            isPresented: Binding(
+                get: { profileRenameTarget != nil },
+                set: { if !$0 { profileRenameTarget = nil } }
+            )
+        ) {
+            TextField("Name", text: $profileRenameText)
+            Button("Rename") {
+                if let target = profileRenameTarget {
+                    model.renameProfile(target, to: profileRenameText)
+                }
+                profileRenameTarget = nil
+            }
+            Button("Cancel", role: .cancel) { profileRenameTarget = nil }
+        }
+        .confirmationDialog(
+            "Delete “\(profileDeleteTarget?.name ?? "")”?",
+            isPresented: Binding(
+                get: { profileDeleteTarget != nil },
+                set: { if !$0 { profileDeleteTarget = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete profile and all of its data", role: .destructive) {
+                if let target = profileDeleteTarget {
+                    model.deleteProfile(target)
+                }
+                profileDeleteTarget = nil
+            }
+            Button("Cancel", role: .cancel) { profileDeleteTarget = nil }
+        } message: {
+            Text("Its bookmarks, history, passwords, logins, and site data are removed from this Mac.")
+        }
     }
 
     // MARK: - Sections
@@ -130,6 +181,48 @@ struct SettingsView: View {
                 )
                 .accessibilityLabel("Appearance")
             }
+        }
+    }
+
+    private var profilesSection: some View {
+        SettingsCard("Profiles", systemImage: "person.2") {
+            ForEach(model.profiles) { profile in
+                SettingsRow(profile.name) {
+                    HStack(spacing: 8) {
+                        if profile.id == model.activeProfile.id {
+                            Text("Active")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color.browsemiumTertiary)
+                        } else {
+                            BrowsemiumTextButton("Switch") {
+                                model.switchProfile(to: profile)
+                            }
+                        }
+                        BrowsemiumIconButton(systemName: "pencil", label: "Rename \(profile.name)") {
+                            profileRenameTarget = profile
+                            profileRenameText = profile.name
+                        }
+                        if model.profiles.count > 1 {
+                            BrowsemiumIconButton(systemName: "trash", label: "Delete \(profile.name)") {
+                                profileDeleteTarget = profile
+                            }
+                        }
+                    }
+                }
+            }
+
+            SettingsRow("New profile") {
+                BrowsemiumTextButton("Add Profile…") {
+                    newProfileNameText = ""
+                    isAddingProfile = true
+                }
+            }
+
+            Text("Each profile keeps its own tabs, bookmarks, history, passwords, logins, and site data. Nothing is shared between them.")
+                .font(.system(size: 11))
+                .foregroundStyle(Color.browsemiumTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -366,7 +459,7 @@ struct SettingsView: View {
                         if credentialStates[provider] == true {
                             BrowsemiumTextButton("Remove", role: .destructive) {
                                 try? model.environment.keychain.deleteSecret(
-                                    account: "provider.\(provider.rawValue)"
+                                    account: model.environment.providerCredentialAccount(provider)
                                 )
                                 refreshCredentials()
                             }
@@ -653,7 +746,7 @@ struct SettingsView: View {
         guard let provider = keyPromptProvider else { return }
         let trimmed = keyInput.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
-            try? model.environment.keychain.setSecret(trimmed, account: "provider.\(provider.rawValue)")
+            try? model.environment.keychain.setSecret(trimmed, account: model.environment.providerCredentialAccount(provider))
         }
         keyInput = ""
         keyPromptProvider = nil
@@ -664,7 +757,7 @@ struct SettingsView: View {
     private func refreshCredentials() {
         var states: [AIProviderID: Bool] = [:]
         for provider in AIProviderID.allCases {
-            states[provider] = (try? model.environment.keychain.hasSecret(account: "provider.\(provider.rawValue)")) ?? false
+            states[provider] = (try? model.environment.keychain.hasSecret(account: model.environment.providerCredentialAccount(provider))) ?? false
         }
         credentialStates = states
     }

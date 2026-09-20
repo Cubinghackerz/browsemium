@@ -14,12 +14,26 @@ public struct WebViewFactory {
     /// Set by the runtime controller once the content rules compile.
     public static var contentRuleListProvider: (@MainActor (WKWebViewConfiguration) -> Void)?
 
+    /// WebKit data store identifier for the active profile. Every persistent
+    /// web view — tabs, warm spares, and AI provider panels — uses it, so a
+    /// profile switch isolates cookies, logins, and site storage.
+    public static var dataStoreIdentifier: UUID?
+
     public func makeConfiguration(store: Store) -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
         if let provider = Self.contentRuleListProvider {
             provider(configuration)
         }
-        configuration.websiteDataStore = store == .persistent ? .default() : .nonPersistent()
+        switch store {
+        case .persistent:
+            if let identifier = Self.dataStoreIdentifier {
+                configuration.websiteDataStore = WKWebsiteDataStore(forIdentifier: identifier)
+            } else {
+                configuration.websiteDataStore = .default()
+            }
+        case .ephemeral:
+            configuration.websiteDataStore = .nonPersistent()
+        }
         configuration.preferences.inactiveSchedulingPolicy = .suspend
         configuration.preferences.isElementFullscreenEnabled = true
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true

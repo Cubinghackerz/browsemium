@@ -216,6 +216,18 @@ public final class BrowserRuntimeController: BrowserRuntime {
         warmPool.release()
     }
 
+    /// Drops every web view and the warm spare. Used when the active profile
+    /// changes: existing web views belong to the previous profile's WebKit
+    /// data store and must never be reused.
+    public func teardownForProfileSwitch() {
+        for runtime in runtimes.values {
+            runtime.hibernate()
+        }
+        runtimes.removeAll()
+        activePanes.removeAll()
+        warmPool.release()
+    }
+
     public func beginMemoryPressureMonitoring(
         handler: @escaping @MainActor (MemoryPressureLevel) -> Void
     ) {

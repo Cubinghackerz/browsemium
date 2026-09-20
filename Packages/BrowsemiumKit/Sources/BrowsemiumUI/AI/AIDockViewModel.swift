@@ -88,7 +88,7 @@ public final class AIDockViewModel {
     }
 
     private var credentialAccount: String {
-        "provider.\(provider.rawValue)"
+        environment.providerCredentialAccount(provider)
     }
 
     public func refreshCredentialState() {

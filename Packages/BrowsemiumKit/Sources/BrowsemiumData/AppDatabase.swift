@@ -2,12 +2,28 @@ import BrowsemiumCore
 import Foundation
 import GRDB
 
+/// One SQLite database. Two shapes exist:
+///
+/// - the **root** database (`browsemium.sqlite`), which holds the profile
+///   registry and schema metadata, and
+/// - a **profile** database (`profiles/<uuid>.sqlite`), which holds every
+///   per-profile table: tabs, history, bookmarks, downloads, permissions,
+///   saved credentials, AI conversations, and settings.
+///
+/// Before profiles existed, everything lived in the root database. The
+/// `ProfileStore.splitIfNeeded()` step moves that legacy data into a
+/// "Personal" profile exactly once.
 public final class AppDatabase: @unchecked Sendable {
     public let databaseQueue: DatabaseQueue
 
     public init(path: String) throws {
         databaseQueue = try DatabaseQueue(path: path, configuration: Self.configuration())
-        try Self.migrator.migrate(databaseQueue)
+        try Self.rootMigrator.migrate(databaseQueue)
+    }
+
+    public init(profilePath: String) throws {
+        databaseQueue = try DatabaseQueue(path: profilePath, configuration: Self.configuration())
+        try Self.profileMigrator.migrate(databaseQueue)
     }
 
     public static func inMemory() throws -> AppDatabase {
@@ -15,9 +31,20 @@ public final class AppDatabase: @unchecked Sendable {
         return try AppDatabase(databaseQueue: queue)
     }
 
+    public static func inMemoryProfile() throws -> AppDatabase {
+        let queue = try DatabaseQueue(configuration: configuration())
+        let database = AppDatabase(unmigratedQueue: queue)
+        try Self.profileMigrator.migrate(queue)
+        return database
+    }
+
     private init(databaseQueue: DatabaseQueue) throws {
         self.databaseQueue = databaseQueue
-        try Self.migrator.migrate(databaseQueue)
+        try Self.rootMigrator.migrate(databaseQueue)
+    }
+
+    private init(unmigratedQueue: DatabaseQueue) {
+        databaseQueue = unmigratedQueue
     }
 
     private static func configuration() -> Configuration {
@@ -29,177 +56,218 @@ public final class AppDatabase: @unchecked Sendable {
         return configuration
     }
 
-    private static var migrator: DatabaseMigrator {
+    // MARK: - Root schema
+
+    private static var rootMigrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
         migrator.registerMigration("v1") { database in
-            try database.execute(sql: """
-                CREATE TABLE spaces (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    name TEXT NOT NULL,
-                    created_at DATETIME NOT NULL
-                )
-                """)
-            try database.execute(sql: """
-                CREATE TABLE tabs (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    space_id TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
-                    title TEXT NOT NULL,
-                    url TEXT,
-                    position INTEGER NOT NULL,
-                    is_pinned INTEGER NOT NULL,
-                    lifecycle TEXT NOT NULL,
-                    created_at DATETIME NOT NULL,
-                    last_accessed_at DATETIME NOT NULL
-                )
-                """)
-            try database.execute(sql: """
-                CREATE TABLE closed_tabs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    tab_id TEXT NOT NULL,
-                    space_id TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
-                    title TEXT NOT NULL,
-                    url TEXT,
-                    closed_at DATETIME NOT NULL
-                )
-                """)
-            try database.execute(sql: """
-                CREATE TABLE history_visits (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    tab_id TEXT REFERENCES tabs(id) ON DELETE SET NULL,
-                    url TEXT NOT NULL,
-                    title TEXT NOT NULL,
-                    visited_at DATETIME NOT NULL
-                )
-                """)
-            try database.execute(sql: """
-                CREATE VIRTUAL TABLE history_visits_fts USING fts5(
-                    title,
-                    url,
-                    content='history_visits',
-                    content_rowid='id'
-                )
-                """)
-            try database.execute(sql: """
-                CREATE TRIGGER history_visits_ai AFTER INSERT ON history_visits BEGIN
-                    INSERT INTO history_visits_fts(rowid, title, url) VALUES (new.id, new.title, new.url);
-                END
-                """)
-            try database.execute(sql: """
-                CREATE TRIGGER history_visits_ad AFTER DELETE ON history_visits BEGIN
-                    INSERT INTO history_visits_fts(history_visits_fts, rowid, title, url)
-                    VALUES ('delete', old.id, old.title, old.url);
-                END
-                """)
-            try database.execute(sql: """
-                CREATE TRIGGER history_visits_au AFTER UPDATE ON history_visits BEGIN
-                    INSERT INTO history_visits_fts(history_visits_fts, rowid, title, url)
-                    VALUES ('delete', old.id, old.title, old.url);
-                    INSERT INTO history_visits_fts(rowid, title, url) VALUES (new.id, new.title, new.url);
-                END
-                """)
-            try database.execute(sql: """
-                CREATE TABLE bookmarks (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    url TEXT NOT NULL,
-                    title TEXT NOT NULL,
-                    folder TEXT,
-                    sort_order INTEGER NOT NULL,
-                    created_at DATETIME NOT NULL
-                )
-                """)
-            try database.execute(sql: """
-                CREATE TABLE downloads (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    tab_id TEXT REFERENCES tabs(id) ON DELETE SET NULL,
-                    source_url TEXT NOT NULL,
-                    destination_path TEXT,
-                    suggested_filename TEXT NOT NULL,
-                    state TEXT NOT NULL,
-                    bytes_received INTEGER NOT NULL,
-                    total_bytes INTEGER NOT NULL,
-                    failure_message TEXT,
-                    created_at DATETIME NOT NULL,
-                    updated_at DATETIME NOT NULL
-                )
-                """)
-            try database.execute(sql: """
-                CREATE TABLE site_permissions (
-                    origin TEXT NOT NULL,
-                    permission TEXT NOT NULL,
-                    decision TEXT NOT NULL,
-                    updated_at DATETIME NOT NULL,
-                    PRIMARY KEY (origin, permission)
-                )
-                """)
-            try database.execute(sql: """
-                CREATE TABLE site_preferences (
-                    origin TEXT NOT NULL,
-                    preference TEXT NOT NULL,
-                    value TEXT NOT NULL,
-                    updated_at DATETIME NOT NULL,
-                    PRIMARY KEY (origin, preference)
-                )
-                """)
-            try database.execute(sql: """
-                CREATE TABLE ai_provider_settings (
-                    provider_id TEXT PRIMARY KEY NOT NULL,
-                    selected_model_id TEXT,
-                    is_enabled INTEGER NOT NULL DEFAULT 0,
-                    updated_at DATETIME NOT NULL
-                )
-                """)
-            try database.execute(sql: """
-                CREATE TABLE ai_conversations (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    space_id TEXT REFERENCES spaces(id) ON DELETE SET NULL,
-                    title TEXT NOT NULL,
-                    created_at DATETIME NOT NULL,
-                    updated_at DATETIME NOT NULL
-                )
-                """)
-            try database.execute(sql: """
-                CREATE TABLE ai_messages (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    conversation_id TEXT NOT NULL REFERENCES ai_conversations(id) ON DELETE CASCADE,
-                    role TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    created_at DATETIME NOT NULL
-                )
-                """)
-            try database.execute(sql: """
-                CREATE TABLE schema_metadata (
-                    key TEXT PRIMARY KEY NOT NULL,
-                    value TEXT NOT NULL
-                )
-                """)
-            try database.execute(sql: """
-                CREATE TABLE settings (
-                    key TEXT PRIMARY KEY NOT NULL,
-                    value TEXT NOT NULL
-                )
-                """)
-            try database.execute(
-                sql: "INSERT INTO schema_metadata (key, value) VALUES (?, ?)",
-                arguments: ["schema_version", "1"]
-            )
+            try createProfileSchema(database)
         }
         migrator.registerMigration("v2-saved-credentials") { database in
+            try createSavedCredentialsTable(database)
+        }
+        migrator.registerMigration("v3-profiles") { database in
             try database.execute(sql: """
-                CREATE TABLE saved_credentials (
+                CREATE TABLE profiles (
                     id TEXT PRIMARY KEY NOT NULL,
-                    host TEXT NOT NULL,
-                    username TEXT NOT NULL,
+                    name TEXT NOT NULL,
                     created_at DATETIME NOT NULL,
-                    updated_at DATETIME NOT NULL,
-                    UNIQUE(host, username)
+                    last_used_at DATETIME NOT NULL,
+                    data_store_uuid TEXT NOT NULL
                 )
                 """)
             try database.execute(
                 sql: "UPDATE schema_metadata SET value = ? WHERE key = ?",
-                arguments: ["2", "schema_version"]
+                arguments: ["3", "schema_version"]
             )
         }
         return migrator
+    }
+
+    // MARK: - Profile schema
+
+    private static var profileMigrator: DatabaseMigrator {
+        var migrator = DatabaseMigrator()
+        migrator.registerMigration("profile-v1") { database in
+            try createProfileSchema(database)
+        }
+        migrator.registerMigration("profile-v2-saved-credentials") { database in
+            try createSavedCredentialsTable(database)
+        }
+        return migrator
+    }
+
+    /// The complete per-profile table set. Shared by the legacy root schema
+    /// (so old databases migrate without surprises) and new profile
+    /// databases, so the two can never drift apart.
+    private static func createProfileSchema(_ database: Database) throws {
+        try database.execute(sql: """
+            CREATE TABLE spaces (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                created_at DATETIME NOT NULL
+            )
+            """)
+        try database.execute(sql: """
+            CREATE TABLE tabs (
+                id TEXT PRIMARY KEY NOT NULL,
+                space_id TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+                title TEXT NOT NULL,
+                url TEXT,
+                position INTEGER NOT NULL,
+                is_pinned INTEGER NOT NULL,
+                lifecycle TEXT NOT NULL,
+                created_at DATETIME NOT NULL,
+                last_accessed_at DATETIME NOT NULL
+            )
+            """)
+        try database.execute(sql: """
+            CREATE TABLE closed_tabs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tab_id TEXT NOT NULL,
+                space_id TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+                title TEXT NOT NULL,
+                url TEXT,
+                closed_at DATETIME NOT NULL
+            )
+            """)
+        try database.execute(sql: """
+            CREATE TABLE history_visits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tab_id TEXT REFERENCES tabs(id) ON DELETE SET NULL,
+                url TEXT NOT NULL,
+                title TEXT NOT NULL,
+                visited_at DATETIME NOT NULL
+            )
+            """)
+        try database.execute(sql: """
+            CREATE VIRTUAL TABLE history_visits_fts USING fts5(
+                title,
+                url,
+                content='history_visits',
+                content_rowid='id'
+            )
+            """)
+        try database.execute(sql: """
+            CREATE TRIGGER history_visits_ai AFTER INSERT ON history_visits BEGIN
+                INSERT INTO history_visits_fts(rowid, title, url) VALUES (new.id, new.title, new.url);
+            END
+            """)
+        try database.execute(sql: """
+            CREATE TRIGGER history_visits_ad AFTER DELETE ON history_visits BEGIN
+                INSERT INTO history_visits_fts(history_visits_fts, rowid, title, url)
+                VALUES ('delete', old.id, old.title, old.url);
+            END
+            """)
+        try database.execute(sql: """
+            CREATE TRIGGER history_visits_au AFTER UPDATE ON history_visits BEGIN
+                INSERT INTO history_visits_fts(history_visits_fts, rowid, title, url)
+                VALUES ('delete', old.id, old.title, old.url);
+                INSERT INTO history_visits_fts(rowid, title, url) VALUES (new.id, new.title, new.url);
+            END
+            """)
+        try database.execute(sql: """
+            CREATE TABLE bookmarks (
+                id TEXT PRIMARY KEY NOT NULL,
+                url TEXT NOT NULL,
+                title TEXT NOT NULL,
+                folder TEXT,
+                sort_order INTEGER NOT NULL,
+                created_at DATETIME NOT NULL
+            )
+            """)
+        try database.execute(sql: """
+            CREATE TABLE downloads (
+                id TEXT PRIMARY KEY NOT NULL,
+                tab_id TEXT REFERENCES tabs(id) ON DELETE SET NULL,
+                source_url TEXT NOT NULL,
+                destination_path TEXT,
+                suggested_filename TEXT NOT NULL,
+                state TEXT NOT NULL,
+                bytes_received INTEGER NOT NULL,
+                total_bytes INTEGER NOT NULL,
+                failure_message TEXT,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL
+            )
+            """)
+        try database.execute(sql: """
+            CREATE TABLE site_permissions (
+                origin TEXT NOT NULL,
+                permission TEXT NOT NULL,
+                decision TEXT NOT NULL,
+                updated_at DATETIME NOT NULL,
+                PRIMARY KEY (origin, permission)
+            )
+            """)
+        try database.execute(sql: """
+            CREATE TABLE site_preferences (
+                origin TEXT NOT NULL,
+                preference TEXT NOT NULL,
+                value TEXT NOT NULL,
+                updated_at DATETIME NOT NULL,
+                PRIMARY KEY (origin, preference)
+            )
+            """)
+        try database.execute(sql: """
+            CREATE TABLE ai_provider_settings (
+                provider_id TEXT PRIMARY KEY NOT NULL,
+                selected_model_id TEXT,
+                is_enabled INTEGER NOT NULL DEFAULT 0,
+                updated_at DATETIME NOT NULL
+            )
+            """)
+        try database.execute(sql: """
+            CREATE TABLE ai_conversations (
+                id TEXT PRIMARY KEY NOT NULL,
+                space_id TEXT REFERENCES spaces(id) ON DELETE SET NULL,
+                title TEXT NOT NULL,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL
+            )
+            """)
+        try database.execute(sql: """
+            CREATE TABLE ai_messages (
+                id TEXT PRIMARY KEY NOT NULL,
+                conversation_id TEXT NOT NULL REFERENCES ai_conversations(id) ON DELETE CASCADE,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at DATETIME NOT NULL
+            )
+            """)
+        try database.execute(sql: """
+            CREATE TABLE schema_metadata (
+                key TEXT PRIMARY KEY NOT NULL,
+                value TEXT NOT NULL
+            )
+            """)
+        try database.execute(sql: """
+            CREATE TABLE settings (
+                key TEXT PRIMARY KEY NOT NULL,
+                value TEXT NOT NULL
+            )
+            """)
+        try database.execute(
+            sql: "INSERT INTO schema_metadata (key, value) VALUES (?, ?)",
+            arguments: ["schema_version", "1"]
+        )
+    }
+
+    private static func createSavedCredentialsTable(_ database: Database) throws {
+        try database.execute(sql: """
+            CREATE TABLE saved_credentials (
+                id TEXT PRIMARY KEY NOT NULL,
+                host TEXT NOT NULL,
+                username TEXT NOT NULL,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL,
+                UNIQUE(host, username)
+            )
+            """)
+        try database.execute(
+            sql: "UPDATE schema_metadata SET value = ? WHERE key = ?",
+            arguments: ["2", "schema_version"]
+        )
     }
 }
 

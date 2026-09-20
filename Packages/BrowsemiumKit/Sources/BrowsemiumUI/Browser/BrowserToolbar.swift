@@ -7,6 +7,8 @@ struct BrowserToolbar: View {
 
     @FocusState private var addressFocused: Bool
     @State private var isFieldHovering = false
+    @State private var isNamingProfile = false
+    @State private var newProfileName = ""
 
     var body: some View {
         HStack(spacing: 4) {
@@ -54,11 +56,68 @@ struct BrowserToolbar: View {
                 model.toggleAIDock()
             }
 
+            profileMenu
+
             overflowMenu
         }
         .padding(.horizontal, 8)
         .frame(height: BrowserMetrics.toolbarHeight)
         .frame(maxWidth: .infinity)
+        .alert("New Profile", isPresented: $isNamingProfile) {
+            TextField("Name", text: $newProfileName)
+            Button("Create") {
+                let name = newProfileName
+                newProfileName = ""
+                model.createProfile(named: name.isEmpty ? "Profile \(model.profiles.count + 1)" : name)
+            }
+            Button("Cancel", role: .cancel) { newProfileName = "" }
+        } message: {
+            Text("Each profile keeps its own tabs, bookmarks, history, and logins.")
+        }
+    }
+
+    /// Profile switcher: shows the active profile's initials and switches the
+    /// whole window — cookies, logins, bookmarks, and tabs — between profiles.
+    private var profileMenu: some View {
+        Menu {
+            ForEach(model.profiles) { profile in
+                Button {
+                    model.switchProfile(to: profile)
+                } label: {
+                    if profile.id == model.activeProfile.id {
+                        Label(profile.name, systemImage: "checkmark")
+                    } else {
+                        Text(profile.name)
+                    }
+                }
+            }
+            Divider()
+            Button("New Profile…") {
+                newProfileName = ""
+                isNamingProfile = true
+            }
+            Button("Manage Profiles…") { model.openPanel(.settings) }
+        } label: {
+            HStack(spacing: 5) {
+                ZStack {
+                    Circle()
+                        .fill(Color.browsemiumSelection)
+                    Text(model.activeProfile.initials)
+                        .font(.system(size: 8.5, weight: .semibold))
+                        .foregroundStyle(Color.browsemiumSecondary)
+                }
+                .frame(width: 18, height: 18)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 7, weight: .semibold))
+                    .foregroundStyle(Color.browsemiumTertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Profile: \(model.activeProfile.name)")
+        .accessibilityLabel("Profile, \(model.activeProfile.name)")
     }
 
     private var addressField: some View {
@@ -213,9 +272,18 @@ struct BrowserToolbar: View {
             Button("Other search engines…") { model.openPanel(.settings) }
         } label: {
             HStack(spacing: 4) {
-                Text(searchEngineInitial)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.browsemiumSecondary)
+                if let icon = Self.engineIconName(for: model.activeSearchEngineName) {
+                    Image(icon, bundle: .module)
+                        .renderingMode(.template)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 12, height: 12)
+                        .foregroundStyle(Color.browsemiumSecondary)
+                } else {
+                    Text(searchEngineInitial)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.browsemiumSecondary)
+                }
                 Image(systemName: "chevron.down")
                     .font(.system(size: 7, weight: .semibold))
                     .foregroundStyle(Color.browsemiumTertiary)
@@ -228,6 +296,18 @@ struct BrowserToolbar: View {
         .fixedSize()
         .help("Search engine: \(model.activeSearchEngineName). Type !g, !d, !b or !br for a one-off search.")
         .accessibilityLabel("Search engine, \(model.activeSearchEngineName)")
+    }
+
+    /// Brand marks for the four presets. Sources are CC0 (simple-icons and
+    /// the SVG Logos collection); see ThirdPartyNotices.
+    static func engineIconName(for engineName: String) -> String? {
+        switch engineName {
+        case "Google": "EngineGoogle"
+        case "DuckDuckGo": "EngineDuckDuckGo"
+        case "Bing": "EngineBing"
+        case "Brave": "EngineBrave"
+        default: nil
+        }
     }
 
     private var searchEngineInitial: String {

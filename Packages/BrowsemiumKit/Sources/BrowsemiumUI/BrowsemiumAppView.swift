@@ -99,6 +99,14 @@ public struct BrowsemiumAppView: View {
         .onAppear {
             model.ensureLoaded(model.session.activeTabID ?? TabID())
         }
+        .onChange(of: model.profileSwitchToken) {
+            // Provider panels and conversations belong to the previous
+            // profile's WebKit data store and database — never carry them over.
+            ai.providerPanel.releaseAll()
+            ai.clearAttachments()
+            ai.clearConversation()
+            ai.refreshCredentialState()
+        }
     }
 
     private var dockTransition: AnyTransition {

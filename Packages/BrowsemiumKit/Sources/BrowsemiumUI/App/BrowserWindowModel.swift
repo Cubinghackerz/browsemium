@@ -4,6 +4,7 @@ import BrowsemiumData
 import BrowsemiumEngine
 import Foundation
 import Observation
+import WebKit
 
 public struct BrowserPaletteCommand: Identifiable, Hashable, Sendable {
     public let id: String
@@ -54,6 +55,10 @@ public final class BrowserWindowModel {
     public private(set) var downloads: [DownloadProgress] = []
     private var bookmarkedURLs: Set<String> = []
     public var isBookmarksBarVisible: Bool = true
+
+    /// Increments whenever the active profile changes. Views use it to
+    /// release profile-scoped web content, like AI provider panels.
+    public private(set) var profileSwitchToken = 0
 
     public let paletteCommands: [BrowserPaletteCommand] = [
         BrowserPaletteCommand(id: "new-tab", title: "New Tab", shortcut: "⌘T", command: .newTab),
@@ -1055,8 +1060,120 @@ public final class BrowserWindowModel {
         }
     }
 
-    private func refreshNavigationState() {
-        guard let tabID = session.activeTabID else {
+    // MARK: - Profiles
+
+    public var activeProfile: BrowserProfile { environment.activeProfile }
+    public var profiles: [BrowserProfile] { environment.profiles }
+
+    /// Switches the window to another profile: saves the current session,
+    /// drops every web view (they belong to the previous profile's WebKit
+    /// data store), points the repositories at the new profile's database,
+    /// and rebuilds the tab session.
+    public func switchProfile(to profile: BrowserProfile) {
+        guard profile.id != environment.activeProfile.id else { return }
+        persistSession()
+        environment.runtime.teardownForProfileSwitch()
+        do {
+            try environment.activate(profile)
+        } catch {
+            statusMessage = "Could not open \(profile.name): \(error.localizedDescription)"
+            return
+        }
+        resetForActiveProfile()
+        statusMessage = "Switched to \(profile.name)"
+    }
+
+    @discardableResult
+    public func createProfile(named name: String, switchToIt: Bool = true) -> BrowserProfile? {
+        do {
+            let profile = try environment.createProfile(name: name)
+            if switchToIt {
+                switchProfile(to: profile)
+            } else {
+                profileSwitchToken += 1
+            }
+            return profile
+        } catch {
+            statusMessage = "Could not create the profile: \(error.localizedDescription)"
+            return nil
+        }
+    }
+
+    public func renameProfile(_ profile: BrowserProfile, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do {
+            try environment.renameProfile(profile, to: trimmed)
+            statusMessage = "Renamed to \(trimmed)"
+        } catch {
+            statusMessage = "Could not rename the profile: \(error.localizedDescription)"
+        }
+    }
+
+    /// Deletes a profile and its WebKit data. Deleting the active profile
+    /// falls back to the most recently used one, creating a fresh "Personal"
+    /// profile if it was the last.
+    public func deleteProfile(_ profile: BrowserProfile) {
+        let wasActive = profile.id == environment.activeProfile.id
+        do {
+            try environment.deleteProfile(profile)
+        } catch {
+            statusMessage = "Could not delete the profile: \(error.localizedDescription)"
+            return
+        }
+        WKWebsiteDataStore(forIdentifier: profile.dataStoreUUID).removeData(
+            ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
+            modifiedSince: .distantPast
+        ) {}
+
+        if wasActive {
+            environment.runtime.teardownForProfileSwitch()
+            let fallback = environment.profiles.first
+                ?? (try? environment.createProfile(name: ProfileStore.personalProfileName))
+            if let fallback {
+                try? environment.activate(fallback)
+            }
+            resetForActiveProfile()
+        }
+        profileSwitchToken += 1
+        statusMessage = "Deleted \(profile.name)"
+    }
+
+    /// Rebuilds window state around `environment.activeProfile`.
+    private func resetForActiveProfile() {
+        if let restored = try? environment.sessionRepository.load() {
+            session = restored
+        } else {
+            let space = BrowserSpace(name: "Personal")
+            let tab = BrowserTab(spaceID: space.id, title: "New Tab", position: 0)
+            session = BrowserSessionState(
+                spaces: [space],
+                tabs: [tab],
+                activeSpaceID: space.id,
+                activeTabID: tab.id
+            )
+        }
+        tabURLs = Dictionary(uniqueKeysWithValues: session.tabs.compactMap { tab in
+            tab.lastCommittedURL.map { (tab.id, $0) }
+        })
+        addressText = activeTab?.lastCommittedURL?.absoluteString ?? ""
+        activePanel = .none
+        isFindBarVisible = false
+        findText = ""
+        findStatus = nil
+        isLoading = false
+        loadingProgress = 0
+        canGoBack = false
+        canGoForward = false
+        downloads = []
+        refreshBookmarks()
+        refreshSavedCredentials()
+        refreshNavigationState()
+        environment.runMaintenance()
+        profileSwitchToken += 1
+    }
+
+    private func refreshNavigationState() {        guard let tabID = session.activeTabID else {
             canGoBack = false
             canGoForward = false
             isBookmarked = false
