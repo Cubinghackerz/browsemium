@@ -98,11 +98,11 @@ jobs:
 
       - name: Sign the appcast feed
         run: |
-          SIGN_UPDATE="$(find "$HOME/Library/Developer/Xcode/DerivedData" \
+          SIGN_UPDATE="$(find "$GITHUB_WORKSPACE/build/local/DerivedData" "$HOME/Library/Developer/Xcode/DerivedData" \
             -type f \
             -path '*/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update' \
             -perm -111 \
-            -print -quit)"
+            -print -quit 2>/dev/null || true)"
           if [ -z "$SIGN_UPDATE" ]; then
             echo "Sparkle sign_update was not found; refusing to publish an unsigned appcast." >&2
             exit 1
