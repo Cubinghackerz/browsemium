@@ -57,13 +57,23 @@ public final class AIDockViewModel {
     public private(set) var currentConversationID: ConversationID?
 
     private var streamTask: Task<Void, Never>?
+    private var streamGeneration: UInt64 = 0
+    private var activeStreamAttachments: [AIContextAttachment] = []
+    private var activeStreamAssistantID: UUID?
+    private var activeStreamRestoreAllowed = true
     private let attachmentDirectory: URL
-    private var providerImageURLs: [URL] = []
+    private var providerImageURLsByPreparation: [UUID: [URL]] = [:]
+    private var workGeneration: UInt64 = 0
     /// Changes whenever the page-specific context is invalidated. Async page
     /// capture must never re-attach content from a tab the user has already
     /// left.
     private var contextGeneration: UInt64 = 0
-    private var activeWebPreparationGeneration: UInt64?
+    private struct WebPreparationState {
+        let id: UUID
+        let provider: AIProviderID
+        let generation: UInt64
+    }
+    private var activeWebPreparation: WebPreparationState?
 
     public init(environment: BrowserEnvironment) {
         self.environment = environment
@@ -74,6 +84,7 @@ public final class AIDockViewModel {
             withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
         )
+        providerPanel.setStagedFileRoot(attachmentDirectory)
         // Deliberately no keychain work here: this runs at launch, and any
         // keychain read at launch produces a macOS permission prompt.
     }
@@ -89,6 +100,17 @@ public final class AIDockViewModel {
 
     public var attachmentLabels: [String] {
         attachments.map(label(for:))
+    }
+
+    private func beginWork() -> UInt64 {
+        workGeneration &+= 1
+        isWorking = true
+        return workGeneration
+    }
+
+    private func endWork(_ generation: UInt64) {
+        guard workGeneration == generation else { return }
+        isWorking = false
     }
 
     public func label(for attachment: AIContextAttachment) -> String {
@@ -139,14 +161,45 @@ public final class AIDockViewModel {
         hasStoredCredential = (try? environment.keychain.hasSecret(account: credentialAccount)) ?? false
     }
 
-    public func connect() async {
-        credentialStatus = nil
+    /// Resets provider-scoped UI and cancels work that belongs to the old
+    /// provider. Keeping the old model list here makes a provider switch look
+    /// successful while sending the next prompt to the wrong model.
+    public func providerDidChange() {
+        stop()
+        contextGeneration &+= 1
+        invalidateWebProviderPreparation()
         if provider.isLocal {
+            mode = .api
+        }
+        models = []
+        selectedModelID = nil
+        credentialInput = ""
+        credentialStatus = nil
+        errorMessage = nil
+        refreshCredentialState()
+        if isReviewPresented {
+            rebuildHandoff()
+        }
+
+        let requestedProvider = provider
+        if requestedProvider.isLocal || hasStoredCredential {
+            Task { [weak self] in
+                await self?.loadModels(for: requestedProvider)
+            }
+        }
+    }
+
+    public func connect() async {
+        let requestedProvider = provider
+        let requestedAccount = environment.providerCredentialAccount(requestedProvider)
+        credentialStatus = nil
+        if requestedProvider.isLocal {
             // No key: probe the local server and report what it offers.
-            isWorking = true
-            defer { isWorking = false }
+            let work = beginWork()
+            defer { endWork(work) }
             do {
                 let fetched = try await OllamaAdapter().listModels()
+                guard provider == requestedProvider else { return }
                 models = fetched
                 if selectedModelID == nil {
                     selectedModelID = models.first?.id
@@ -157,6 +210,7 @@ public final class AIDockViewModel {
                     : "Connected to Ollama on this Mac. \(models.count) models available."
                 errorMessage = nil
             } catch {
+                guard provider == requestedProvider else { return }
                 credentialStatus = nil
                 errorMessage = "Ollama is not reachable at localhost:11434. Install it from ollama.com and run `ollama serve`."
             }
@@ -167,13 +221,14 @@ public final class AIDockViewModel {
             credentialStatus = "Enter an API key first."
             return
         }
-        isWorking = true
-        defer { isWorking = false }
+        let work = beginWork()
+        defer { endWork(work) }
 
         do {
-            let adapter = makeAdapter(credential: credential)
+            let adapter = makeAdapter(for: requestedProvider, credential: credential)
             let fetched = try await adapter.listModels()
-            try environment.keychain.setSecret(credential, account: credentialAccount)
+            try environment.keychain.setSecret(credential, account: requestedAccount)
+            guard provider == requestedProvider else { return }
             hasStoredCredential = true
             credentialInput = ""
             models = fetched.sorted { $0.id < $1.id }
@@ -183,38 +238,52 @@ public final class AIDockViewModel {
             credentialStatus = "Connected. \(models.count) models available."
             errorMessage = nil
         } catch {
+            guard provider == requestedProvider else { return }
             credentialStatus = nil
             errorMessage = error.localizedDescription
         }
     }
 
     public func loadModels() async {
-        if provider.isLocal {
-            isWorking = true
-            defer { isWorking = false }
+        await loadModels(for: provider)
+    }
+
+    private func loadModels(for requestedProvider: AIProviderID) async {
+        if requestedProvider.isLocal {
+            let work = beginWork()
+            defer { endWork(work) }
             do {
-                models = try await OllamaAdapter().listModels()
+                let fetched = try await OllamaAdapter().listModels()
+                guard provider == requestedProvider else { return }
+                models = fetched
                 if selectedModelID == nil {
                     selectedModelID = models.first?.id
                 }
             } catch {
+                guard provider == requestedProvider else { return }
                 errorMessage = "Ollama is not reachable at localhost:11434."
             }
             return
         }
-        guard let credential = try? environment.keychain.secret(account: credentialAccount), !credential.isEmpty else {
+        let account = environment.providerCredentialAccount(requestedProvider)
+        guard let credential = try? environment.keychain.secret(account: account), !credential.isEmpty else {
             refreshCredentialState()
             return
         }
         credentialStatus = nil
-        isWorking = true
-        defer { isWorking = false }
+        let work = beginWork()
+        defer { endWork(work) }
         do {
-            models = try await makeAdapter(credential: credential).listModels().sorted { $0.id < $1.id }
+            let fetched = try await makeAdapter(for: requestedProvider, credential: credential)
+                .listModels()
+                .sorted { $0.id < $1.id }
+            guard provider == requestedProvider else { return }
+            models = fetched
             if selectedModelID == nil {
                 selectedModelID = models.first?.id
             }
         } catch {
+            guard provider == requestedProvider else { return }
             errorMessage = error.localizedDescription
         }
     }
@@ -232,10 +301,13 @@ public final class AIDockViewModel {
             errorMessage = "Open a page before sharing context."
             return
         }
-        isWorking = true
-        defer { isWorking = false }
+        guard !isWorking else { return }
+        let generation = contextGeneration
+        let work = beginWork()
+        defer { endWork(work) }
         do {
             let captured = try await environment.runtime.capture(tabID: tabID, request: CaptureRequest(kinds: [kind]))
+            guard contextGeneration == generation else { return }
             // Keep one current attachment of each type. Recapturing replaces
             // stale content instead of silently sending multiple page versions.
             attachments.removeAll { attachment in
@@ -270,6 +342,9 @@ public final class AIDockViewModel {
     /// replacing any attachment of the same kind so stale content never
     /// travels with a new selection.
     public func adopt(_ incoming: [AIContextAttachment]) {
+        contextGeneration &+= 1
+        activeStreamRestoreAllowed = false
+        invalidateWebProviderPreparation()
         for attachment in incoming {
             attachments.removeAll { existing in
                 switch (attachment, existing) {
@@ -288,11 +363,22 @@ public final class AIDockViewModel {
 
     public func clearAttachments() {
         contextGeneration &+= 1
-        activeWebPreparationGeneration = nil
+        activeStreamRestoreAllowed = false
+        activeWebPreparation = nil
         for attachment in attachments {
             removeStagedFile(for: attachment)
         }
         attachments.removeAll()
+        removeProviderImages()
+        if isReviewPresented {
+            rebuildHandoff()
+        }
+    }
+
+    /// Invalidates a pending web send without removing files the user has
+    /// explicitly staged for a different provider.
+    public func invalidateWebProviderPreparation() {
+        activeWebPreparation = nil
         removeProviderImages()
     }
 
@@ -379,10 +465,39 @@ public final class AIDockViewModel {
 
     private func removeStagedFile(for attachment: AIContextAttachment) {
         guard case .file(let file) = attachment else { return }
-        let root = attachmentDirectory.standardizedFileURL.path
-        let candidate = file.fileURL.standardizedFileURL
-        guard candidate.path.hasPrefix(root + "/") else { return }
+        let root = attachmentDirectory
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+        let candidate = file.fileURL
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+        guard candidate.path.hasPrefix(root.path + "/") else { return }
         try? FileManager.default.removeItem(at: candidate)
+    }
+
+    private func removeCapturedAttachments(_ captured: [AIContextAttachment]) {
+        for generated in captured {
+            guard let index = attachments.firstIndex(where: { sameAttachment($0, generated) }) else { continue }
+            let removed = attachments.remove(at: index)
+            removeStagedFile(for: removed)
+        }
+    }
+
+    private func sameAttachment(_ lhs: AIContextAttachment, _ rhs: AIContextAttachment) -> Bool {
+        switch (lhs, rhs) {
+        case (.selection(let left), .selection(let right)):
+            left == right
+        case (.readablePage(let left), .readablePage(let right)):
+            left == right
+        case (.viewportImage(let left), .viewportImage(let right)):
+            left == right
+        case (.fullPageImage(let left), .fullPageImage(let right)):
+            left == right
+        case (.file(let left), .file(let right)):
+            left == right
+        default:
+            false
+        }
     }
 
     private static func safeFilename(_ filename: String) -> String {
@@ -408,24 +523,29 @@ public final class AIDockViewModel {
     /// the provider draft untouched instead of sending incomplete context.
     public func prepareWebProviderMessage(
         userPrompt: String,
-        tab: BrowserTab?
+        tab: BrowserTab?,
+        provider: AIProviderID
     ) async throws -> ProviderComposerPreparation {
         let generation = contextGeneration
+        let preparationID = UUID()
+        var generatedAttachments: [AIContextAttachment] = []
         var prepared = false
-        isWorking = true
+        let work = beginWork()
         defer {
-            isWorking = false
-            if !prepared, activeWebPreparationGeneration == generation {
-                activeWebPreparationGeneration = nil
+            endWork(work)
+            if !prepared, activeWebPreparation?.id == preparationID {
+                activeWebPreparation = nil
             }
             if !prepared {
-                removeProviderImages()
+                removeCapturedAttachments(generatedAttachments)
+                removeProviderImages(for: preparationID)
             }
         }
 
         func verifyContextIsCurrent() throws {
-            guard contextGeneration == generation else {
-                throw BrowsemiumError.captureUnavailable("The active page changed while context was being prepared. Press Send again for the current page.")
+            try Task.checkCancellation()
+            guard contextGeneration == generation, self.provider == provider else {
+                throw BrowsemiumError.captureUnavailable("The active page or provider changed while context was being prepared. Press Send again.")
             }
         }
 
@@ -455,21 +575,35 @@ public final class AIDockViewModel {
             // must not prevent the provider from receiving the user's query
             // and sanitized metadata. Each capture is independent so a text
             // extraction failure cannot suppress a usable screenshot.
-            if !hasReadablePage,
-               let captured = try? await environment.runtime.capture(
-                   tabID: tab.id,
-                   request: CaptureRequest(kinds: [.readablePage])
-               ) {
-                try verifyContextIsCurrent()
-                attachments.append(contentsOf: captured.attachments)
+            if !hasReadablePage {
+                do {
+                    let captured = try await environment.runtime.capture(
+                        tabID: tab.id,
+                        request: CaptureRequest(kinds: [.readablePage])
+                    )
+                    try verifyContextIsCurrent()
+                    generatedAttachments.append(contentsOf: captured.attachments)
+                    attachments.append(contentsOf: captured.attachments)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    // Readable text is best-effort; keep trying the screenshot.
+                }
             }
-            if !hasFullPageImage,
-               let captured = try? await environment.runtime.capture(
-                   tabID: tab.id,
-                   request: CaptureRequest(kinds: [.fullPageImage])
-               ) {
-                try verifyContextIsCurrent()
-                attachments.append(contentsOf: captured.attachments)
+            if !hasFullPageImage {
+                do {
+                    let captured = try await environment.runtime.capture(
+                        tabID: tab.id,
+                        request: CaptureRequest(kinds: [.fullPageImage])
+                    )
+                    try verifyContextIsCurrent()
+                    generatedAttachments.append(contentsOf: captured.attachments)
+                    attachments.append(contentsOf: captured.attachments)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    // A screenshot failure must not block the user's query.
+                }
             }
         }
 
@@ -496,43 +630,72 @@ public final class AIDockViewModel {
             let url = attachmentDirectory
                 .appendingPathComponent("provider-\(UUID().uuidString).\(ext)")
             try image.data.write(to: url, options: [.atomic])
-            providerImageURLs.append(url)
+            providerImageURLsByPreparation[preparationID, default: []].append(url)
             fileURLs.append(url)
         }
         try verifyContextIsCurrent()
-        activeWebPreparationGeneration = generation
+        activeWebPreparation = WebPreparationState(
+            id: preparationID,
+            provider: provider,
+            generation: generation
+        )
         prepared = true
-        return ProviderComposerPreparation(text: prompt, fileURLs: fileURLs)
+        return ProviderComposerPreparation(text: prompt, fileURLs: fileURLs, id: preparationID)
     }
 
-    public func finishWebProviderMessage() {
-        guard let generation = activeWebPreparationGeneration,
-              generation == contextGeneration else {
+    public func isWebProviderPreparationCurrent(provider: AIProviderID, id: UUID) -> Bool {
+        guard let activeWebPreparation else { return false }
+        return self.provider == provider
+            && activeWebPreparation.id == id
+            && activeWebPreparation.provider == provider
+            && activeWebPreparation.generation == contextGeneration
+    }
+
+    public func finishWebProviderMessage(provider: AIProviderID, id: UUID) {
+        guard isWebProviderPreparationCurrent(provider: provider, id: id) else {
             // A tab switch or a new context selection invalidated this send.
             // Do not clear the new context that the user may already be
             // preparing; only discard files owned by the stale attempt.
-            removeProviderImages()
-            activeWebPreparationGeneration = nil
+            removeProviderImages(for: id)
+            if activeWebPreparation?.id == id {
+                activeWebPreparation = nil
+            }
             return
         }
         draft = ""
         let stagedURLs = attachments.compactMap { attachment -> URL? in
             guard case .file(let file) = attachment else { return nil }
             return file.fileURL
-        } + providerImageURLs
+        } + (providerImageURLsByPreparation.removeValue(forKey: id) ?? [])
         attachments.removeAll()
-        providerImageURLs.removeAll()
         contextGeneration &+= 1
-        activeWebPreparationGeneration = nil
+        activeWebPreparation = nil
         scheduleCleanup(of: stagedURLs)
         errorMessage = nil
     }
 
+    public func abortWebProviderMessage(provider: AIProviderID, id: UUID) {
+        removeProviderImages(for: id)
+        if activeWebPreparation?.id == id,
+           activeWebPreparation?.provider == provider {
+            activeWebPreparation = nil
+        }
+    }
+
     private func removeProviderImages() {
-        for url in providerImageURLs {
+        for urls in providerImageURLsByPreparation.values {
+            for url in urls {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+        providerImageURLsByPreparation.removeAll()
+    }
+
+    private func removeProviderImages(for preparationID: UUID) {
+        guard let urls = providerImageURLsByPreparation.removeValue(forKey: preparationID) else { return }
+        for url in urls {
             try? FileManager.default.removeItem(at: url)
         }
-        providerImageURLs.removeAll()
     }
 
     /// A provider may begin its network upload after the native send gesture
@@ -552,10 +715,8 @@ public final class AIDockViewModel {
     }
 
     public func clearConversation() {
-        streamTask?.cancel()
-        streamTask = nil
+        stop()
         messages.removeAll()
-        isStreaming = false
         errorMessage = nil
         currentConversationID = nil
     }
@@ -582,9 +743,7 @@ public final class AIDockViewModel {
 
     public func openConversation(_ id: ConversationID) {
         guard let restored = try? environment.conversationRepository.messages(conversationID: id) else { return }
-        streamTask?.cancel()
-        streamTask = nil
-        isStreaming = false
+        stop()
         messages = restored
         currentConversationID = id
         errorMessage = nil
@@ -740,6 +899,7 @@ public final class AIDockViewModel {
     }
 
     private func sendViaAPI(prompt: String) async {
+        guard !isStreaming else { return }
         guard let model = selectedModel else {
             errorMessage = "Choose a model first."
             return
@@ -758,53 +918,118 @@ public final class AIDockViewModel {
         messages.append(AIMessage(role: .user, content: prompt))
         persistUserMessage(prompt)
         let assistantIndex = messages.count
-        messages.append(AIMessage(role: .assistant, content: ""))
+        let assistant = AIMessage(role: .assistant, content: "")
+        messages.append(assistant)
         let request = AIRequest(model: model, messages: Array(messages.prefix(assistantIndex)), attachments: attachments)
         let adapter = makeAdapter(credential: credential)
         let sentAttachments = attachments
+        let sentStagedURLs = sentAttachments.compactMap { attachment -> URL? in
+            guard case .file(let file) = attachment else { return nil }
+            return file.fileURL
+        }
+        streamGeneration &+= 1
+        let generation = streamGeneration
         isStreaming = true
         errorMessage = nil
         draft = ""
         attachments.removeAll()
+        activeStreamAttachments = sentAttachments
+        activeStreamAssistantID = assistant.id
+        activeStreamRestoreAllowed = true
 
         streamTask = Task { [weak self] in
+            var didComplete = false
+            var didFail = false
             do {
                 for try await event in adapter.stream(request) {
                     guard let self else { return }
+                    guard self.streamGeneration == generation else { return }
                     switch event {
                     case .textDelta(let text):
                         self.appendToAssistant(at: assistantIndex, text: text)
                     case .completed(let message):
+                        didComplete = true
                         self.finalizeAssistant(at: assistantIndex, content: message.content)
                         self.persistAssistantMessage(message.content)
                     }
                 }
             } catch {
                 guard let self else { return }
+                guard self.streamGeneration == generation else { return }
+                didFail = true
                 // A user-initiated stop is not an error worth shouting about;
                 // keep whatever partial answer arrived and stay quiet.
+                _ = self.restoreOrCleanupStreamAttachments(sentAttachments)
                 if !(error is CancellationError) {
                     self.errorMessage = error.localizedDescription
-                    // Give the attachments back so a retry keeps its context.
-                    if self.attachments.isEmpty {
-                        self.attachments = sentAttachments
-                    }
                 }
                 if self.messages.indices.contains(assistantIndex),
                    !self.messages[assistantIndex].content.isEmpty {
                     // Keep the partial answer rather than losing it.
                     self.persistAssistantMessage(self.messages[assistantIndex].content)
                 }
-                self.removeAssistantIfEmpty(at: assistantIndex)
+                self.removeAssistantIfEmpty(id: assistant.id)
             }
-            self?.isStreaming = false
+            guard let self, self.streamGeneration == generation else { return }
+            if !didComplete {
+                if !didFail {
+                    _ = self.restoreOrCleanupStreamAttachments(sentAttachments)
+                }
+                self.removeAssistantIfEmpty(id: assistant.id)
+            } else {
+                self.scheduleCleanup(of: sentStagedURLs)
+            }
+            self.clearActiveStream()
+            self.isStreaming = false
+            self.streamTask = nil
         }
     }
 
     public func stop() {
+        streamGeneration &+= 1
         streamTask?.cancel()
         streamTask = nil
+        if let assistantID = activeStreamAssistantID {
+            removeAssistantIfEmpty(id: assistantID)
+        }
+        if !activeStreamAttachments.isEmpty {
+            _ = restoreOrCleanupStreamAttachments(activeStreamAttachments)
+        }
+        clearActiveStream()
         isStreaming = false
+        workGeneration &+= 1
+        isWorking = false
+        contextGeneration &+= 1
+        invalidateWebProviderPreparation()
+    }
+
+    private func stagedURLs(in attachments: [AIContextAttachment]) -> [URL] {
+        attachments.compactMap { attachment in
+            guard case .file(let file) = attachment else { return nil }
+            return file.fileURL
+        }
+    }
+
+    /// Restores the context for a retry unless the user has already supplied
+    /// newer context. In that case the canceled request's staged files are
+    /// cleaned up without touching the new attachments.
+    @discardableResult
+    private func restoreOrCleanupStreamAttachments(_ sent: [AIContextAttachment]) -> Bool {
+        guard !sent.isEmpty else { return false }
+        if activeStreamRestoreAllowed, attachments.isEmpty {
+            attachments = sent
+            return true
+        }
+        let retainedURLs = Set(stagedURLs(in: attachments))
+        let discardedURLs = stagedURLs(in: sent).filter { !retainedURLs.contains($0) }
+        scheduleCleanup(of: discardedURLs)
+        return false
+    }
+
+    private func clearActiveStream() {
+        activeStreamAttachments.removeAll()
+        activeStreamAssistantID = nil
+        activeStreamRestoreAllowed = true
     }
 
     private func appendToAssistant(at index: Int, text: String) {
@@ -819,12 +1044,17 @@ public final class AIDockViewModel {
         messages[index] = AIMessage(id: current.id, role: .assistant, content: content, createdAt: current.createdAt)
     }
 
-    private func removeAssistantIfEmpty(at index: Int) {
-        guard messages.indices.contains(index), messages[index].content.isEmpty else { return }
+    private func removeAssistantIfEmpty(id: UUID) {
+        guard let index = messages.firstIndex(where: { $0.id == id }),
+              messages[index].content.isEmpty else { return }
         messages.remove(at: index)
     }
 
     private func makeAdapter(credential: String) -> any AIProviderAdapter {
+        makeAdapter(for: provider, credential: credential)
+    }
+
+    private func makeAdapter(for provider: AIProviderID, credential: String) -> any AIProviderAdapter {
         switch provider {
         case .openAI:
             OpenAIAdapter(credential: credential)

@@ -8,10 +8,15 @@ import UniformTypeIdentifiers
 import WebKit
 
 public struct ProviderComposerPreparation: Sendable {
+    /// Stable identity for this preparation. The provider bridge checks it
+    /// again after every asynchronous upload so a later tab/provider switch
+    /// can never replay an older message.
+    public let id: UUID
     public let text: String
     public let fileURLs: [URL]
 
-    public init(text: String, fileURLs: [URL] = []) {
+    public init(text: String, fileURLs: [URL] = [], id: UUID = UUID()) {
+        self.id = id
         self.text = text
         self.fileURLs = fileURLs
     }
@@ -29,7 +34,12 @@ public final class ProviderPanelController {
     /// The callback is installed by the dock so metadata is read from the
     /// active browser tab at submit time, never from a stale cached value.
     public var prepareComposerMessage: (@MainActor (AIProviderID, String) async throws -> ProviderComposerPreparation)?
-    public var didSubmitComposerMessage: (@MainActor (AIProviderID) -> Void)?
+    /// Called after preparation and again after provider file upload. A false
+    /// result means the browser page or provider changed while work was in
+    /// flight, so the original draft must remain unsent.
+    public var isComposerPreparationCurrent: (@MainActor (AIProviderID, UUID) -> Bool)?
+    public var didSubmitComposerMessage: (@MainActor (AIProviderID, UUID) -> Void)?
+    public var didAbortComposerMessage: (@MainActor (AIProviderID, UUID) -> Void)?
     public var didFailComposerMessage: (@MainActor (AIProviderID, String) -> Void)?
 
     private let factory = WebViewFactory()
@@ -39,11 +49,20 @@ public final class ProviderPanelController {
     private var pendingURLs: [AIProviderID: URL] = [:]
     private var lastTrustedURLs: [AIProviderID: URL] = [:]
     private var pendingFileURLs: [AIProviderID: [URL]] = [:]
+    private var stagedFileRoot: URL?
     /// Only one native preparation may mutate the shared page-context staging
     /// area for a provider at a time.
     private var pendingComposerTokens: [AIProviderID: String] = [:]
+    private var pendingComposerTasks: [AIProviderID: Task<Void, Never>] = [:]
 
     public init() {}
+
+    /// Restricts provider uploads to the per-dock staging directory. The
+    /// fallback temporary-directory check keeps the controller safe when it is
+    /// used independently in tests or a host integration.
+    public func setStagedFileRoot(_ root: URL) {
+        stagedFileRoot = root.resolvingSymlinksInPath().standardizedFileURL
+    }
 
     public var liveWebViewCount: Int { webViews.count }
 
@@ -86,6 +105,7 @@ public final class ProviderPanelController {
         guard ProviderPanelDescriptor.descriptor(for: provider).trusts(url) else { return }
         lastTrustedURLs[provider] = url
         if let webView = webViews[provider] {
+            cancelPendingComposer(for: provider)
             webView.load(URLRequest(url: url))
         } else {
             pendingURLs[provider] = url
@@ -96,6 +116,7 @@ public final class ProviderPanelController {
 
     public func suspendInactive(except provider: AIProviderID?) {
         for (key, webView) in webViews where key != provider {
+            cancelPendingComposer(for: key)
             remember(url: webView.url, for: key)
             webView.removeFromSuperview()
             webView.stopLoading()
@@ -117,6 +138,7 @@ public final class ProviderPanelController {
     }
 
     private func release(provider: AIProviderID) {
+        cancelPendingComposer(for: provider)
         guard let webView = webViews.removeValue(forKey: provider) else { return }
         remember(url: webView.url, for: provider)
         webView.stopLoading()
@@ -126,8 +148,12 @@ public final class ProviderPanelController {
         webView.removeFromSuperview()
         bridgeHandlers.removeValue(forKey: provider)
         uiDelegates.removeValue(forKey: provider)
-        pendingFileURLs.removeValue(forKey: provider)
+    }
+
+    private func cancelPendingComposer(for provider: AIProviderID) {
+        pendingComposerTasks.removeValue(forKey: provider)?.cancel()
         pendingComposerTokens.removeValue(forKey: provider)
+        pendingFileURLs.removeValue(forKey: provider)
     }
 
     private func remember(url: URL?, for provider: AIProviderID) {
@@ -165,23 +191,37 @@ public final class ProviderPanelController {
         }
         pendingComposerTokens[provider] = token
 
-        Task { @MainActor [weak self, weak webView] in
+        let task = Task { @MainActor [weak self, weak webView] in
             guard let self, let webView else { return }
+            var preparationID: UUID?
             defer {
                 if self.pendingComposerTokens[provider] == token {
                     self.pendingComposerTokens.removeValue(forKey: provider)
+                    self.pendingComposerTasks.removeValue(forKey: provider)
                 }
             }
             do {
                 let preparation = try await self.prepareComposerMessage?(provider, text)
                     ?? ProviderComposerPreparation(text: text)
+                preparationID = preparation.id
+                try Task.checkCancellation()
                 guard self.webViews[provider] === webView,
                       let currentURL = webView.url,
                       ProviderPanelDescriptor.descriptor(for: provider).trusts(currentURL) else {
                     throw BrowsemiumError.providerUploadFailed("The AI provider changed pages while the message was being prepared. Your draft is still in place.")
                 }
+                guard self.isComposerPreparationCurrent?(provider, preparation.id) ?? true else {
+                    throw BrowsemiumError.captureUnavailable("The active page changed while the message was being prepared. Your draft is still in place.")
+                }
                 if !preparation.fileURLs.isEmpty {
                     try await self.uploadFiles(preparation.fileURLs, to: provider)
+                }
+                try Task.checkCancellation()
+                guard self.webViews[provider] === webView,
+                      let currentURL = webView.url,
+                      ProviderPanelDescriptor.descriptor(for: provider).trusts(currentURL),
+                      self.isComposerPreparationCurrent?(provider, preparation.id) ?? true else {
+                    throw BrowsemiumError.providerUploadFailed("The page or provider changed while the attachment was uploading. Your draft is still in place.")
                 }
                 let payload: [String: String] = ["token": token, "text": preparation.text]
                 let resolved = try await webView.callAsyncJavaScript(
@@ -193,11 +233,15 @@ public final class ProviderPanelController {
                 guard resolved as? Bool == true else {
                     throw BrowsemiumError.providerUploadFailed("The provider composer timed out. Your draft is still in place; press Send again.")
                 }
-                self.didSubmitComposerMessage?(provider)
+                try Task.checkCancellation()
+                self.didSubmitComposerMessage?(provider, preparation.id)
             } catch {
                 let reason = (error as? LocalizedError)?.errorDescription
                     ?? "The message could not be sent with its context."
                 let isCurrentWebView = self.webViews[provider] === webView
+                if let preparationID {
+                    self.didAbortComposerMessage?(provider, preparationID)
+                }
                 if isCurrentWebView {
                     _ = try? await webView.callAsyncJavaScript(
                         "window.__browsemiumReject && window.__browsemiumReject(token); return true;",
@@ -205,10 +249,13 @@ public final class ProviderPanelController {
                         in: nil,
                         contentWorld: .page
                     )
-                    self.didFailComposerMessage?(provider, reason)
+                    if !Task.isCancelled {
+                        self.didFailComposerMessage?(provider, reason)
+                    }
                 }
             }
         }
+        pendingComposerTasks[provider] = task
     }
 
     /// Uploads staged files through the provider's own file input. WebKit
@@ -227,17 +274,33 @@ public final class ProviderPanelController {
 
         pendingFileURLs[provider] = urls
         defer { pendingFileURLs[provider] = nil }
+        try Task.checkCancellation()
         let result = try await webView.callAsyncJavaScript(
             Self.fileUploadScript,
             arguments: [:],
             in: nil,
             contentWorld: .page
         )
+        try Task.checkCancellation()
+        guard webViews[provider] === webView,
+              let currentURL = webView.url,
+              ProviderPanelDescriptor.descriptor(for: provider).trusts(currentURL) else {
+            throw BrowsemiumError.providerUploadFailed("The AI provider changed pages during file upload. Your draft is still in place.")
+        }
         let uploadedNames = (result as? [String]) ?? []
         let expectedNames = urls.map(\.lastPathComponent)
-        guard uploadedNames.sorted() == expectedNames.sorted() else {
+        guard Self.containsFileNames(uploadedNames, expected: expectedNames) else {
             throw BrowsemiumError.providerUploadFailed("The provider did not confirm all selected files.")
         }
+    }
+
+    private static func containsFileNames(_ uploaded: [String], expected: [String]) -> Bool {
+        var remaining = uploaded
+        for name in expected {
+            guard let index = remaining.firstIndex(of: name) else { return false }
+            remaining.remove(at: index)
+        }
+        return true
     }
 
     fileprivate func takePendingFileURLs(for provider: AIProviderID) -> [URL]? {
@@ -273,9 +336,13 @@ public final class ProviderPanelController {
     }
 
     private func isSafeStagedFile(_ url: URL) -> Bool {
-        let root = FileManager.default.temporaryDirectory.standardizedFileURL.path
-        let candidate = url.standardizedFileURL
-        guard candidate.path.hasPrefix(root + "/") else { return false }
+        let root = stagedFileRoot ?? FileManager.default.temporaryDirectory
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+        let candidate = url
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+        guard candidate.path.hasPrefix(root.path + "/") else { return false }
         guard let values = try? candidate.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]) else {
             return false
         }
@@ -308,7 +375,19 @@ public final class ProviderPanelController {
         return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
       };
 
-      const valueOf = (element) => element instanceof HTMLTextAreaElement
+      const visibleControl = (element) => {
+        if (!element || !element.isConnected) return false;
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' &&
+          style.pointerEvents !== 'none' && rect.width > 0 && rect.height > 0;
+      };
+
+      const enabledControl = (element) => visibleControl(element) &&
+        element.getAttribute('aria-disabled') !== 'true' &&
+        element.disabled !== true;
+
+      const valueOf = (element) => !element ? '' : element instanceof HTMLTextAreaElement
         ? element.value
         : element.innerText || element.textContent || '';
 
@@ -333,10 +412,14 @@ public final class ProviderPanelController {
       const sendButton = (event, input) => {
         const target = event.target instanceof Element ? event.target : null;
         const clicked = target?.closest('button,[role="button"]');
-        if (clicked && visible(input)) return clicked;
+        if (clicked && visibleControl(clicked) && visible(input)) return clicked;
         const form = input?.closest('form');
         const selector = 'button[type="submit"],[role="button"][aria-label*="send" i],button[aria-label*="send" i],[data-testid*="send" i]';
-        return form?.querySelector(selector) || document.querySelector(selector);
+        const candidates = [
+          ...(form ? [...form.querySelectorAll(selector)] : []),
+          ...document.querySelectorAll(selector)
+        ];
+        return candidates.find(enabledControl) || candidates.find(visibleControl) || null;
       };
 
       const setValue = (element, value) => {
@@ -365,22 +448,57 @@ public final class ProviderPanelController {
         }
       };
 
-      const replay = (entry, text) => {
-        if (!entry) return;
-        const input = liveInput(entry.input);
-        if (!input) return;
+      const waitForSendControl = (entry) => new Promise((resolve) => {
+        const started = Date.now();
+        const deadline = started + 15000;
+        const poll = () => {
+          const input = liveInput(entry.input);
+          const button = sendButton({ target: null }, input);
+          if (button && enabledControl(button)) {
+            resolve({ input, button, hasButton: true });
+            return;
+          }
+          // If a provider has no identifiable button, give its attachment
+          // UI a short chance to render before using the editor's Enter path.
+          // If it does expose a disabled button, wait for it rather than
+          // firing a no-op click and falsely reporting success.
+          if (!button && Date.now() - started >= 500) {
+            resolve({ input, button: null, hasButton: false });
+            return;
+          }
+          if (Date.now() >= deadline) {
+            resolve({ input, button, hasButton: Boolean(button) });
+            return;
+          }
+          setTimeout(poll, 80);
+        };
+        poll();
+      });
+
+      const replay = async (entry, text) => {
+        if (!entry) return false;
+        let input = liveInput(entry.input);
+        if (!input) return false;
         if (text !== null) setValue(input, text);
         replaying = true;
         try {
           // Providers commonly replace the composer and its Send button after
           // an attachment finishes uploading. Never rely on the original DOM
           // node; reacquire the live control before replaying the user's send.
-          const button = sendButton({ target: null }, input);
-          if (button && button.isConnected && visible(input)) button.click();
-          else input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+          const ready = await waitForSendControl(entry);
+          input = ready.input || liveInput(entry.input);
+          if (ready.button && enabledControl(ready.button) && visible(input)) {
+            ready.button.click();
+          } else if (!ready.hasButton && visible(input)) {
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+            input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+          } else {
+            return false;
+          }
         } finally {
           queueMicrotask(() => { replaying = false; });
         }
+        return true;
       };
 
       window.__browsemiumResolve = (payload) => {
@@ -388,8 +506,7 @@ public final class ProviderPanelController {
         if (!entry) return false;
         pending.delete(payload.token);
         clearTimeout(entry.timer);
-        replay(entry, typeof payload.text === 'string' ? payload.text : null);
-        return true;
+        return replay(entry, typeof payload.text === 'string' ? payload.text : null);
       };
 
       window.__browsemiumReject = (token) => {
@@ -414,7 +531,11 @@ public final class ProviderPanelController {
         const input = currentInput(event);
         const text = valueOf(input).trim();
         if (!input || !text) return;
-        if ([...pending.values()].some((entry) => entry.input === input)) return;
+        if ([...pending.values()].some((entry) => entry.input === input)) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return;
+        }
 
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -429,7 +550,7 @@ public final class ProviderPanelController {
         } catch (_) {
           pending.delete(token);
           clearTimeout(entry.timer);
-          replay(entry, null);
+          void replay(entry, null);
         }
       };
 

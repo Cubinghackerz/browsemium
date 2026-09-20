@@ -92,6 +92,9 @@ jobs:
             --signature "${{ steps.sign.outputs.signature }}" \
             --size "${{ steps.sign.outputs.size }}" \
             --sha256 "${{ steps.sign.outputs.sha }}"
+          python3 Scripts/release/update-landing-page.py \
+            --version "${{ steps.version.outputs.version }}" \
+            --sha256 "${{ steps.sign.outputs.sha }}"
 
       - name: Sign the appcast feed
         run: |
@@ -118,8 +121,8 @@ jobs:
         run: |
           git config user.name "Browsemium Release"
           git config user.email "releases@browsemium.local"
-          git add Site/appcast.xml Site/checksum.txt
-          git diff --cached --quiet || git commit -m "Publish ${{ steps.version.outputs.version }} appcast and checksum"
+          git add Site/appcast.xml Site/checksum.txt Site/index.html
+          git diff --cached --quiet || git commit -m "Publish ${{ steps.version.outputs.version }} appcast and site metadata"
           # The tag checkout leaves HEAD detached, so push explicitly to main.
           git push origin HEAD:main
 

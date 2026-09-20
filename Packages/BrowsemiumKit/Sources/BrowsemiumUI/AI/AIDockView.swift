@@ -18,7 +18,11 @@ struct AIDockView: View {
             switch ai.mode {
             case .web:
                 ZStack(alignment: .top) {
-                    ProviderPanelHost(controller: ai.providerPanel, provider: ai.provider)
+                    ProviderPanelHost(
+                        controller: ai.providerPanel,
+                        provider: ai.provider,
+                        revision: ai.providerPanel.revision
+                    )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                     if ai.isWorking {
@@ -65,9 +69,8 @@ struct AIDockView: View {
         .onChange(of: ai.provider) {
             // A stream belonging to the previous provider must not keep
             // writing into the transcript after the switch.
-            ai.stop()
+            ai.providerDidChange()
             ai.providerPanel.release(except: ai.provider)
-            ai.refreshCredentialState()
         }
         .task {
             // Only touch the keychain once the assistant is actually visible.
@@ -87,10 +90,23 @@ struct AIDockView: View {
                 guard let dock, let browser else {
                     return ProviderComposerPreparation(text: text)
                 }
-                return try await dock.prepareWebProviderMessage(userPrompt: text, tab: browser.activeTab)
+                return try await dock.prepareWebProviderMessage(
+                    userPrompt: text,
+                    tab: browser.activeTab,
+                    provider: provider
+                )
             }
-            dock.providerPanel.didSubmitComposerMessage = { [weak dock] _ in
-                dock?.finishWebProviderMessage()
+            dock.providerPanel.isComposerPreparationCurrent = { [weak dock] provider, id in
+                dock?.isWebProviderPreparationCurrent(provider: provider, id: id) ?? false
+            }
+            dock.providerPanel.didSubmitComposerMessage = { [weak dock] provider, id in
+                // The controller only calls this after the preparation token
+                // was validated, so the provider cannot accidentally finish a
+                // newer tab's context.
+                dock?.finishWebProviderMessage(provider: provider, id: id)
+            }
+            dock.providerPanel.didAbortComposerMessage = { [weak dock] provider, id in
+                dock?.abortWebProviderMessage(provider: provider, id: id)
             }
             dock.providerPanel.didFailComposerMessage = { [weak dock, weak browser] _, message in
                 dock?.errorMessage = message
@@ -105,14 +121,21 @@ struct AIDockView: View {
             // keeps the login, while the live page is recreated on reopen.
             ai.stop()
             ai.providerPanel.prepareComposerMessage = nil
+            ai.providerPanel.isComposerPreparationCurrent = nil
             ai.providerPanel.didSubmitComposerMessage = nil
+            ai.providerPanel.didAbortComposerMessage = nil
             ai.providerPanel.didFailComposerMessage = nil
             ai.providerPanel.releaseAll()
             ai.clearAttachments()
             model.memoryPressureHandler = nil
         }
         .onChange(of: ai.mode) {
-            if ai.mode == .api {
+            // Switching modes must cancel in-flight API work. A canceled task
+            // must not later flip the new mode's state back to idle.
+            ai.stop()
+            if ai.provider.isLocal, ai.mode == .web {
+                ai.mode = .api
+            } else if ai.mode == .api {
                 ai.providerPanel.releaseAll()
             }
         }
@@ -153,7 +176,7 @@ struct AIDockView: View {
                 Spacer(minLength: 6)
 
                 BrowsemiumTabPicker(
-                    values: AIDockMode.allCases,
+                    values: ai.provider.isLocal ? [.api] : AIDockMode.allCases,
                     selection: $ai.mode,
                     label: \.title
                 )
@@ -735,6 +758,7 @@ private struct MessageBubble: View {
 private struct ProviderPanelHost: NSViewRepresentable {
     let controller: ProviderPanelController
     let provider: AIProviderID
+    let revision: Int
 
     func makeNSView(context: Context) -> NSView {
         let container = NSView()
@@ -743,6 +767,10 @@ private struct ProviderPanelHost: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
+        // Revision is intentionally read by the representable. It forces an
+        // update after memory pressure or profile changes release the current
+        // WebView, instead of leaving a detached/blank panel on screen.
+        _ = revision
         let webView = controller.webView(for: provider)
         // Switching providers must not leave the previous webview stacked
         // in the container — remove anything that is not the current panel.
