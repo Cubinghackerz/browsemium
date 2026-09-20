@@ -6,6 +6,9 @@ import SwiftUI
 struct ImportPreviewSheet: View {
     let preview: BrowserImportPreview
     @Binding var options: BrowserImportOptions
+    @Binding var destination: BrowserImportDestination
+    @Binding var newProfileName: String
+    let currentProfileName: String
     let isImporting: Bool
     let onCancel: () -> Void
     let onImport: () -> Void
@@ -21,6 +24,8 @@ struct ImportPreviewSheet: View {
             }
 
             summary
+
+            destinationPicker
 
             if preview.bookmarkCount > 0 {
                 scopeRow(
@@ -88,7 +93,7 @@ struct ImportPreviewSheet: View {
                     .keyboardShortcut(.cancelAction)
                 Spacer()
                 BrowsemiumPrimaryButton(
-                    isImporting ? "Importing…" : "Import",
+                    isImporting ? "Importing…" : importButtonTitle,
                     isDisabled: isImporting || preview.isEmpty || (!options.includesBookmarks && !options.includesHistory),
                     action: onImport
                 )
@@ -99,6 +104,40 @@ struct ImportPreviewSheet: View {
         .frame(width: 460)
         .background(Color.browsemiumSurface)
         .foregroundStyle(Color.browsemiumPrimary)
+    }
+
+    /// Importing into a new profile creates it first, so the data lands in its
+    /// own isolated database instead of the current profile's.
+    private var destinationPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Import into")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.browsemiumTertiary)
+
+            Picker("Import into", selection: $destination) {
+                Text(currentProfileName).tag(BrowserImportDestination.currentProfile)
+                Text("New profile").tag(BrowserImportDestination.newProfile)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .accessibilityLabel("Import destination")
+
+            if destination == .newProfile {
+                TextField("Profile name", text: $newProfileName)
+                    .font(.system(size: 12))
+                    .browsemiumField()
+                    .frame(height: 24)
+                    .padding(.horizontal, 8)
+                    .accessibilityLabel("New profile name")
+                Text("Creates a profile with its own logins and browsing data, then imports into it.")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Color.browsemiumTertiary)
+            }
+        }
+    }
+
+    private var importButtonTitle: String {
+        destination == .newProfile ? "Create Profile & Import" : "Import"
     }
 
     private var summary: some View {

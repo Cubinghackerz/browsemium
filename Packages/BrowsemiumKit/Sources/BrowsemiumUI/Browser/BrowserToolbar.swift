@@ -96,6 +96,7 @@ struct BrowserToolbar: View {
                 newProfileName = ""
                 isNamingProfile = true
             }
+            Button("Import from Another Browser…") { model.openPanel(.settings) }
             Button("Manage Profiles…") { model.openPanel(.settings) }
         } label: {
             HStack(spacing: 5) {

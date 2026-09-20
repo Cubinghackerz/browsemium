@@ -164,6 +164,14 @@ public final class BrowserRuntimeController: BrowserRuntime {
         await runtimes[tabID]?.find(query, backwards: backwards) ?? false
     }
 
+    public func setMuted(tabID: TabID, muted: Bool) {
+        runtimes[tabID]?.setMuted(muted)
+    }
+
+    public func audioState(tabID: TabID) -> TabAudioState? {
+        runtimes[tabID]?.audioState
+    }
+
     public func clearFindHighlight(tabID: TabID) {
         runtimes[tabID]?.clearFindHighlight()
     }

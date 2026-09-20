@@ -20,12 +20,12 @@ struct CommandPaletteView: View {
                     .foregroundStyle(Color.browsemiumTertiary)
                     .accessibilityHidden(true)
 
-                TextField("Search commands", text: $query)
+                TextField("Search tabs and commands", text: $query)
                     .textFieldStyle(.plain)
                     .font(.system(size: 13.5))
                     .focused($searchFocused)
                     .onSubmit { runHighlighted() }
-                    .accessibilityLabel("Search commands")
+                    .accessibilityLabel("Search tabs and commands")
             }
             .padding(.horizontal, 14)
             .frame(height: 44)

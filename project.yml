@@ -41,6 +41,13 @@ targets:
         SUPublicEDKey: "sM6jmNfL7Bgw/O5t41DS1qdDU0aoUnp6h6312IOyud4="
         SUEnableAutomaticChecks: true
         SUScheduledCheckInterval: 86400
+        # Advertises Browsemium as a candidate for http/https so it can be
+        # chosen as the default browser (and receive external links).
+        CFBundleURLTypes:
+          - CFBundleURLName: Web site URL
+            CFBundleURLSchemes:
+              - http
+              - https
     entitlements:
       path: BrowsemiumApp/Config/Browsemium.entitlements
       properties:

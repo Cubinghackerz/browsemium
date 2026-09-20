@@ -50,6 +50,9 @@ public final class BrowserWindowModel {
     public var focusAddressToken: Int
     public var appearance: AppearancePreference
     public private(set) var tabURLs: [TabID: URL]
+    /// Tabs that are currently playing audio or have been muted. WebKit does
+    /// not expose this, so it comes from the injected page monitor.
+    public private(set) var tabAudio: [TabID: TabAudioState] = [:]
     public private(set) var bookmarks: [Bookmark] = []
     public private(set) var savedCredentials: [SavedCredential] = []
     public private(set) var downloads: [DownloadProgress] = []
@@ -493,6 +496,19 @@ public final class BrowserWindowModel {
         focusAddressToken += 1
     }
 
+    /// Mutes or unmutes a tab's media. The page applies it through the
+    /// injected monitor, and the state survives navigation.
+    public func toggleTabMute(_ tabID: TabID) {
+        let isMuted = tabAudio[tabID]?.isMuted ?? false
+        let next = !isMuted
+        environment.runtime.setMuted(tabID: tabID, muted: next)
+        tabAudio[tabID] = TabAudioState(isPlaying: next ? false : (tabAudio[tabID]?.isPlaying ?? false), isMuted: next)
+        if !next, tabAudio[tabID]?.isPlaying != true, tabAudio[tabID]?.isMuted != true {
+            tabAudio[tabID] = nil
+        }
+        statusMessage = next ? "Tab muted" : "Tab unmuted"
+    }
+
     public func showFindBar() {
         isFindBarVisible = true
     }
@@ -633,9 +649,37 @@ public final class BrowserWindowModel {
 
     public func filteredCommands(query: String) -> [BrowserPaletteCommand] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty else { return paletteCommands }
-        return paletteCommands.filter {
+        let tabResults = tabPaletteCommands(matching: trimmedQuery)
+        guard !trimmedQuery.isEmpty else { return tabResults + paletteCommands }
+        return tabResults + paletteCommands.filter {
             $0.title.localizedCaseInsensitiveContains(trimmedQuery)
+        }
+    }
+
+    /// Open tabs as palette results, so ⌘K doubles as a tab switcher: type a
+    /// few letters of a page title or address and jump straight to it.
+    private func tabPaletteCommands(matching query: String) -> [BrowserPaletteCommand] {
+        let candidates: [BrowserTab]
+        if query.isEmpty {
+            // Show a few most-recently-used tabs even before typing.
+            candidates = session.tabs
+                .filter { $0.id != session.activeTabID }
+                .sorted { $0.lastAccessedAt > $1.lastAccessedAt }
+                .prefix(5)
+                .map { $0 }
+        } else {
+            candidates = session.tabs.filter { tab in
+                tab.title.localizedCaseInsensitiveContains(query)
+                    || (tab.lastCommittedURL?.absoluteString.localizedCaseInsensitiveContains(query) ?? false)
+            }
+        }
+        return candidates.prefix(8).map { tab in
+            BrowserPaletteCommand(
+                id: "tab-\(tab.id.rawValue.uuidString)",
+                title: tab.title,
+                shortcut: tab.lastCommittedURL?.host ?? "",
+                command: .selectTab(tab.id)
+            )
         }
     }
 
@@ -876,6 +920,12 @@ public final class BrowserWindowModel {
 
     private func handle(_ event: TabRuntimeEvent, for tabID: TabID) {
         switch event {
+        case .audioStateChanged(let state):
+            if state.isPlaying || state.isMuted {
+                tabAudio[tabID] = state
+            } else {
+                tabAudio[tabID] = nil
+            }
         case .startedLoading(let url):
             if let url {
                 tabURLs[tabID] = url

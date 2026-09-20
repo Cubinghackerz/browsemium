@@ -25,11 +25,14 @@ struct SettingsView: View {
     @State private var importFolder: URL?
     @State private var importLastResult: BrowserImportResult?
     @State private var isPreparingPreview = false
+    @State private var importDestination: BrowserImportDestination = .currentProfile
+    @State private var importNewProfileName = ""
     @State private var isAddingProfile = false
     @State private var newProfileNameText = ""
     @State private var profileRenameTarget: BrowserProfile?
     @State private var profileRenameText = ""
     @State private var profileDeleteTarget: BrowserProfile?
+    @State private var isDefaultBrowser = DefaultBrowser.isDefault
 
     private let retentionOptions: [(label: String, days: Int?)] = [
         ("7 days", 7),
@@ -73,6 +76,9 @@ struct SettingsView: View {
             ImportPreviewSheet(
                 preview: preview,
                 options: $importOptions,
+                destination: $importDestination,
+                newProfileName: $importNewProfileName,
+                currentProfileName: model.activeProfile.name,
                 isImporting: isImporting,
                 onCancel: {
                     importPreview = nil
@@ -180,6 +186,26 @@ struct SettingsView: View {
                     label: \.title
                 )
                 .accessibilityLabel("Appearance")
+            }
+
+            SettingsRow("Default browser") {
+                HStack(spacing: 8) {
+                    if isDefaultBrowser {
+                        Text("Browsemium opens links from other apps")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.browsemiumTertiary)
+                    } else {
+                        BrowsemiumTextButton("Make Default") {
+                            if DefaultBrowser.requestDefault() {
+                                isDefaultBrowser = true
+                                statusMessage = "Browsemium is now the default browser"
+                            } else {
+                                DefaultBrowser.openSystemSettings()
+                                statusMessage = "Set Browsemium as the default in System Settings"
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -616,6 +642,8 @@ struct SettingsView: View {
                     return try importer.preview(at: folder, source: source)
                 }.value
                 importOptions = BrowserImportOptions()
+                importDestination = .currentProfile
+                importNewProfileName = ""
                 importFolder = folder
                 importPreview = preview
                 statusMessage = nil
@@ -667,6 +695,18 @@ struct SettingsView: View {
 
     private func commitImport() {
         guard let preview = importPreview, let folder = importFolder else { return }
+        // Create and switch to the new profile first, so the import writes to
+        // that profile's database rather than the current one.
+        if importDestination == .newProfile {
+            let trimmed = importNewProfileName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let name = trimmed.isEmpty ? "\(preview.source.displayName) import" : trimmed
+            guard model.createProfile(named: name) != nil else {
+                statusMessage = "Could not create the new profile."
+                importPreview = nil
+                importFolder = nil
+                return
+            }
+        }
         let importer = BrowserDataImporter(
             bookmarks: model.environment.bookmarkRepository,
             history: model.environment.historyRepository

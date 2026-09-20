@@ -15,6 +15,7 @@ public enum TabRuntimeEvent: Sendable {
     case downloadStarted(UUID)
     case downloadFinished(UUID)
     case downloadFailed(UUID, String)
+    case audioStateChanged(TabAudioState)
 }
 
 @MainActor
@@ -35,6 +36,8 @@ public final class TabRuntime {
     private let uiDelegate: WebUIDelegate
     private var webView: WKWebView?
     private var progressObservation: NSKeyValueObservation?
+    private var audioProxy: TabAudioMessageProxy?
+    public private(set) var audioState = TabAudioState(isPlaying: false, isMuted: false)
 
     public var onEvent: ((TabRuntimeEvent) -> Void)?
 
@@ -93,6 +96,12 @@ public final class TabRuntime {
         let view = (isPrivate ? nil : warmPool?.take()) ?? factory.makeWebView(store: store)
         view.navigationDelegate = navigationDelegate
         view.uiDelegate = uiDelegate
+        // Audio state is reported by an injected script. The handler is added
+        // before the first real navigation, so nothing is missed.
+        let proxy = TabAudioMessageProxy(runtime: self)
+        view.configuration.userContentController.addUserScript(TabAudioMonitor.userScript)
+        view.configuration.userContentController.add(proxy, name: TabAudioMonitor.messageHandlerName)
+        audioProxy = proxy
         progressObservation = view.observe(\.estimatedProgress, options: [.new]) { [weak self] webView, _ in
             Task { @MainActor [weak self] in
                 self?.report(.progressChanged(webView.estimatedProgress))
@@ -100,6 +109,22 @@ public final class TabRuntime {
         }
         webView = view
         return view
+    }
+
+    /// Applies the tab's mute state to the page. Called on user action and
+    /// again after each navigation, since a fresh document starts unmuted.
+    public func setMuted(_ muted: Bool) {
+        audioState = TabAudioState(isPlaying: muted ? false : audioState.isPlaying, isMuted: muted)
+        report(.audioStateChanged(audioState))
+        guard let webView else { return }
+        webView.evaluateJavaScript("window.__browsemiumSetMuted && window.__browsemiumSetMuted(\(muted ? "true" : "false"))")
+    }
+
+    func updateAudioState(isPlaying: Bool, isMuted: Bool) {
+        let state = TabAudioState(isPlaying: isMuted ? false : isPlaying, isMuted: isMuted)
+        guard state != audioState else { return }
+        audioState = state
+        report(.audioStateChanged(state))
     }
 
     @discardableResult
@@ -245,7 +270,7 @@ public final class TabRuntime {
             lifecycle = lastCommittedURL == nil ? .metadataOnly : .crashed
         case .crashed:
             lifecycle = .crashed
-        case .progressChanged, .requestedNewWindow, .requestedExternalScheme, .downloadStarted, .downloadFinished, .downloadFailed:
+        case .progressChanged, .requestedNewWindow, .requestedExternalScheme, .downloadStarted, .downloadFinished, .downloadFailed, .audioStateChanged:
             break
         }
         onEvent?(event)
@@ -254,6 +279,10 @@ public final class TabRuntime {
     func handleDidFinish(_ webView: WKWebView) {
         title = webView.title
         report(.finished(title: webView.title, url: webView.url))
+        // A new document starts unmuted; restore the tab's mute state.
+        if audioState.isMuted {
+            setMuted(true)
+        }
     }
 
     func adoptDownload(_ download: WKDownload) {

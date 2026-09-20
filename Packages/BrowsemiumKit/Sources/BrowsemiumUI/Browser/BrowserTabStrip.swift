@@ -189,7 +189,7 @@ private struct TabItem: View {
 
     @ViewBuilder
     private var trailing: some View {
-        if isHovering || isActive {
+        if isHovering {
             Button {
                 BrowserHaptics.perform()
                 model.closeTab(tab.id)
@@ -202,6 +202,20 @@ private struct TabItem: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close \(tab.title)")
+        } else if let audio = model.tabAudio[tab.id] {
+            // Speaker shows while a page is audible; clicking mutes the tab.
+            Button {
+                BrowserHaptics.perform()
+                model.toggleTabMute(tab.id)
+            } label: {
+                Image(systemName: audio.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(audio.isMuted ? Color.browsemiumTertiary : Color.browsemiumSecondary)
+                    .frame(width: 16, height: 16)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(audio.isMuted ? "Unmute \(tab.title)" : "Mute \(tab.title)")
         } else {
             Color.clear.frame(width: 16, height: 16)
         }
@@ -254,6 +268,9 @@ private struct TabItem: View {
         if isAsleep { label += ", sleeping" }
         if tab.lifecycle == .loading { label += ", loading" }
         if tab.lifecycle == .crashed { label += ", stopped responding" }
+        if let audio = model.tabAudio[tab.id] {
+            label += audio.isMuted ? ", muted" : ", playing audio"
+        }
         return label
     }
 }

@@ -99,6 +99,11 @@ public struct BrowsemiumAppView: View {
         .onAppear {
             model.ensureLoaded(model.session.activeTabID ?? TabID())
         }
+        .onOpenURL { url in
+            // Links from other apps (Mail, Slack, Terminal) when Browsemium is
+            // the default browser.
+            model.newTab(url: url)
+        }
         .onChange(of: model.profileSwitchToken) {
             // Provider panels and conversations belong to the previous
             // profile's WebKit data store and database — never carry them over.

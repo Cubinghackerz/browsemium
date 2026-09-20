@@ -195,6 +195,14 @@ public protocol BrowserCredentialKeyProviding: Sendable {
     func safeStorageKey(for source: BrowserImportSource) throws -> Data?
 }
 
+/// Where an import should land.
+public enum BrowserImportDestination: Hashable, Sendable {
+    /// The profile that is currently active.
+    case currentProfile
+    /// A profile created from the import, named after the source.
+    case newProfile
+}
+
 /// A browser profile Browsemium can read, with the standard location it lives
 /// in. Profiles are outside the app sandbox, so the folder still has to be
 /// granted by the user once — after that the grant is remembered.
@@ -262,22 +270,44 @@ public enum BrowserProfileLocator {
     }
 
     /// Chrome, Brave, Edge, Vivaldi, Arc, and Chromium all keep profiles in
-    /// `Default` / `Profile N` folders.
+    /// `Default` / `Profile N` folders. Display names come from the browser's
+    /// `Local State` file so a profile named "Work" is offered as "Chrome —
+    /// Work" instead of "Chrome — Profile 2".
     private static func chromiumCandidates() -> [BrowserProfileCandidate] {
-        let names = ["Default"] + (1...8).map { "Profile \($0)" }
+        let probed = ["Default"] + (1...20).map { "Profile \($0)" }
         return BrowserImportSource.allCases
             .filter { $0.family == .chromium }
             .flatMap { source -> [BrowserProfileCandidate] in
                 guard let root = source.profileRoot else { return [] }
+                let displayNames = chromiumDisplayNames(in: root)
+                var names = probed
+                // When the folder is listable (the user granted access), pick
+                // up any profile folder beyond the probed names.
+                if let entries = try? FileManager.default.contentsOfDirectory(atPath: root.path) {
+                    let extra = entries.filter { entry in
+                        guard entry.hasPrefix("Profile ") || entry == "Default" else { return false }
+                        return !names.contains(entry)
+                    }
+                    names.append(contentsOf: extra.sorted())
+                }
                 return names.compactMap { name in
                     let folder = root.appendingPathComponent(name, isDirectory: true)
                     let exists = BrowserDataImporter.profileLooksValid(folder, source: source)
                     // Only offer the default profile of a browser that is not
                     // installed when nothing else was found for it.
                     guard exists || name == "Default" else { return nil }
+                    let display = displayNames[name]
+                    let label: String
+                    if !exists {
+                        label = source.displayName
+                    } else if let display, display != name {
+                        label = "\(source.displayName) — \(display)"
+                    } else {
+                        label = name == "Default" ? source.displayName : "\(source.displayName) — \(name)"
+                    }
                     return BrowserProfileCandidate(
                         source: source,
-                        label: name == "Default" ? source.displayName : "\(source.displayName) — \(name)",
+                        label: label,
                         folder: folder,
                         isReadable: exists
                     )
@@ -285,9 +315,32 @@ public enum BrowserProfileLocator {
             }
     }
 
+    /// Reads `profile.info_cache` from a Chromium `Local State` file, mapping
+    /// folder names ("Default", "Profile 1") to user-visible names.
+    public static func chromiumDisplayNames(in browserRoot: URL) -> [String: String] {
+        chromiumDisplayNames(localStateURL: browserRoot.appendingPathComponent("Local State"))
+    }
+
+    public static func chromiumDisplayNames(localStateURL: URL) -> [String: String] {
+        guard let data = try? Data(contentsOf: localStateURL),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let infoCache = root["profile"] as? [String: Any],
+              let cache = infoCache["info_cache"] as? [String: Any] else {
+            return [:]
+        }
+        var names: [String: String] = [:]
+        for (folder, value) in cache {
+            if let entry = value as? [String: Any], let name = entry["name"] as? String, !name.isEmpty {
+                names[folder] = name
+            }
+        }
+        return names
+    }
+
     private static func firefoxCandidates() -> [BrowserProfileCandidate] {
         let root = BrowserImportSource.firefox.profileRoot
             ?? home().appendingPathComponent("Library/Application Support/Firefox/Profiles", isDirectory: true)
+        let displayNames = firefoxDisplayNames()
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: root,
             includingPropertiesForKeys: nil
@@ -305,13 +358,48 @@ public enum BrowserProfileLocator {
             .filter { $0.pathExtension == "default-release" || $0.pathExtension == "default" }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
             .map { folder in
-                BrowserProfileCandidate(
+                let display = displayNames[folder.lastPathComponent]
+                return BrowserProfileCandidate(
                     source: .firefox,
-                    label: "Firefox — \(folder.lastPathComponent)",
+                    label: display.map { "Firefox — \($0)" } ?? "Firefox — \(folder.lastPathComponent)",
                     folder: folder,
                     isReadable: BrowserDataImporter.profileLooksValid(folder, source: .firefox)
                 )
             }
+    }
+
+    /// Reads `profiles.ini` and maps profile directory names to the names the
+    /// user gave them in Firefox.
+    public static func firefoxDisplayNames() -> [String: String] {
+        let root = BrowserImportSource.firefox.profileRoot
+            ?? home().appendingPathComponent("Library/Application Support/Firefox", isDirectory: true)
+        return firefoxDisplayNames(profilesIniURL: root.appendingPathComponent("profiles.ini"))
+    }
+
+    public static func firefoxDisplayNames(profilesIniURL: URL) -> [String: String] {
+        guard let contents = try? String(contentsOf: profilesIniURL, encoding: .utf8) else { return [:] }
+        var names: [String: String] = [:]
+        var currentName: String?
+        var currentPath: String?
+        func commit() {
+            if let currentName, let currentPath {
+                names[(currentPath as NSString).lastPathComponent] = currentName
+            }
+            currentName = nil
+            currentPath = nil
+        }
+        for line in contents.split(separator: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("[") {
+                commit()
+            } else if trimmed.hasPrefix("Name=") {
+                currentName = String(trimmed.dropFirst("Name=".count))
+            } else if trimmed.hasPrefix("Path=") {
+                currentPath = String(trimmed.dropFirst("Path=".count))
+            }
+        }
+        commit()
+        return names
     }
 
     private static func safariCandidate() -> BrowserProfileCandidate {
