@@ -63,6 +63,10 @@ public final class BrowserWindowModel {
     /// so two windows cannot clobber each other's saved tabs.
     public var persistsSession = true
 
+    /// Window-scoped consumers, such as the AI dock, can release their own
+    /// heavyweight WebViews when the runtime receives memory pressure.
+    public var memoryPressureHandler: (@MainActor (MemoryPressureLevel) -> Void)?
+
     /// Increments whenever the active profile changes. Views use it to
     /// release profile-scoped web content, like AI provider panels.
     public private(set) var profileSwitchToken = 0
@@ -126,6 +130,7 @@ public final class BrowserWindowModel {
         }
         environment.runtime.beginMemoryPressureMonitoring { [weak self] level in
             guard let self else { return }
+            self.memoryPressureHandler?(level)
             switch level {
             case .warning:
                 self.applySleepPolicy()

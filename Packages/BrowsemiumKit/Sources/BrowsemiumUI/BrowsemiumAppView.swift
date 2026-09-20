@@ -106,6 +106,10 @@ public struct BrowsemiumAppView: View {
             FirstRunView(model: model) {
                 UserDefaults.standard.set(true, forKey: Self.onboardingKey)
                 showFirstRun = false
+            } onMoveFromChrome: {
+                UserDefaults.standard.set(true, forKey: Self.onboardingKey)
+                showFirstRun = false
+                model.openPanel(.settings)
             }
         }
         .onAppear {

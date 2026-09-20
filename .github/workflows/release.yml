@@ -93,6 +93,27 @@ jobs:
             --size "${{ steps.sign.outputs.size }}" \
             --sha256 "${{ steps.sign.outputs.sha }}"
 
+      - name: Sign the appcast feed
+        run: |
+          SIGN_UPDATE="$(find "$HOME/Library/Developer/Xcode/DerivedData" \
+            -type f \
+            -path '*/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update' \
+            -perm -111 \
+            -print -quit)"
+          if [ -z "$SIGN_UPDATE" ]; then
+            echo "Sparkle sign_update was not found; refusing to publish an unsigned appcast." >&2
+            exit 1
+          fi
+          KEY_FILE="$HOME/.config/browsemium/sparkle-ed25519.key"
+          "$SIGN_UPDATE" \
+            --ed-key-file "$KEY_FILE" \
+            --disable-signing-warning \
+            Site/appcast.xml
+          "$SIGN_UPDATE" \
+            --verify \
+            --ed-key-file "$KEY_FILE" \
+            Site/appcast.xml
+
       - name: Commit the refreshed site files
         run: |
           git config user.name "Browsemium Release"

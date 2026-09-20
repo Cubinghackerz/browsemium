@@ -5,6 +5,7 @@ import BrowsemiumData
 import BrowsemiumEngine
 import Foundation
 import Observation
+import UniformTypeIdentifiers
 
 public enum AIDockMode: String, CaseIterable, Identifiable, Sendable {
     case web
@@ -23,6 +24,17 @@ public enum AIDockMode: String, CaseIterable, Identifiable, Sendable {
 @MainActor
 @Observable
 public final class AIDockViewModel {
+    private static let maximumFileBytes: Int64 = 25 * 1024 * 1024
+    private static let maximumTotalFileBytes: Int64 = 50 * 1024 * 1024
+    private static let allowedFileTypes: [UTType] = [
+        .image,
+        .pdf,
+        .plainText,
+        .json,
+        .commaSeparatedText,
+        UTType(filenameExtension: "md") ?? .plainText
+    ]
+
     public let environment: BrowserEnvironment
 
     public var mode: AIDockMode = .web
@@ -45,9 +57,23 @@ public final class AIDockViewModel {
     public private(set) var currentConversationID: ConversationID?
 
     private var streamTask: Task<Void, Never>?
+    private let attachmentDirectory: URL
+    private var providerImageURLs: [URL] = []
+    /// Changes whenever the page-specific context is invalidated. Async page
+    /// capture must never re-attach content from a tab the user has already
+    /// left.
+    private var contextGeneration: UInt64 = 0
+    private var activeWebPreparationGeneration: UInt64?
 
     public init(environment: BrowserEnvironment) {
         self.environment = environment
+        attachmentDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Browsemium-AI-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(
+            at: attachmentDirectory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
         // Deliberately no keychain work here: this runs at launch, and any
         // keychain read at launch produces a macOS permission prompt.
     }
@@ -73,12 +99,23 @@ public final class AIDockViewModel {
             "Page text · \(context.text.count) characters\(context.isTruncated ? " (trimmed)" : "")\(source(of: context))"
         case .viewportImage(let image):
             "Screenshot · \(image.width)×\(image.height)"
+        case .fullPageImage(let image):
+            "Full page · \(image.width)×\(image.height)"
+        case .file(let file):
+            "\(file.filename) · \(Self.byteCountDescription(file.byteCount))"
         }
     }
 
     public func thumbnail(for attachment: AIContextAttachment) -> NSImage? {
-        guard case .viewportImage(let image) = attachment else { return nil }
-        return NSImage(data: image.data)
+        switch attachment {
+        case .viewportImage(let image), .fullPageImage(let image):
+            return NSImage(data: image.data)
+        case .file(let file):
+            guard UTType(mimeType: file.mimeType)?.conforms(to: .image) == true else { return nil }
+            return NSImage(contentsOf: file.fileURL)
+        default:
+            return nil
+        }
     }
 
     private func source(of context: PageTextContext) -> String {
@@ -205,6 +242,8 @@ public final class AIDockViewModel {
                 switch (kind, attachment) {
                 case (.selection, .selection), (.readablePage, .readablePage), (.viewportImage, .viewportImage):
                     true
+                case (.fullPageImage, .fullPageImage):
+                    true
                 default:
                     false
                 }
@@ -218,7 +257,8 @@ public final class AIDockViewModel {
 
     public func removeAttachment(at index: Int) {
         guard attachments.indices.contains(index) else { return }
-        attachments.remove(at: index)
+        let removed = attachments.remove(at: index)
+        removeStagedFile(for: removed)
         // If the review sheet is open the handoff was built with the removed
         // attachment — rebuild it so the note matches what will actually send.
         if isReviewPresented {
@@ -235,6 +275,8 @@ public final class AIDockViewModel {
                 switch (attachment, existing) {
                 case (.selection, .selection), (.readablePage, .readablePage), (.viewportImage, .viewportImage):
                     true
+                case (.fullPageImage, .fullPageImage):
+                    true
                 default:
                     false
                 }
@@ -245,7 +287,268 @@ public final class AIDockViewModel {
     }
 
     public func clearAttachments() {
+        contextGeneration &+= 1
+        activeWebPreparationGeneration = nil
+        for attachment in attachments {
+            removeStagedFile(for: attachment)
+        }
         attachments.removeAll()
+        removeProviderImages()
+    }
+
+    /// Presents the native picker and stages validated files in an app-owned
+    /// temporary directory. The provider never receives the user's original
+    /// path; only the staged copy is handed to an explicit upload boundary.
+    public func addFiles() {
+        let panel = NSOpenPanel()
+        panel.title = "Add files to Browsemium AI"
+        panel.message = "Choose images, PDFs, or text documents to attach."
+        panel.prompt = "Add"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = Self.allowedFileTypes
+        guard panel.runModal() == .OK else { return }
+
+        for url in panel.urls {
+            do {
+                try stageFile(at: url)
+            } catch {
+                errorMessage = error.localizedDescription
+                break
+            }
+        }
+    }
+
+    private func stageFile(at sourceURL: URL) throws {
+        let accessed = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if accessed { sourceURL.stopAccessingSecurityScopedResource() }
+        }
+
+        let values = try sourceURL.resourceValues(forKeys: [
+            .isRegularFileKey,
+            .isSymbolicLinkKey,
+            .fileSizeKey,
+            .contentTypeKey
+        ])
+        guard values.isRegularFile == true, values.isSymbolicLink != true else {
+            throw BrowsemiumError.fileNotAllowed("That item is not a regular file.")
+        }
+        let byteCount = Int64(values.fileSize ?? 0)
+        guard byteCount <= Self.maximumFileBytes else {
+            throw BrowsemiumError.fileTooLarge("\(sourceURL.lastPathComponent) is larger than 25 MB.")
+        }
+        let type = values.contentType
+            ?? UTType(filenameExtension: sourceURL.pathExtension)
+        guard let type, Self.allowedFileTypes.contains(where: { type.conforms(to: $0) }) else {
+            throw BrowsemiumError.fileNotAllowed("\(sourceURL.lastPathComponent) is not a supported AI attachment.")
+        }
+        let total = attachments.reduce(Int64(0)) { partial, attachment in
+            guard case .file(let file) = attachment else { return partial }
+            return partial + file.byteCount
+        }
+        guard total + byteCount <= Self.maximumTotalFileBytes else {
+            throw BrowsemiumError.fileTooLarge("Attachments are limited to 50 MB per message.")
+        }
+
+        let safeName = Self.safeFilename(sourceURL.lastPathComponent)
+        let destination = attachmentDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            .appendingPathComponent(safeName)
+        try FileManager.default.createDirectory(
+            at: destination.deletingLastPathComponent(),
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        do {
+            try FileManager.default.copyItem(at: sourceURL, to: destination)
+        } catch {
+            throw BrowsemiumError.fileUnavailable("Browsemium could not stage \(safeName).")
+        }
+
+        let mimeType = type.preferredMIMEType ?? "application/octet-stream"
+        attachments.append(.file(AIFileAttachment(
+            fileURL: destination,
+            filename: safeName,
+            mimeType: mimeType,
+            byteCount: byteCount
+        )))
+        errorMessage = nil
+    }
+
+    private func removeStagedFile(for attachment: AIContextAttachment) {
+        guard case .file(let file) = attachment else { return }
+        let root = attachmentDirectory.standardizedFileURL.path
+        let candidate = file.fileURL.standardizedFileURL
+        guard candidate.path.hasPrefix(root + "/") else { return }
+        try? FileManager.default.removeItem(at: candidate)
+    }
+
+    private static func safeFilename(_ filename: String) -> String {
+        let base = URL(fileURLWithPath: filename).lastPathComponent
+        let cleaned = base.unicodeScalars.map { scalar -> Character in
+            if CharacterSet.controlCharacters.contains(scalar) || scalar == "/" || scalar == "\\" {
+                return "_"
+            }
+            return Character(String(scalar))
+        }
+        let result = String(cleaned).trimmingCharacters(in: .whitespacesAndNewlines)
+        return result.isEmpty ? "attachment" : String(result.prefix(180))
+    }
+
+    private static func byteCountDescription(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    /// Called by the provider bridge after the user presses Send in Web mode.
+    /// The active tab is supplied at that moment, so a fast tab switch cannot
+    /// attach context from the previous page. Automatic capture happens before
+    /// the provider's original gesture is replayed, so a failed capture leaves
+    /// the provider draft untouched instead of sending incomplete context.
+    public func prepareWebProviderMessage(
+        userPrompt: String,
+        tab: BrowserTab?
+    ) async throws -> ProviderComposerPreparation {
+        let generation = contextGeneration
+        var prepared = false
+        isWorking = true
+        defer {
+            isWorking = false
+            if !prepared, activeWebPreparationGeneration == generation {
+                activeWebPreparationGeneration = nil
+            }
+            if !prepared {
+                removeProviderImages()
+            }
+        }
+
+        func verifyContextIsCurrent() throws {
+            guard contextGeneration == generation else {
+                throw BrowsemiumError.captureUnavailable("The active page changed while context was being prepared. Press Send again for the current page.")
+            }
+        }
+
+        try verifyContextIsCurrent()
+        let settings = environment.loadSettings()
+        removeProviderImages()
+        let metadata = settings.includePageMetadataInWebAI
+            ? PageMetadataContext(title: tab?.title, url: tab?.lastCommittedURL)
+            : nil
+
+        if settings.includePageMetadataInWebAI,
+           let tab,
+           let url = tab.lastCommittedURL,
+           let scheme = url.scheme?.lowercased(),
+           scheme == "http" || scheme == "https" {
+            let hasReadablePage = attachments.contains { attachment in
+                if case .readablePage = attachment { return true }
+                return false
+            }
+            let hasFullPageImage = attachments.contains { attachment in
+                if case .fullPageImage = attachment { return true }
+                return false
+            }
+
+            // Rich context is deliberately best-effort. A page without an
+            // article, a browser PDF, or a transient WebKit snapshot failure
+            // must not prevent the provider from receiving the user's query
+            // and sanitized metadata. Each capture is independent so a text
+            // extraction failure cannot suppress a usable screenshot.
+            if !hasReadablePage,
+               let captured = try? await environment.runtime.capture(
+                   tabID: tab.id,
+                   request: CaptureRequest(kinds: [.readablePage])
+               ) {
+                try verifyContextIsCurrent()
+                attachments.append(contentsOf: captured.attachments)
+            }
+            if !hasFullPageImage,
+               let captured = try? await environment.runtime.capture(
+                   tabID: tab.id,
+                   request: CaptureRequest(kinds: [.fullPageImage])
+               ) {
+                try verifyContextIsCurrent()
+                attachments.append(contentsOf: captured.attachments)
+            }
+        }
+
+        try verifyContextIsCurrent()
+        let prompt = AIRequestBuilder.composeWebPrompt(
+            userPrompt: userPrompt,
+            metadata: metadata,
+            attachments: attachments
+        )
+        var fileURLs = attachments.compactMap { attachment -> URL? in
+            guard case .file(let file) = attachment else { return nil }
+            return file.fileURL
+        }
+        for attachment in attachments {
+            let image: PageImageContext?
+            switch attachment {
+            case .viewportImage(let value), .fullPageImage(let value):
+                image = value
+            default:
+                image = nil
+            }
+            guard let image else { continue }
+            let ext = image.mimeType == "image/jpeg" ? "jpg" : "png"
+            let url = attachmentDirectory
+                .appendingPathComponent("provider-\(UUID().uuidString).\(ext)")
+            try image.data.write(to: url, options: [.atomic])
+            providerImageURLs.append(url)
+            fileURLs.append(url)
+        }
+        try verifyContextIsCurrent()
+        activeWebPreparationGeneration = generation
+        prepared = true
+        return ProviderComposerPreparation(text: prompt, fileURLs: fileURLs)
+    }
+
+    public func finishWebProviderMessage() {
+        guard let generation = activeWebPreparationGeneration,
+              generation == contextGeneration else {
+            // A tab switch or a new context selection invalidated this send.
+            // Do not clear the new context that the user may already be
+            // preparing; only discard files owned by the stale attempt.
+            removeProviderImages()
+            activeWebPreparationGeneration = nil
+            return
+        }
+        draft = ""
+        let stagedURLs = attachments.compactMap { attachment -> URL? in
+            guard case .file(let file) = attachment else { return nil }
+            return file.fileURL
+        } + providerImageURLs
+        attachments.removeAll()
+        providerImageURLs.removeAll()
+        contextGeneration &+= 1
+        activeWebPreparationGeneration = nil
+        scheduleCleanup(of: stagedURLs)
+        errorMessage = nil
+    }
+
+    private func removeProviderImages() {
+        for url in providerImageURLs {
+            try? FileManager.default.removeItem(at: url)
+        }
+        providerImageURLs.removeAll()
+    }
+
+    /// A provider may begin its network upload after the native send gesture
+    /// returns. Keep staged files briefly after a successful replay so an
+    /// asynchronous provider upload cannot observe a path that Browsemium has
+    /// already deleted. The files are still app-owned, bounded, and removed
+    /// automatically without retaining a reference to the user-selected path.
+    private func scheduleCleanup(of urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        Task.detached(priority: .utility) {
+            try? await Task.sleep(nanoseconds: 120_000_000_000)
+            guard !Task.isCancelled else { return }
+            for url in urls {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
     }
 
     public func clearConversation() {
@@ -381,10 +684,11 @@ public final class AIDockViewModel {
         switch handoff.method {
         case .prefilledURL(let url):
             providerPanel.open(url: url, provider: provider)
-            // The prompt travels inside the URL; images cannot. Put them on the
-            // pasteboard so a single ⌘V attaches them in the provider's composer.
-            if handoff.includesImage {
-                copyImagesToPasteboard()
+            // The prompt travels inside the URL; rich attachments do not. Put
+            // the full handoff on the pasteboard so a single ⌘V preserves the
+            // user's explicit attachment choice when the provider requires it.
+            if handoff.includesImage || handoff.includesFiles {
+                copyToPasteboard(handoff)
             }
         case .clipboardOnly:
             copyToPasteboard(handoff)
@@ -396,7 +700,7 @@ public final class AIDockViewModel {
         messages.append(AIMessage(role: .assistant, content: note))
         persistAssistantMessage(note)
         draft = ""
-        attachments.removeAll()
+        clearAttachments()
     }
 
     public func copyToPasteboard(_ handoff: ProviderHandoff) {
@@ -404,8 +708,13 @@ public final class AIDockViewModel {
         pasteboard.clearContents()
         var objects: [NSPasteboardWriting] = [handoff.prompt as NSString]
         for attachment in attachments {
-            if case .viewportImage(let image) = attachment, let nsImage = NSImage(data: image.data) {
-                objects.append(nsImage)
+            switch attachment {
+            case .viewportImage(let image), .fullPageImage(let image):
+                if let nsImage = NSImage(data: image.data) { objects.append(nsImage) }
+            case .file(let file):
+                objects.append(file.fileURL as NSURL)
+            default:
+                break
             }
         }
         pasteboard.writeObjects(objects)
@@ -413,8 +722,16 @@ public final class AIDockViewModel {
 
     private func copyImagesToPasteboard() {
         let images: [NSPasteboardWriting] = attachments.compactMap { attachment in
-            guard case .viewportImage(let image) = attachment,
-                  let nsImage = NSImage(data: image.data) else { return nil }
+            let nsImage: NSImage?
+            switch attachment {
+            case .viewportImage(let image), .fullPageImage(let image):
+                nsImage = NSImage(data: image.data)
+            case .file(let file):
+                nsImage = NSImage(contentsOf: file.fileURL)
+            default:
+                nsImage = nil
+            }
+            guard let nsImage else { return nil }
             return nsImage
         }
         guard !images.isEmpty else { return }

@@ -86,4 +86,26 @@ final class WebUIDelegate: NSObject, WKUIDelegate {
         let response = alert.runModal()
         completionHandler(response == .alertFirstButtonReturn ? field.stringValue : nil)
     }
+
+    /// macOS disables file inputs unless the app supplies this delegate. Keep
+    /// the browser's normal user-selected-file behavior instead of silently
+    /// dropping uploads.
+    func webView(
+        _ webView: WKWebView,
+        runOpenPanelWith parameters: WKOpenPanelParameters,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping @MainActor @Sendable ([URL]?) -> Void
+    ) {
+        guard frame.isMainFrame else {
+            completionHandler(nil)
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.title = "Choose a file"
+        panel.prompt = "Choose"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = parameters.allowsDirectories
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        completionHandler(panel.runModal() == .OK ? panel.urls : nil)
+    }
 }

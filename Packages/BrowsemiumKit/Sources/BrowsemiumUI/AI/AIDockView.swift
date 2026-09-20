@@ -17,16 +17,41 @@ struct AIDockView: View {
 
             switch ai.mode {
             case .web:
-                ProviderPanelHost(controller: ai.providerPanel, provider: ai.provider)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous))
-                    .padding(.horizontal, 8)
-                    .padding(.bottom, 8)
+                ZStack(alignment: .top) {
+                    ProviderPanelHost(controller: ai.providerPanel, provider: ai.provider)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    if ai.isWorking {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Preparing page context…")
+                                .font(.system(size: 11.5, weight: .medium))
+                                .foregroundStyle(Color.browsemiumPrimary)
+                        }
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 8)
+                        .background(.regularMaterial, in: Capsule())
+                        .overlay {
+                            Capsule()
+                                .stroke(Color.browsemiumBorder, lineWidth: 1)
+                        }
+                        .padding(.top, 12)
+                        .allowsHitTesting(false)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Preparing page context")
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous))
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
             case .api:
                 AIChatTranscript(ai: ai)
             }
 
-            composer
+            if ai.mode == .api {
+                composer
+            }
         }
         .sheet(isPresented: $ai.isReviewPresented) {
             AIContextReviewSheet(model: model, ai: ai)
@@ -48,6 +73,43 @@ struct AIDockView: View {
             // Only touch the keychain once the assistant is actually visible.
             ai.refreshCredentialState()
             ai.restoreLastConversationIfNeeded()
+            if ai.mode == .web,
+               model.environment.loadSettings().includePageMetadataInWebAI,
+               !UserDefaults.standard.bool(forKey: "browsemium.webAI.pageMetadataNotice.v1") {
+                model.statusMessage = "Web AI adds this page's safe context and a verified screenshot when you send. Change it in Settings."
+                UserDefaults.standard.set(true, forKey: "browsemium.webAI.pageMetadataNotice.v1")
+            }
+        }
+        .onAppear {
+            let dock = ai
+            let browser = model
+            dock.providerPanel.prepareComposerMessage = { [weak dock, weak browser] provider, text in
+                guard let dock, let browser else {
+                    return ProviderComposerPreparation(text: text)
+                }
+                return try await dock.prepareWebProviderMessage(userPrompt: text, tab: browser.activeTab)
+            }
+            dock.providerPanel.didSubmitComposerMessage = { [weak dock] _ in
+                dock?.finishWebProviderMessage()
+            }
+            dock.providerPanel.didFailComposerMessage = { [weak dock, weak browser] _, message in
+                dock?.errorMessage = message
+                browser?.statusMessage = message
+            }
+            browser.memoryPressureHandler = { [weak dock] _ in
+                dock?.providerPanel.releaseAll()
+            }
+        }
+        .onDisappear {
+            // Provider panels are expensive WebViews. Persisted WebKit data
+            // keeps the login, while the live page is recreated on reopen.
+            ai.stop()
+            ai.providerPanel.prepareComposerMessage = nil
+            ai.providerPanel.didSubmitComposerMessage = nil
+            ai.providerPanel.didFailComposerMessage = nil
+            ai.providerPanel.releaseAll()
+            ai.clearAttachments()
+            model.memoryPressureHandler = nil
         }
         .onChange(of: ai.mode) {
             if ai.mode == .api {
@@ -97,7 +159,9 @@ struct AIDockView: View {
                 )
                 .accessibilityLabel("Assistant mode")
 
-                conversationMenu
+                if ai.mode == .web {
+                    webContextMenu
+                }
 
                 BrowsemiumIconButton(systemName: "xmark", label: "Close assistant") {
                     model.toggleAIDock()
@@ -113,35 +177,59 @@ struct AIDockView: View {
         .padding(.bottom, ai.mode == .api ? 8 : 4)
     }
 
-    /// Saved conversations on this Mac: start a new one, reopen an earlier
-    /// one, or clear them.
-    private var conversationMenu: some View {
+    private var webContextMenu: some View {
         Menu {
-            Button("New Chat") { ai.clearConversation() }
-            if !ai.conversationList.isEmpty {
-                Divider()
-                ForEach(ai.conversationList.prefix(12)) { summary in
-                    Button(summary.title) { ai.openConversation(summary.id) }
-                }
-                Divider()
-                Button("Clear Saved Chats", role: .destructive) {
-                    for summary in ai.conversationList {
-                        ai.deleteConversation(summary.id)
+            Text("Automatic context")
+            Toggle(
+                "Include page title + URL",
+                isOn: Binding(
+                    get: { model.environment.loadSettings().includePageMetadataInWebAI },
+                    set: { enabled in
+                        var settings = model.environment.loadSettings()
+                        settings.includePageMetadataInWebAI = enabled
+                        model.environment.saveSettings(settings)
                     }
+                )
+            )
+            Divider()
+            Button("Attach selection") {
+                attachContext(.selection, confirmation: "Selection attached for your next message")
+            }
+            Button("Attach readable page") {
+                attachContext(.readablePage, confirmation: "Page text attached for your next message")
+            }
+            Button("Attach screenshot") {
+                attachContext(.viewportImage, confirmation: "Screenshot captured for your next message")
+            }
+            Button("Attach full page screenshot") {
+                attachContext(.fullPageImage, confirmation: "Full page screenshot captured for your next message")
+            }
+            Button("Add file") {
+                ai.addFiles()
+            }
+            if !ai.attachments.isEmpty {
+                Divider()
+                ForEach(Array(ai.attachmentLabels.enumerated()), id: \.offset) { index, label in
+                    Button("Remove \(label)") { ai.removeAttachment(at: index) }
                 }
             }
         } label: {
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 11))
-                .foregroundStyle(Color.browsemiumSecondary)
-                .frame(width: 22, height: 22)
-                .contentShape(Rectangle())
+            HStack(spacing: 5) {
+                Image(systemName: ai.attachments.isEmpty ? "sparkles" : "sparkles.circle.fill")
+                    .font(.system(size: 11))
+                Text(ai.attachments.isEmpty ? "Context" : "Context · \(ai.attachments.count)")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .foregroundStyle(Color.browsemiumSecondary)
+            .padding(.horizontal, 7)
+            .frame(height: 24)
+            .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Saved chats on this Mac")
-        .accessibilityLabel("Saved chats")
+        .help("Choose what the next web AI message can use")
+        .accessibilityLabel("Web AI context")
     }
 
     private var apiControls: some View {
@@ -236,6 +324,16 @@ struct AIDockView: View {
             }
 
             HStack(alignment: .bottom, spacing: 8) {
+                Button(action: { ai.addFiles() }) {
+                    Image(systemName: "paperclip")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.browsemiumSecondary)
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add file attachment")
+                .help("Attach a file")
+
                 VStack(spacing: 0) {
                     TextField("Ask about this page…", text: $ai.draft, axis: .vertical)
                         .font(.system(size: 12.5))
@@ -286,6 +384,9 @@ struct AIDockView: View {
                 contextButton(systemName: "camera.viewfinder", label: "Capture") {
                     attachContext(.viewportImage, confirmation: "Screenshot attached — describe what to do with it")
                 }
+                contextButton(systemName: "rectangle.portrait.and.arrow.forward", label: "Full page") {
+                    attachContext(.fullPageImage, confirmation: "Full page screenshot attached")
+                }
                 Spacer()
             }
 
@@ -310,9 +411,7 @@ struct AIDockView: View {
             // field and confirm visibly so it never looks like nothing happened.
             if ai.errorMessage == nil {
                 composerFocused = true
-                model.statusMessage = ai.mode == .web
-                    ? "\(confirmation) — drag it into the chat, or send and press ⌘V"
-                    : confirmation
+                model.statusMessage = confirmation
             }
         }
     }
@@ -323,7 +422,7 @@ struct AIDockView: View {
     /// happens costs nothing.
     private func dragProvider(for attachment: AIContextAttachment) -> NSItemProvider {
         switch attachment {
-        case .viewportImage(let image):
+        case .viewportImage(let image), .fullPageImage(let image):
             let provider = NSItemProvider()
             let type = UTType(mimeType: image.mimeType) ?? .png
             let ext = type.preferredFilenameExtension ?? "png"
@@ -343,6 +442,10 @@ struct AIDockView: View {
                 return nil
             }
             provider.suggestedName = "Browsemium capture"
+            return provider
+        case .file(let file):
+            let provider = NSItemProvider(contentsOf: file.fileURL) ?? NSItemProvider()
+            provider.suggestedName = file.filename
             return provider
         case .selection(let context):
             return NSItemProvider(object: context.text as NSString)

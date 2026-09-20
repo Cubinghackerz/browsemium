@@ -89,8 +89,8 @@ public struct GeminiAdapter: AIProviderAdapter {
             supportsVision: capabilities.supportsVision(provider: .gemini, modelID: request.model.id)
         )
 
-        let contents = canonical.messages.map { message -> [String: Any] in
-            let parts = message.parts.map { part -> [String: Any] in
+        let contents = try canonical.messages.map { message -> [String: Any] in
+            let parts = try message.parts.map { part -> [String: Any] in
                 switch part {
                 case .text(let text):
                     return ["text": text]
@@ -101,6 +101,8 @@ public struct GeminiAdapter: AIProviderAdapter {
                             "data": image.data.base64EncodedString()
                         ]
                     ]
+                case .file(let file):
+                    throw BrowsemiumError.fileNotAllowed("The Gemini adapter cannot receive \(file.filename) directly.")
                 }
             }
             return [

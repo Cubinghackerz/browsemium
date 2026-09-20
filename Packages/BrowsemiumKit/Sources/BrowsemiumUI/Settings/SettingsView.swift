@@ -382,6 +382,21 @@ struct SettingsView: View {
 
     private var importSection: some View {
         SettingsCard("Import Browser Data", systemImage: "square.and.arrow.down") {
+            if let chrome = importCandidates.first(where: { $0.source == .chrome }) {
+                SettingsRow("Move from Chrome") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Review profiles, bookmarks, history, search settings, and saved passwords before importing.")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Color.browsemiumSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        BrowsemiumPrimaryButton("Review Chrome import", isDisabled: isImporting) {
+                            beginImport(chrome)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+
             if importCandidates.isEmpty {
                 SettingsRow("Looking for browsers…") {
                     ProgressView().controlSize(.small)
@@ -425,7 +440,7 @@ struct SettingsView: View {
                     ProgressView().controlSize(.small)
                 }
             }
-            SettingsNote("Browsemium detects installed browsers and imports up to 5,000 recent history entries plus all valid bookmarks. macOS asks you to allow access once, then it is remembered. Nothing is uploaded or removed from the source browser.")
+            SettingsNote("Browsemium detects installed browsers and previews up to 50,000 recent Chrome history entries plus all valid bookmarks. macOS asks you to allow access once, then it is remembered. Cookies, extensions, and site storage stay behind. Nothing is uploaded or removed from the source browser.")
         }
     }
 
@@ -499,6 +514,7 @@ struct SettingsView: View {
         SettingsCard("Assistant", systemImage: "sparkles") {
             SettingsToggleRow("Show the assistant", isOn: settingBinding(\.isAIDockEnabled))
             SettingsToggleRow("Save conversations on this Mac", isOn: settingBinding(\.persistAIConversations))
+            SettingsToggleRow("Include automatic page context in web AI", isOn: settingBinding(\.includePageMetadataInWebAI))
 
             ForEach(AIProviderID.allCases, id: \.self) { provider in
                 SettingsRow(ProviderPanelDescriptor.descriptor(for: provider).displayName) {
@@ -533,14 +549,14 @@ struct SettingsView: View {
                 }
             }
 
-            SettingsNote("Nothing reaches an AI provider until you attach context, review it, and confirm. API keys live in your macOS keychain; website panels use your own subscriptions.")
+            SettingsNote("When enabled, Web AI adds the current page title, a sanitized URL, readable page text when available, and a bounded full-page screenshot uploaded through the provider's verified file input. API keys stay in your macOS keychain; website panels use your own subscriptions.")
         }
     }
 
     private var aboutSection: some View {
         SettingsCard("About", systemImage: "info.circle") {
-            SettingsRow("Browsemium 1.0") {
-                Text("WebKit · macOS")
+            SettingsRow("Browsemium") {
+                Text("WebKit · macOS 14+")
                     .font(.system(size: 12))
                     .foregroundStyle(Color.browsemiumTertiary)
             }
@@ -684,8 +700,12 @@ struct SettingsView: View {
                     return try importer.preview(at: folder, source: source)
                 }.value
                 importOptions = BrowserImportOptions()
-                importDestination = .currentProfile
-                importNewProfileName = ""
+                importDestination = candidate.source == .chrome && candidate.label.lowercased() != "default"
+                    ? .newProfile
+                    : .currentProfile
+                importNewProfileName = candidate.source == .chrome && candidate.label.lowercased() != "default"
+                    ? candidate.label
+                    : ""
                 importFolder = folder
                 importPreview = preview
                 statusMessage = nil
@@ -954,9 +974,10 @@ private struct SettingsCard<Content: View>: View {
             .padding(.leading, 4)
             .accessibilityAddTraits(.isHeader)
 
-            VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
                 content
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.browsemiumSurface)
             .clipShape(RoundedRectangle(cornerRadius: BrowserMetrics.panelRadius, style: .continuous))
             .overlay {
@@ -995,7 +1016,7 @@ private struct SettingsRow<Content: View>: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
-        .frame(minHeight: 40)
+        .frame(minHeight: 40, alignment: .center)
     }
 
     private var labelText: some View {
@@ -1003,6 +1024,7 @@ private struct SettingsRow<Content: View>: View {
             .font(.system(size: 12.5))
             .foregroundStyle(Color.browsemiumPrimary)
             .fixedSize(horizontal: false, vertical: true)
+            .layoutPriority(1)
     }
 }
 
@@ -1037,18 +1059,22 @@ private struct SettingsNote: View {
     }
 
     var body: some View {
-        Text(text)
-            .font(.system(size: 11))
-            .foregroundStyle(Color.browsemiumTertiary)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .overlay(alignment: .top) {
-                Rectangle()
-                    .fill(Color.browsemiumBorder)
-                    .frame(height: 1)
-                    .padding(.horizontal, 14)
-            }
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle()
+                .fill(Color.browsemiumBorder)
+                .frame(height: 1)
+                .padding(.horizontal, 14)
+
+            Text(text)
+                .font(.system(size: 11))
+                .foregroundStyle(Color.browsemiumTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
+                .padding(.bottom, 12)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

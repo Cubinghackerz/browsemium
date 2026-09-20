@@ -293,7 +293,7 @@ struct HeadlessRunner {
         let image = PageImageContext(data: Data([0x00]), mimeType: "image/png", width: 4, height: 4)
         let withImage = builder.makeHandoff(provider: .openAI, userPrompt: "Look", attachments: [.viewportImage(image)])
         try expect(withImage.includesImage, "Handoff must report that a screenshot is attached")
-        try expect(withImage.note?.contains("clipboard") == true, "Handoff must explain that the screenshot is on the clipboard")
+        try expect(withImage.note?.contains("provider attachment") == true, "Handoff must explain how the screenshot can be attached")
 
         let grok = builder.makeHandoff(provider: .xAI, userPrompt: "Hi", attachments: [])
         try expect(grok.note?.contains("does not officially support prompt links") == true, "Community prefill must warn")

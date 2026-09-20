@@ -175,7 +175,7 @@ public struct BrowserImportOptions: Sendable {
         includesPasswords: Bool = false,
         includesSearchEngine: Bool = false,
         historySince: Date? = nil,
-        historyLimit: Int = 5_000
+        historyLimit: Int = 50_000
     ) {
         self.includesBookmarks = includesBookmarks
         self.includesHistory = includesHistory
@@ -677,7 +677,10 @@ public final class BrowserDataImporter: @unchecked Sendable {
     static func notImportable(for source: BrowserImportSource) -> [String] {
         switch source.family {
         case .chromium:
-            ["Cookies are encrypted per profile and are not imported."]
+            [
+                "Cookies and site storage are encrypted per profile and are not imported.",
+                "Chrome extensions and browser-specific autofill data need to be reinstalled or reviewed manually."
+            ]
         case .firefox:
             [
                 "Passwords are stored in Firefox's own encrypted key database and are not imported.",
@@ -807,7 +810,7 @@ public final class BrowserDataImporter: @unchecked Sendable {
                     FROM urls
                     WHERE url LIKE 'http%'
                     ORDER BY last_visit_time DESC
-                    LIMIT 5000
+                    LIMIT 50000
                     """
             ).compactMap { row -> ImportedVisit? in
                 guard let rawURL = row["url"] as String?, let url = Self.webURL(rawURL) else { return nil }

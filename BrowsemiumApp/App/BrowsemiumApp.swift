@@ -1,5 +1,6 @@
 import BrowsemiumCore
 import BrowsemiumUI
+import Foundation
 import SwiftUI
 
 @main
@@ -10,7 +11,12 @@ struct BrowsemiumApp: App {
 
     var body: some Scene {
         WindowGroup {
-            BrowsemiumWindowRoot(environment: environment, registry: windowRegistry)
+            BrowsemiumWindowRoot(
+                environment: environment,
+                registry: windowRegistry,
+                updates: updates,
+                initialURLs: Self.commandLineURLs
+            )
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
@@ -21,6 +27,19 @@ struct BrowsemiumApp: App {
 
     private static func makeEnvironment() -> BrowserEnvironment? {
         try? BrowserEnvironment.live()
+    }
+
+    /// Used by the repeatable memory benchmark and by command-line launches
+    /// from scripts. Normal Finder launches have no URL arguments, so this
+    /// does not change ordinary startup behavior.
+    private static let commandLineURLs: [URL] = ProcessInfo.processInfo.arguments.dropFirst().compactMap { argument in
+        guard !argument.hasPrefix("-"),
+              let url = URL(string: argument),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            return nil
+        }
+        return url
     }
 }
 
@@ -43,6 +62,8 @@ final class WindowRegistry {
 private struct BrowsemiumWindowRoot: View {
     let environment: BrowserEnvironment?
     let registry: WindowRegistry
+    let updates: UpdateController
+    let initialURLs: [URL]
 
     @State private var model: BrowserWindowModel?
 
@@ -58,12 +79,126 @@ private struct BrowsemiumWindowRoot: View {
                 Color.browsemiumCanvas.ignoresSafeArea()
             }
         }
+        .overlay {
+            if updates.isUpdateRequired {
+                MandatoryUpdateOverlay(updates: updates)
+            }
+        }
+        .task {
+            updates.checkForUpdatesOnLaunch()
+        }
         .onAppear {
             guard model == nil, let environment else { return }
             let created = BrowserWindowModel(environment: environment)
             created.persistsSession = registry.claimPrimary()
             model = created
+
+            guard !initialURLs.isEmpty else { return }
+            for (index, url) in initialURLs.enumerated() {
+                if index == 0 {
+                    created.open(url)
+                } else {
+                    _ = created.newTab(url: url)
+                }
+            }
         }
+    }
+}
+
+/// A deliberately non-dismissible update gate. It lives above the browser
+/// window so the app never leaves a stale, half-blocking Sparkle alert behind.
+@MainActor
+private struct MandatoryUpdateOverlay: View {
+    let updates: UpdateController
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.44)
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 12) {
+                    Image(systemName: "arrow.down.app")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(Color.browsemiumPrimary)
+                        .frame(width: 38, height: 38)
+                        .background(
+                            Circle()
+                                .fill(Color.browsemiumSelection)
+                        )
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Update required")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(Color.browsemiumPrimary)
+                        Text(updateName)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.browsemiumSecondary)
+                            .lineLimit(2)
+                    }
+                }
+
+                Text("A signed Browsemium update is ready. Install it before continuing so your browser stays secure and supported.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.browsemiumSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if updates.phase != .required {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            if case .failed = updates.phase {
+                                Image(systemName: "exclamationmark.triangle")
+                                    .foregroundStyle(Color.browsemiumWarning)
+                            } else {
+                                if let progress = updates.downloadProgress {
+                                    ProgressView(value: progress)
+                                        .progressViewStyle(.linear)
+                                        .tint(Color.browsemiumAccent)
+                                } else {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                }
+                            }
+                            Text(updates.statusDescription)
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color.browsemiumTertiary)
+                        }
+
+                        if case .failed = updates.phase {
+                            BrowsemiumPrimaryButton("Retry update") {
+                                updates.retryMandatoryUpdate()
+                            }
+                        }
+                    }
+                } else {
+                    BrowsemiumPrimaryButton("Update now") {
+                        updates.installMandatoryUpdate()
+                    }
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: 440, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: BrowserMetrics.overlayRadius, style: .continuous)
+                    .fill(Color.browsemiumRaised)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: BrowserMetrics.overlayRadius, style: .continuous)
+                    .stroke(Color.browsemiumBorderStrong, lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.24), radius: 26, y: 12)
+            .accessibilityElement(children: .contain)
+            .accessibilityAddTraits(.isModal)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .zIndex(20)
+    }
+
+    private var updateName: String {
+        if let version = updates.pendingVersion {
+            return "Browsemium \(version)"
+        }
+        return updates.pendingTitle ?? "A new Browsemium release"
     }
 }
 

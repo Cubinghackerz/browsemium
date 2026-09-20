@@ -165,6 +165,16 @@ public final class BrowserEnvironment {
     }
 
     private static func applicationSupportDirectory() throws -> URL {
+        if let argument = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--profile-dir=") }) {
+            let path = String(argument.dropFirst("--profile-dir=".count))
+            guard !path.isEmpty else {
+                throw BrowsemiumError.databaseFailure("The requested profile directory is empty.")
+            }
+            let directory = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            return directory
+        }
+
         let base = try FileManager.default.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,

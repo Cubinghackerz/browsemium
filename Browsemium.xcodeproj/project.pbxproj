@@ -398,6 +398,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.browsemium.browser.tests.data;
+				PRODUCT_NAME = BrowsemiumDataTests;
 			};
 			name = Release;
 		};
@@ -405,6 +407,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.browsemium.browser.tests.ui;
+				PRODUCT_NAME = BrowsemiumUITests;
 			};
 			name = Debug;
 		};
@@ -438,6 +442,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.browsemium.browser.tests.core;
+				PRODUCT_NAME = BrowsemiumCoreTests;
 			};
 			name = Debug;
 		};
@@ -457,6 +463,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.browsemium.browser.tests.engine;
+				PRODUCT_NAME = BrowsemiumEngineTests;
 			};
 			name = Debug;
 		};
@@ -464,6 +472,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.browsemium.browser.tests.core;
+				PRODUCT_NAME = BrowsemiumCoreTests;
 			};
 			name = Release;
 		};
@@ -484,6 +494,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.browsemium.browser.tests.data;
+				PRODUCT_NAME = BrowsemiumDataTests;
 			};
 			name = Debug;
 		};
@@ -491,6 +503,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.browsemium.browser.tests.ui;
+				PRODUCT_NAME = BrowsemiumUITests;
 			};
 			name = Release;
 		};
@@ -498,6 +512,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.browsemium.browser.tests.engine;
+				PRODUCT_NAME = BrowsemiumEngineTests;
 			};
 			name = Release;
 		};

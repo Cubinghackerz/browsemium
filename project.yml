@@ -48,6 +48,8 @@ targets:
         NSHumanReadableCopyright: "Browsemium"
         SUFeedURL: "https://browsemium.vercel.app/appcast.xml"
         SUPublicEDKey: "sM6jmNfL7Bgw/O5t41DS1qdDU0aoUnp6h6312IOyud4="
+        SURequireSignedFeed: true
+        SUVerifyUpdateBeforeExtraction: true
         SUEnableAutomaticChecks: true
         SUScheduledCheckInterval: 86400
         # Advertises Browsemium as a candidate for http/https so it can be
@@ -87,6 +89,8 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_NAME: BrowsemiumCoreTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.browsemium.browser.tests.core
     sources:
       - Packages/BrowsemiumKit/Tests/BrowsemiumCoreTests
     dependencies:
@@ -98,6 +102,8 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_NAME: BrowsemiumEngineTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.browsemium.browser.tests.engine
     sources:
       - Packages/BrowsemiumKit/Tests/BrowsemiumEngineTests
     dependencies:
@@ -111,6 +117,8 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_NAME: BrowsemiumDataTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.browsemium.browser.tests.data
     sources:
       - Packages/BrowsemiumKit/Tests/BrowsemiumDataTests
     dependencies:
@@ -124,6 +132,8 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_NAME: BrowsemiumUITests
+        PRODUCT_BUNDLE_IDENTIFIER: com.browsemium.browser.tests.ui
     sources:
       - Packages/BrowsemiumKit/Tests/BrowsemiumUITests
     dependencies:

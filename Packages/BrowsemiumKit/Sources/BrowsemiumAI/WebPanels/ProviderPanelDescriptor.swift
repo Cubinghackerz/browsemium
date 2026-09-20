@@ -18,6 +18,20 @@ public struct ProviderPanelDescriptor: Sendable, Identifiable {
     public let termsURL: URL
     public let privacyURL: URL
 
+    /// Only these HTTPS hosts may receive Browsemium's composer bridge.
+    /// Provider pages can navigate within their own subdomains, but the bridge
+    /// is never enabled on an unrelated origin.
+    public var trustedHosts: [String] {
+        guard let host = baseURL.host?.lowercased() else { return [] }
+        return [host]
+    }
+
+    public func trusts(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https",
+              let host = url.host?.lowercased() else { return false }
+        return trustedHosts.contains { host == $0 || host.hasSuffix(".\($0)") }
+    }
+
     public static let chatGPT = ProviderPanelDescriptor(
         id: .openAI,
         displayName: "ChatGPT",

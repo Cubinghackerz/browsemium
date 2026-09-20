@@ -143,6 +143,7 @@ public enum CaptureKind: String, Codable, Sendable {
     case selection
     case readablePage
     case viewportImage
+    case fullPageImage
 }
 
 public struct CaptureRequest: Hashable, Codable, Sendable {
@@ -167,6 +168,42 @@ public struct PageTextContext: Hashable, Codable, Sendable {
     }
 }
 
+/// The small, automatic context attached to web-provider messages. This is
+/// intentionally separate from readable page text and screenshots: metadata
+/// can be enabled by default, while richer page context always requires an
+/// explicit user action.
+public struct PageMetadataContext: Hashable, Codable, Sendable {
+    public let title: String
+    public let url: URL
+
+    public init?(title: String?, url: URL?) {
+        guard let url,
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = url.host, !host.isEmpty else {
+            return nil
+        }
+
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        components?.user = nil
+        components?.password = nil
+        components?.fragment = nil
+        // Query strings commonly contain search terms, tokens, and tracking
+        // identifiers. The host and path identify the page without copying
+        // those values into an AI prompt.
+        components?.query = nil
+        guard let safeURL = components?.url else { return nil }
+
+        let trimmedTitle = (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        self.title = String(trimmedTitle.prefix(240))
+        self.url = safeURL
+    }
+
+    public var asPageTextContext: PageTextContext {
+        PageTextContext(url: url, title: title, text: "")
+    }
+}
+
 public struct PageImageContext: Hashable, Codable, Sendable {
     public let data: Data
     public let mimeType: String
@@ -181,10 +218,37 @@ public struct PageImageContext: Hashable, Codable, Sendable {
     }
 }
 
+/// A user-selected file staged inside Browsemium's private temporary area.
+/// The URL is never persisted as conversation content; it is only resolved by
+/// the active provider/runtime while the attachment is alive.
+public struct AIFileAttachment: Hashable, Codable, Sendable, Identifiable {
+    public let id: UUID
+    public let fileURL: URL
+    public let filename: String
+    public let mimeType: String
+    public let byteCount: Int64
+
+    public init(
+        id: UUID = UUID(),
+        fileURL: URL,
+        filename: String,
+        mimeType: String,
+        byteCount: Int64
+    ) {
+        self.id = id
+        self.fileURL = fileURL
+        self.filename = filename
+        self.mimeType = mimeType
+        self.byteCount = byteCount
+    }
+}
+
 public enum AIContextAttachment: Sendable {
     case selection(PageTextContext)
     case readablePage(PageTextContext)
     case viewportImage(PageImageContext)
+    case fullPageImage(PageImageContext)
+    case file(AIFileAttachment)
 }
 
 public struct CapturedContext: Sendable {
@@ -309,6 +373,10 @@ public enum BrowsemiumError: Error, Equatable, Sendable {
     case webContentUnavailable
     case captureUnavailable(String)
     case captureFailed(String)
+    case fileNotAllowed(String)
+    case fileTooLarge(String)
+    case fileUnavailable(String)
+    case providerUploadFailed(String)
 }
 
 extension BrowsemiumError: LocalizedError {
@@ -337,6 +405,14 @@ extension BrowsemiumError: LocalizedError {
         case .captureUnavailable(let message):
             message
         case .captureFailed(let message):
+            message
+        case .fileNotAllowed(let message):
+            message
+        case .fileTooLarge(let message):
+            message
+        case .fileUnavailable(let message):
+            message
+        case .providerUploadFailed(let message):
             message
         }
     }

@@ -74,16 +74,24 @@ public struct OpenAIAdapter: AIProviderAdapter {
         let canonical = try AIRequestBuilder.build(
             request,
             policy: policy,
-            supportsVision: capabilities.supportsVision(provider: .openAI, modelID: request.model.id)
+            supportsVision: capabilities.supportsVision(provider: .openAI, modelID: request.model.id),
+            supportsFiles: true
         )
 
-        let input = canonical.messages.map { message -> [String: Any] in
-            let content = message.parts.map { part -> [String: Any] in
+        let input = try canonical.messages.map { message -> [String: Any] in
+            let content = try message.parts.map { part -> [String: Any] in
                 switch part {
                 case .text(let text):
                     return ["type": "input_text", "text": text]
                 case .image(let image):
                     return ["type": "input_image", "image_url": ProviderJSON.dataURL(for: image)]
+                case .file(let file):
+                    let data = try Data(contentsOf: file.fileURL, options: [.mappedIfSafe])
+                    return [
+                        "type": "input_file",
+                        "filename": file.filename,
+                        "file_data": "data:\(file.mimeType);base64,\(data.base64EncodedString())"
+                    ]
                 }
             }
             return [

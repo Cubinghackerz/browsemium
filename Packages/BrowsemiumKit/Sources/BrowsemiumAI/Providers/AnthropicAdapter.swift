@@ -83,8 +83,8 @@ public struct AnthropicAdapter: AIProviderAdapter {
             supportsVision: capabilities.supportsVision(provider: .anthropic, modelID: request.model.id)
         )
 
-        let messages = canonical.messages.map { message -> [String: Any] in
-            let content = message.parts.map { part -> [String: Any] in
+        let messages = try canonical.messages.map { message -> [String: Any] in
+            let content = try message.parts.map { part -> [String: Any] in
                 switch part {
                 case .text(let text):
                     return ["type": "text", "text": text]
@@ -97,6 +97,8 @@ public struct AnthropicAdapter: AIProviderAdapter {
                             "data": image.data.base64EncodedString()
                         ]
                     ]
+                case .file(let file):
+                    throw BrowsemiumError.fileNotAllowed("The Anthropic adapter cannot receive \(file.filename) directly.")
                 }
             }
             return [

@@ -79,13 +79,15 @@ public struct XAIAdapter: AIProviderAdapter {
             supportsVision: capabilities.supportsVision(provider: .xAI, modelID: request.model.id)
         )
 
-        let input = canonical.messages.map { message -> [String: Any] in
-            let content = message.parts.map { part -> [String: Any] in
+        let input = try canonical.messages.map { message -> [String: Any] in
+            let content = try message.parts.map { part -> [String: Any] in
                 switch part {
                 case .text(let text):
                     return ["type": "input_text", "text": text]
                 case .image(let image):
                     return ["type": "input_image", "image_url": ProviderJSON.dataURL(for: image)]
+                case .file(let file):
+                    throw BrowsemiumError.fileNotAllowed("The xAI adapter cannot receive \(file.filename) directly.")
                 }
             }
             return [

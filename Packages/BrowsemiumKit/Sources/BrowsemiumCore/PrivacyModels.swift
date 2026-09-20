@@ -114,6 +114,10 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
     public var protectionLevel: ProtectionLevel
     public var persistAIConversations: Bool
     public var isAIDockEnabled: Bool
+    /// Adds sanitized page metadata and bounded page context to web-provider
+    /// sends. Automatic screenshots are uploaded only after provider
+    /// attachment verification succeeds.
+    public var includePageMetadataInWebAI: Bool
 
     /// Memory saver unloads background tabs aggressively.
     public var memorySaverEnabled: Bool
@@ -135,6 +139,7 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
         protectionLevel: ProtectionLevel = .standard,
         persistAIConversations: Bool = false,
         isAIDockEnabled: Bool = true,
+        includePageMetadataInWebAI: Bool = true,
         memorySaverEnabled: Bool = true,
         tabSleepMinutes: Int = 5,
         maximumLiveTabs: Int = 4,
@@ -149,6 +154,7 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
         self.protectionLevel = protectionLevel
         self.persistAIConversations = persistAIConversations
         self.isAIDockEnabled = isAIDockEnabled
+        self.includePageMetadataInWebAI = includePageMetadataInWebAI
         self.memorySaverEnabled = memorySaverEnabled
         self.tabSleepMinutes = tabSleepMinutes
         self.maximumLiveTabs = maximumLiveTabs
@@ -165,6 +171,7 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
         case protectionLevel
         case persistAIConversations
         case isAIDockEnabled
+        case includePageMetadataInWebAI
         case memorySaverEnabled
         case tabSleepMinutes
         case maximumLiveTabs
@@ -186,6 +193,7 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
         try container.encode(protectionLevel, forKey: .protectionLevel)
         try container.encode(persistAIConversations, forKey: .persistAIConversations)
         try container.encode(isAIDockEnabled, forKey: .isAIDockEnabled)
+        try container.encode(includePageMetadataInWebAI, forKey: .includePageMetadataInWebAI)
         try container.encode(memorySaverEnabled, forKey: .memorySaverEnabled)
         try container.encode(tabSleepMinutes, forKey: .tabSleepMinutes)
         try container.encode(maximumLiveTabs, forKey: .maximumLiveTabs)
@@ -208,6 +216,7 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
         protectionLevel = try container.decodeIfPresent(ProtectionLevel.self, forKey: .protectionLevel) ?? defaults.protectionLevel
         persistAIConversations = try container.decodeIfPresent(Bool.self, forKey: .persistAIConversations) ?? defaults.persistAIConversations
         isAIDockEnabled = try container.decodeIfPresent(Bool.self, forKey: .isAIDockEnabled) ?? defaults.isAIDockEnabled
+        includePageMetadataInWebAI = try container.decodeIfPresent(Bool.self, forKey: .includePageMetadataInWebAI) ?? defaults.includePageMetadataInWebAI
         memorySaverEnabled = try container.decodeIfPresent(Bool.self, forKey: .memorySaverEnabled) ?? defaults.memorySaverEnabled
         tabSleepMinutes = try container.decodeIfPresent(Int.self, forKey: .tabSleepMinutes) ?? defaults.tabSleepMinutes
         maximumLiveTabs = try container.decodeIfPresent(Int.self, forKey: .maximumLiveTabs) ?? defaults.maximumLiveTabs

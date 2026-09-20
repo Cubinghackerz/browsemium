@@ -9,6 +9,7 @@ import SwiftUI
 struct FirstRunView: View {
     @Bindable var model: BrowserWindowModel
     let onFinish: () -> Void
+    let onMoveFromChrome: () -> Void
 
     @State private var step = 0
     @State private var searchTemplate = SearchEnginePreset.google.template
@@ -91,6 +92,10 @@ struct FirstRunView: View {
                 .foregroundStyle(Color.browsemiumSecondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
+
+            BrowsemiumTextButton("Moving from Chrome?") {
+                onMoveFromChrome()
+            }
 
             Spacer()
         }
@@ -203,7 +208,7 @@ struct FirstRunView: View {
                 .tint(Color.browsemiumAccentFill)
 
             VStack(alignment: .leading, spacing: 6) {
-                assurance("Nothing reaches an AI provider until you attach context, review it, and confirm.")
+                assurance("Web AI can include the current page title and a sanitized URL. Rich page context is always explicit.")
                 assurance("API keys live in your macOS keychain — never in the database, never in logs.")
                 assurance("The assistant answers. It never clicks, types, or navigates for you.")
             }

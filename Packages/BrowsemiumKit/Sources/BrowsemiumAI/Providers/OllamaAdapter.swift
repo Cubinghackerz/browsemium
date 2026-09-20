@@ -87,12 +87,14 @@ public struct OllamaAdapter: AIProviderAdapter {
             ["role": "system", "content": AIRequestBuilder.systemPrompt]
         ]
         for message in canonical.messages {
-            let content = message.parts.map { part -> [String: Any] in
+            let content = try message.parts.map { part -> [String: Any] in
                 switch part {
                 case .text(let text):
                     return ["type": "text", "text": text]
                 case .image(let image):
                     return ["type": "image_url", "image_url": ["url": ProviderJSON.dataURL(for: image)]]
+                case .file(let file):
+                    throw BrowsemiumError.fileNotAllowed("The Ollama adapter cannot receive \(file.filename) directly.")
                 }
             }
             messages.append([
