@@ -293,7 +293,7 @@ struct HeadlessRunner {
         let image = PageImageContext(data: Data([0x00]), mimeType: "image/png", width: 4, height: 4)
         let withImage = builder.makeHandoff(provider: .openAI, userPrompt: "Look", attachments: [.viewportImage(image)])
         try expect(withImage.includesImage, "Handoff must report that a screenshot is attached")
-        try expect(withImage.note?.contains("Screenshots cannot travel through a link") == true, "Handoff must explain the screenshot limitation")
+        try expect(withImage.note?.contains("clipboard") == true, "Handoff must explain that the screenshot is on the clipboard")
 
         let grok = builder.makeHandoff(provider: .xAI, userPrompt: "Hi", attachments: [])
         try expect(grok.note?.contains("does not officially support prompt links") == true, "Community prefill must warn")
@@ -357,7 +357,7 @@ struct HeadlessRunner {
     }
 
     private static func verifyPersistence() throws {
-        let database = try AppDatabase.inMemory()
+        let database = try AppDatabase.inMemoryProfile()
         let history = HistoryRepository(database: database)
         let now = Date()
         try history.record(url: URL(string: "https://swift.org/blog")!, title: "Swift Blog", visitedAt: now)
@@ -437,7 +437,7 @@ struct HeadlessRunner {
     }
 
     private static func verifyPrivacyControls() throws {
-        let database = try AppDatabase.inMemory()
+        let database = try AppDatabase.inMemoryProfile()
         let history = HistoryRepository(database: database)
         let permissions = PermissionRepository(database: database)
         let settings = SettingsRepository(database: database)
@@ -606,7 +606,7 @@ struct HeadlessRunner {
     }
 
     private static func verifyDatabase() throws {
-        let appDatabase = try AppDatabase.inMemory()
+        let appDatabase = try AppDatabase.inMemoryProfile()
         let names = try appDatabase.databaseQueue.read { database in
             try String.fetchAll(database, sql: "SELECT name FROM sqlite_master WHERE type IN ('table', 'view')")
         }
