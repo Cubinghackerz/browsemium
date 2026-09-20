@@ -81,39 +81,11 @@ jobs:
 
       - name: Refresh the appcast and checksum
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          BUILD="${VERSION//./}"
-          python3 - "$VERSION" "$BUILD" "${{ steps.sign.outputs.signature }}" "${{ steps.sign.outputs.size }}" <<'PY'
-          import sys, pathlib
-          version, build, signature, size = sys.argv[1:5]
-          appcast = pathlib.Path("Site/appcast.xml")
-          text = appcast.read_text()
-          item = f'''    <item>
-              <title>Browsemium {version}</title>
-              <sparkle:releaseNotesLink>https://github.com/Cubinghackerz/browsemium/releases/tag/v{version}</sparkle:releaseNotesLink>
-              <pubDate>{__import__("email.utils", fromlist=["formatdate"]).formatdate(localtime=True)}</pubDate>
-              <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-              <enclosure
-                url="https://github.com/Cubinghackerz/browsemium/releases/download/v{version}/Browsemium-{version}.dmg"
-                sparkle:version="{build}"
-                sparkle:shortVersionString="{version}"
-                sparkle:edSignature="{signature}"
-                length="{size}"
-                type="application/octet-stream" />
-            </item>
-          '''
-          marker = "    <item>"
-          end = text.index("</item>") + len("</item>") + 1
-          appcast.write_text(text[:text.index(marker)] + item + text[end:])
-          pathlib.Path("Site/checksum.txt").write_text(
-              f"{{}}  Browsemium-{version}.dmg\n".format(sys.argv[6] if len(sys.argv) > 6 else "")
-          ) if False else pathlib.Path("Site/checksum.txt").write_text(
-              f"${{SHA}}  Browsemium-{version}.dmg\n"
-          )
-          PY
-          echo "note: checksum.txt is written from the signed hash below"
-        env:
-          SHA: ${{ steps.sign.outputs.sha }}
+          python3 Scripts/release/update-appcast.py \
+            --version "${{ steps.version.outputs.version }}" \
+            --signature "${{ steps.sign.outputs.signature }}" \
+            --size "${{ steps.sign.outputs.size }}" \
+            --sha256 "${{ steps.sign.outputs.sha }}"
 
       - name: Commit the refreshed site files
         run: |

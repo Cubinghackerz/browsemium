@@ -1,0 +1,94 @@
+- generic [ref=e2]:
+  - link "Skip to content" [ref=e3] [cursor=pointer]:
+    - /url: "#main-content"
+  - banner [ref=e4]:
+    - generic [ref=e6]:
+      - link "Prismium home" [ref=e7] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e9]:
+          - text: Prism
+          - emphasis [ref=e10]: i
+          - text: um
+      - generic [ref=e11]:
+        - generic [ref=e12]: Service terminated
+        - link [ref=e13] [cursor=pointer]:
+          - /url: https://www.tryaidiy.com/
+  - generic [ref=e18]:
+    - main [ref=e19]:
+      - region [ref=e21]:
+        - generic [ref=e22]:
+          - paragraph [ref=e24]: PRISMIUM · SERVICE TERMINATED
+          - heading "This service has been terminated." [level=1] [ref=e26]:
+            - generic [ref=e27]: This
+            - generic [ref=e30]: service
+            - generic [ref=e33]: has
+            - generic [ref=e36]: been
+            - generic [ref=e39]: terminated.
+          - paragraph [ref=e42]: Prismium is no longer available. The workspace, accounts, and sign-in have been shut down and will not return.
+          - paragraph [ref=e43]:
+            - text: Prismium was heavily based on
+            - link "ai.diy" [ref=e44] [cursor=pointer]:
+              - /url: https://www.tryaidiy.com/
+            - text: ", the open-source, browser-local AI workspace. If you have an existing ChatGPT or SuperGrok subscription, use ai.diy instead — it runs those subscriptions directly and keeps your workspace in your browser."
+          - generic [ref=e45]:
+            - link "Use ai.diy instead" [ref=e46] [cursor=pointer]:
+              - /url: https://www.tryaidiy.com/
+            - link "Source on GitHub" [ref=e53] [cursor=pointer]:
+              - /url: https://github.com/Cubinghackerz/ai.diy
+    - contentinfo [ref=e60]:
+      - generic [ref=e61]:
+        - generic [ref=e62]:
+          - generic [ref=e63]:
+            - link [ref=e64] [cursor=pointer]:
+              - /url: /
+              - img "Prismium logo" [ref=e65]
+              - generic [ref=e66]:
+                - text: Prism
+                - emphasis [ref=e67]: i
+                - text: um
+            - paragraph [ref=e68]:
+              - text: Prismium has been terminated and is no longer available. It was heavily based on
+              - link "ai.diy" [ref=e69] [cursor=pointer]:
+                - /url: https://www.tryaidiy.com/
+              - text: ", the open-source, browser-local AI workspace — use it instead, especially with an existing ChatGPT or SuperGrok subscription."
+            - generic [ref=e70]: Service terminated
+          - generic [ref=e73]:
+            - navigation "Footer — Product" [ref=e75]:
+              - heading "Product" [level=3] [ref=e76]
+              - list [ref=e77]:
+                - listitem [ref=e78]:
+                  - link "ai.diy — use this instead" [ref=e79] [cursor=pointer]:
+                    - /url: https://www.tryaidiy.com/
+                - listitem [ref=e82]:
+                  - link "GitHub" [ref=e83] [cursor=pointer]:
+                    - /url: https://github.com/Cubinghackerz/ai.diy
+                - listitem [ref=e86]:
+                  - link "Rooms" [ref=e87] [cursor=pointer]:
+                    - /url: /rooms
+            - navigation "Footer — Resources" [ref=e89]:
+              - heading "Resources" [level=3] [ref=e90]
+              - list [ref=e91]:
+                - listitem [ref=e92]:
+                  - link "Documentation" [ref=e93] [cursor=pointer]:
+                    - /url: https://github.com/Cubinghackerz/ai.diy#readme
+                - listitem [ref=e96]:
+                  - link "llms.txt" [ref=e97] [cursor=pointer]:
+                    - /url: /llms.txt
+            - navigation "Footer — Legal" [ref=e101]:
+              - heading "Legal" [level=3] [ref=e102]
+              - list [ref=e103]:
+                - listitem [ref=e104]:
+                  - link "Privacy" [ref=e105] [cursor=pointer]:
+                    - /url: /privacy
+                - listitem [ref=e106]:
+                  - link "Terms" [ref=e107] [cursor=pointer]:
+                    - /url: /terms
+                - listitem [ref=e108]:
+                  - link "Support" [ref=e109] [cursor=pointer]:
+                    - /url: mailto:support@prismium.ai
+                - listitem [ref=e110]:
+                  - link "X / Twitter" [ref=e111] [cursor=pointer]:
+                    - /url: https://x.com/HeckingHacker
+        - generic [ref=e114]:
+          - paragraph [ref=e115]: © 2026 Prismium. All rights reserved.
+          - paragraph [ref=e116]: Terminated · Heavily based on ai.diy (MIT)

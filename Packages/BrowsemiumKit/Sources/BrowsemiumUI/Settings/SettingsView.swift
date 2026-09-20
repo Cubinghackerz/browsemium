@@ -27,11 +27,15 @@ struct SettingsView: View {
     @State private var isPreparingPreview = false
     @State private var importDestination: BrowserImportDestination = .currentProfile
     @State private var importNewProfileName = ""
+    /// When a candidate lives inside a granted browser root, the scope has to
+    /// be opened on the root while its child profile is read.
+    @State private var importAccessRoot: URL?
     @State private var isAddingProfile = false
     @State private var newProfileNameText = ""
     @State private var profileRenameTarget: BrowserProfile?
     @State private var profileRenameText = ""
     @State private var profileDeleteTarget: BrowserProfile?
+    @State private var profiles: [BrowserProfile] = []
     @State private var isDefaultBrowser = DefaultBrowser.isDefault
 
     private let retentionOptions: [(label: String, days: Int?)] = [
@@ -69,8 +73,12 @@ struct SettingsView: View {
         .onAppear {
             settings = model.environment.loadSettings()
             refreshCredentials()
+            refreshProfiles()
             model.refreshSavedCredentials()
             refreshImportCandidates()
+        }
+        .onChange(of: model.profileSwitchToken) {
+            refreshProfiles()
         }
         .sheet(item: $importPreview) { preview in
             ImportPreviewSheet(
@@ -127,7 +135,8 @@ struct SettingsView: View {
             Button("Create") {
                 let name = newProfileNameText
                 newProfileNameText = ""
-                model.createProfile(named: name.isEmpty ? "Profile \(model.profiles.count + 1)" : name)
+                model.createProfile(named: name.isEmpty ? "Profile \(profiles.count + 1)" : name)
+                refreshProfiles()
             }
             Button("Cancel", role: .cancel) { newProfileNameText = "" }
         } message: {
@@ -146,6 +155,7 @@ struct SettingsView: View {
                     model.renameProfile(target, to: profileRenameText)
                 }
                 profileRenameTarget = nil
+                refreshProfiles()
             }
             Button("Cancel", role: .cancel) { profileRenameTarget = nil }
         }
@@ -162,6 +172,7 @@ struct SettingsView: View {
                     model.deleteProfile(target)
                 }
                 profileDeleteTarget = nil
+                refreshProfiles()
             }
             Button("Cancel", role: .cancel) { profileDeleteTarget = nil }
         } message: {
@@ -212,9 +223,18 @@ struct SettingsView: View {
 
     private var profilesSection: some View {
         SettingsCard("Profiles", systemImage: "person.2") {
-            ForEach(model.profiles) { profile in
+            ForEach(profiles) { profile in
                 SettingsRow(profile.name) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 10) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.browsemiumSelection)
+                            Text(profile.initials)
+                                .font(.system(size: 9.5, weight: .semibold))
+                                .foregroundStyle(Color.browsemiumSecondary)
+                        }
+                        .frame(width: 20, height: 20)
+
                         if profile.id == model.activeProfile.id {
                             Text("Active")
                                 .font(.system(size: 11))
@@ -222,14 +242,15 @@ struct SettingsView: View {
                         } else {
                             BrowsemiumTextButton("Switch") {
                                 model.switchProfile(to: profile)
+                                refreshProfiles()
                             }
                         }
-                        BrowsemiumIconButton(systemName: "pencil", label: "Rename \(profile.name)") {
+                        BrowsemiumTextButton("Rename") {
                             profileRenameTarget = profile
                             profileRenameText = profile.name
                         }
-                        if model.profiles.count > 1 {
-                            BrowsemiumIconButton(systemName: "trash", label: "Delete \(profile.name)") {
+                        if profiles.count > 1 {
+                            BrowsemiumTextButton("Delete", role: .destructive) {
                                 profileDeleteTarget = profile
                             }
                         }
@@ -237,8 +258,8 @@ struct SettingsView: View {
                 }
             }
 
-            SettingsRow("New profile") {
-                BrowsemiumTextButton("Add Profile…") {
+            SettingsRow("Add a profile") {
+                BrowsemiumTextButton("New Profile…") {
                     newProfileNameText = ""
                     isAddingProfile = true
                 }
@@ -250,6 +271,13 @@ struct SettingsView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    /// The profile list lives outside the observable model, so it is mirrored
+    /// into state and refreshed after every mutation — otherwise adding or
+    /// renaming a profile leaves the list stale.
+    private func refreshProfiles() {
+        profiles = model.profiles
     }
 
     private var browsingSection: some View {
@@ -622,10 +650,16 @@ struct SettingsView: View {
             loadPreview(folder: granted, candidate: candidate)
             return
         }
+        // A granted browser root covers its child profiles, so a profile
+        // discovered inside one imports without another prompt.
+        if let root = ImportAccessStore.resolveAncestor(of: candidate.folder) {
+            loadPreview(folder: candidate.folder, candidate: candidate, accessRoot: root)
+            return
+        }
         presentImportPanel(startingAt: candidate.folder, candidate: candidate)
     }
 
-    private func loadPreview(folder: URL, candidate: BrowserProfileCandidate) {
+    private func loadPreview(folder: URL, candidate: BrowserProfileCandidate, accessRoot: URL? = nil) {
         let importer = BrowserDataImporter(
             bookmarks: model.environment.bookmarkRepository,
             history: model.environment.historyRepository
@@ -636,6 +670,7 @@ struct SettingsView: View {
         importingID = candidate.id
         isPreparingPreview = true
         statusMessage = "Reading \(candidate.label)…"
+        importAccessRoot = accessRoot
         Task {
             defer {
                 isPreparingPreview = false
@@ -643,8 +678,9 @@ struct SettingsView: View {
             }
             do {
                 let preview = try await Task.detached {
-                    let scoped = folder.startAccessingSecurityScopedResource()
-                    defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
+                    let scope = accessRoot ?? folder
+                    let scoped = scope.startAccessingSecurityScopedResource()
+                    defer { if scoped { scope.stopAccessingSecurityScopedResource() } }
                     return try importer.preview(at: folder, source: source)
                 }.value
                 importOptions = BrowserImportOptions()
@@ -657,6 +693,31 @@ struct SettingsView: View {
                 statusMessage = error.localizedDescription
             }
         }
+    }
+
+    /// After the user grants a folder: if it is a browser root holding several
+    /// profiles, list them all; if it is one profile, preview it.
+    private func handleGrantedFolder(_ granted: URL, source: BrowserImportSource, candidate: BrowserProfileCandidate?) {
+        let looksLikeProfile = BrowserDataImporter.profileLooksValid(granted, source: source)
+        if !looksLikeProfile {
+            let discovered = BrowserProfileLocator.profiles(insideBrowserRoot: granted, source: source)
+            if discovered.count > 1 || (discovered.count == 1 && discovered[0].folder.standardizedFileURL != granted.standardizedFileURL) {
+                var merged = importCandidates.filter { existing in
+                    !discovered.contains { $0.id == existing.id }
+                }
+                merged.append(contentsOf: discovered)
+                importCandidates = merged.filter { $0.isReadable } + merged.filter { !$0.isReadable }
+                statusMessage = "Found \(discovered.count) profiles in \(source.displayName) — choose one to import"
+                return
+            }
+        }
+        let target = candidate ?? BrowserProfileCandidate(
+            source: source,
+            label: granted.lastPathComponent,
+            folder: granted,
+            isReadable: true
+        )
+        loadPreview(folder: granted, candidate: target, accessRoot: candidate == nil ? nil : granted)
     }
 
     private func chooseImportFolder() {
@@ -673,14 +734,8 @@ struct SettingsView: View {
         let source = BrowserImportSourceDetector.detect(in: folder)
             ?? importCandidates.first { $0.folder.standardizedFileURL == folder.standardizedFileURL }?.source
             ?? .chrome
-        let candidate = BrowserProfileCandidate(
-            source: source,
-            label: folder.lastPathComponent,
-            folder: folder,
-            isReadable: true
-        )
-        ImportAccessStore.save(folder: folder, for: candidate.id)
-        loadPreview(folder: folder, candidate: candidate)
+        ImportAccessStore.save(folder: folder, for: "\(source.rawValue)|\(folder.path)")
+        handleGrantedFolder(folder, source: source, candidate: nil)
     }
 
     private func presentImportPanel(startingAt folder: URL, candidate: BrowserProfileCandidate) {
@@ -696,7 +751,7 @@ struct SettingsView: View {
         panel.directoryURL = folder
         guard panel.runModal() == .OK, let granted = panel.url else { return }
         ImportAccessStore.save(folder: granted, for: candidate.id)
-        loadPreview(folder: granted, candidate: candidate)
+        handleGrantedFolder(granted, source: candidate.source, candidate: candidate)
     }
 
     private func commitImport() {
@@ -718,13 +773,15 @@ struct SettingsView: View {
             history: model.environment.historyRepository
         )
         let options = importOptions
+        let accessRoot = importAccessRoot
         let keyProvider = ChromeSafeStorageKeyProvider(keychain: model.environment.keychain)
         isImporting = true
         Task {
             do {
                 let result = try await Task.detached {
-                    let scoped = folder.startAccessingSecurityScopedResource()
-                    defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
+                    let scope = accessRoot ?? folder
+                    let scoped = scope.startAccessingSecurityScopedResource()
+                    defer { if scoped { scope.stopAccessingSecurityScopedResource() } }
                     return try importer.apply(
                         preview,
                         options: options,

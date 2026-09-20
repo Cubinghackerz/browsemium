@@ -70,6 +70,71 @@ func firefoxProfilesIniProvidesProfileDisplayNames() throws {
     #expect(names.count == 2)
 }
 
+/// A granted browser root commonly holds several profiles. Each must be
+/// offered separately, named from Local State, with Default first.
+@Test
+func grantedChromeRootExpandsIntoEveryProfile() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("browsemium-chrome-root-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    // Two profiles plus a folder that is not a profile.
+    for name in ["Default", "Profile 1", "Crashpad"] {
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent(name, isDirectory: true),
+            withIntermediateDirectories: true
+        )
+    }
+    // Minimal profile markers so they validate.
+    for name in ["Default", "Profile 1"] {
+        try "{}".write(
+            to: root.appendingPathComponent(name).appendingPathComponent("Preferences"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "{}".write(
+            to: root.appendingPathComponent(name).appendingPathComponent("Bookmarks"),
+            atomically: true,
+            encoding: .utf8
+        )
+    }
+    let localState: [String: Any] = [
+        "profile": [
+            "info_cache": [
+                "Default": ["name": "Personal"],
+                "Profile 1": ["name": "Work"]
+            ]
+        ]
+    ]
+    try JSONSerialization.data(withJSONObject: localState)
+        .write(to: root.appendingPathComponent("Local State"))
+
+    let profiles = BrowserProfileLocator.profiles(insideBrowserRoot: root, source: .chrome)
+    #expect(profiles.count == 2)
+    #expect(profiles.first?.label == "Chrome — Personal")
+    #expect(profiles.last?.label == "Chrome — Work")
+    #expect(profiles.allSatisfy { $0.isReadable })
+    #expect(profiles.first?.folder.lastPathComponent == "Default")
+}
+
+/// A folder with no profiles inside expands to nothing, so the caller can
+/// fall back to treating it as a single profile.
+@Test
+func aProfileFolderExpandsToNothing() throws {
+    let folder = FileManager.default.temporaryDirectory
+        .appendingPathComponent("browsemium-single-profile-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: folder) }
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    try "{}".write(
+        to: folder.appendingPathComponent("Preferences"),
+        atomically: true,
+        encoding: .utf8
+    )
+
+    let profiles = BrowserProfileLocator.profiles(insideBrowserRoot: folder, source: .chrome)
+    #expect(profiles.isEmpty)
+}
+
 /// Importing into a new profile must land in that profile's database, not the
 /// current one. This exercises the pieces the Settings flow composes.
 @Test

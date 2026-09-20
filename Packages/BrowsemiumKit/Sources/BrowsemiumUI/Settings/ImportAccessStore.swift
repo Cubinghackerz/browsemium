@@ -38,6 +38,29 @@ enum ImportAccessStore {
         return url
     }
 
+    /// Finds a remembered grant that covers `folder` — a browser root the user
+    /// allowed earlier, whose profiles are therefore importable without
+    /// another prompt. The caller balances the access scope on the result.
+    static func resolveAncestor(of folder: URL) -> URL? {
+        let target = folder.standardizedFileURL.path
+        for data in storedBookmarks().values {
+            var isStale = false
+            guard let url = try? URL(
+                resolvingBookmarkData: data,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            ), !isStale else {
+                continue
+            }
+            let root = url.standardizedFileURL.path
+            if target == root || target.hasPrefix(root + "/") {
+                return url
+            }
+        }
+        return nil
+    }
+
     private static func storedBookmarks() -> [String: Data] {
         UserDefaults.standard.dictionary(forKey: defaultsKey) as? [String: Data] ?? [:]
     }

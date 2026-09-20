@@ -269,6 +269,84 @@ public enum BrowserProfileLocator {
         chromiumCandidates() + firefoxCandidates() + [safariCandidate()]
     }
 
+    /// Every profile inside a browser's root folder. Used once the user has
+    /// granted access to the root (for example `…/Google/Chrome`): browsers
+    /// commonly hold several profiles, and each is offered separately so it
+    /// can be imported into its own Browsemium profile.
+    public static func profiles(
+        insideBrowserRoot root: URL,
+        source: BrowserImportSource
+    ) -> [BrowserProfileCandidate] {
+        switch source.family {
+        case .chromium:
+            let displayNames = chromiumDisplayNames(in: root)
+            let entries = (try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []
+            let names = entries
+                .filter { name in
+                    guard name == "Default" || name.hasPrefix("Profile ") else { return false }
+                    var isDirectory: ObjCBool = false
+                    let exists = FileManager.default.fileExists(
+                        atPath: root.appendingPathComponent(name).path,
+                        isDirectory: &isDirectory
+                    )
+                    return exists && isDirectory.boolValue
+                }
+                .sorted { first, second in
+                    if first == "Default" { return true }
+                    if second == "Default" { return false }
+                    return first.localizedStandardCompare(second) == .orderedAscending
+                }
+            return names.map { name in
+                let folder = root.appendingPathComponent(name, isDirectory: true)
+                let display = displayNames[name]
+                let label: String
+                if let display, display != name {
+                    label = "\(source.displayName) — \(display)"
+                } else if name == "Default" {
+                    label = "\(source.displayName) — Default"
+                } else {
+                    label = "\(source.displayName) — \(name)"
+                }
+                return BrowserProfileCandidate(
+                    source: source,
+                    label: label,
+                    folder: folder,
+                    isReadable: BrowserDataImporter.profileLooksValid(folder, source: source)
+                )
+            }
+        case .firefox:
+            let profilesDirectory = root.lastPathComponent == "Profiles"
+                ? root
+                : root.appendingPathComponent("Profiles", isDirectory: true)
+            let displayNames = firefoxDisplayNames(
+                profilesIniURL: root.appendingPathComponent("profiles.ini")
+            )
+            let entries = (try? FileManager.default.contentsOfDirectory(
+                at: profilesDirectory,
+                includingPropertiesForKeys: nil
+            )) ?? []
+            return entries
+                .filter { $0.pathExtension.hasPrefix("default") }
+                .sorted { $0.lastPathComponent < $1.lastPathComponent }
+                .map { folder in
+                    let display = displayNames[folder.lastPathComponent]
+                    return BrowserProfileCandidate(
+                        source: .firefox,
+                        label: display.map { "Firefox — \($0)" } ?? "Firefox — \(folder.lastPathComponent)",
+                        folder: folder,
+                        isReadable: BrowserDataImporter.profileLooksValid(folder, source: .firefox)
+                    )
+                }
+        case .safari:
+            return [BrowserProfileCandidate(
+                source: .safari,
+                label: "Safari",
+                folder: root,
+                isReadable: BrowserDataImporter.profileLooksValid(root, source: .safari)
+            )]
+        }
+    }
+
     /// Chrome, Brave, Edge, Vivaldi, Arc, and Chromium all keep profiles in
     /// `Default` / `Profile N` folders. Display names come from the browser's
     /// `Local State` file so a profile named "Work" is offered as "Chrome —
@@ -491,7 +569,7 @@ public final class BrowserDataImporter: @unchecked Sendable {
         }
     }
 
-    static func profileLooksValid(_ folder: URL, source: BrowserImportSource) -> Bool {
+    public static func profileLooksValid(_ folder: URL, source: BrowserImportSource) -> Bool {
         let contents = Set((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
         switch source.family {
         case .chromium:
