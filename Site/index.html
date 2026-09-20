@@ -325,7 +325,7 @@
     letter-spacing: -0.025em; font-weight: 620;
   }
   .section-lede { margin: 0 0 34px; color: var(--muted); max-width: 60ch; }
-  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
   @media (max-width: 880px) { .cards { grid-template-columns: 1fr; } }
   .card {
     border: 1px solid var(--border-strong); border-radius: var(--radius);
@@ -432,17 +432,11 @@
           <button type="button" data-copy="#install-command">Copy</button>
         </div>
         <div class="paths">
-          <a class="btn" href="https://github.com/Cubinghackerz/browsemium/releases/latest/download/Browsemium-2.0.0.dmg">
-            Download for macOS
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M8 2.5v8m0 0 3-3m-3 3-3-3M3 13h10"/>
-            </svg>
-          </a>
           <a class="btn btn-quiet" href="https://github.com/Cubinghackerz/homebrew-tap">brew install --cask cubinghackerz/tap/browsemium</a>
         </div>
         <p class="release">
           <span>6.7&nbsp;MB &middot; macOS&nbsp;14+ &middot; Apple&nbsp;silicon</span>
-          <span>SHA-256 <code data-release-checksum>20c9e6bd3a3491ba7db35d4be68de3198ee2fb449703bf6b975fc81644e73fd5</code></span>
+          <span>SHA-256 <code data-release-checksum>c1a1d8875fce80f9d66a27fc7d1fabf913cfa3ada9c0fbfa41db8ad6be2cb112</code></span>
         </p>
       </div>
     </div>
@@ -620,11 +614,11 @@
 
   <section class="install-section">
     <div class="shell">
-      <h2>Three ways to install</h2>
+      <h2>Install from the terminal</h2>
       <p class="section-lede">
-        Browsemium is signed ad-hoc rather than with an Apple Developer ID. That means a browser
-        download is refused once by Gatekeeper, and it says so right here instead of pretending
-        otherwise. The first two paths avoid that entirely.
+        Browsemium is signed ad-hoc rather than with an Apple Developer ID, so a browser-downloaded
+        copy would be refused once by Gatekeeper. Both paths below fetch the release without a
+        quarantine flag, verify it, and install it — no warning, no extra clicks.
       </p>
       <div class="cards">
         <div class="card">
@@ -639,12 +633,6 @@
           <pre>brew install --cask \
   cubinghackerz/tap/browsemium</pre>
         </div>
-        <div class="card">
-          <h3>Download the DMG</h3>
-          <p>Drag Browsemium into Applications, then allow it once under System Settings &rarr; Privacy &amp; Security &rarr; Open Anyway. The dialog is Apple's missing certificate, not a detection.</p>
-          <pre>xattr -dr com.apple.quarantine \
-  /Applications/Browsemium.app</pre>
-        </div>
       </div>
     </div>
   </section>
@@ -652,9 +640,9 @@
   <section class="verify">
     <div class="shell">
       <h2>Verify your download</h2>
-      <p class="section-lede">Every release publishes its SHA-256. Compare it before opening the DMG.</p>
-      <pre>shasum -a 256 ~/Downloads/Browsemium-2.0.0.dmg
-<code data-release-checksum>20c9e6bd3a3491ba7db35d4be68de3198ee2fb449703bf6b975fc81644e73fd5</code></pre>
+      <p class="section-lede">The installer checks the release's SHA-256 against this site before anything touches Applications. Checking a DMG yourself? Compare it here.</p>
+      <pre>shasum -a 256 Browsemium-2.0.0.dmg
+<code data-release-checksum>c1a1d8875fce80f9d66a27fc7d1fabf913cfa3ada9c0fbfa41db8ad6be2cb112</code></pre>
     </div>
   </section>
 

@@ -116,17 +116,19 @@ jobs:
 
       - name: Update the Homebrew cask
         env:
-          GH_TOKEN: ${{ secrets.TAP_TOKEN != '' && secrets.TAP_TOKEN || github.token }}
+          # The default GITHUB_TOKEN cannot push to the tap repository, so a
+          # PAT (repo scope on homebrew-tap) must be stored as TAP_TOKEN.
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
         run: |
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "TAP_TOKEN is not set; skipping the cask update." >&2
+            exit 0
+          fi
           VERSION="${{ steps.version.outputs.version }}"
           SHA="${{ steps.sign.outputs.sha }}"
           TAP="Cubinghackerz/homebrew-tap"
-          if ! gh repo view "$TAP" >/dev/null 2>&1; then
-            echo "Tap repository $TAP does not exist yet; skipping." >&2
-            exit 0
-          fi
           TMP="$(mktemp -d)"
-          git clone --depth 1 "https://x-access-token:$GH_TOKEN@github.com/$TAP.git" "$TMP"
+          git clone --depth 1 "https://x-access-token:$TAP_TOKEN@github.com/$TAP.git" "$TMP"
           mkdir -p "$TMP/Casks"
           cat > "$TMP/Casks/browsemium.rb" <<EOF
           cask "browsemium" do
