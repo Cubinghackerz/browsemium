@@ -624,7 +624,7 @@
         <div class="card">
           <span class="badge">Recommended</span>
           <h3>Terminal installer</h3>
-          <p>Fetches the release with curl, verifies its SHA-256 against this site, installs to Applications. No Gatekeeper prompt, because nothing marks the file as a browser download.</p>
+          <p>Fetches the release with curl, verifies its SHA-256 against this site, installs to Applications. No Gatekeeper prompt, because nothing marks the file as a browser download. Re-run the same command after a new release — it updates the app in place and never touches your tabs, history, or profiles.</p>
           <pre>curl -fsSL https://browsemium.vercel.app/install.sh | bash</pre>
         </div>
         <div class="card">
@@ -694,7 +694,9 @@
           <p>
             Sparkle checks a signed feed once a day and verifies an EdDSA signature before installing
             anything. Updates carry no quarantine flag, so they install without a Gatekeeper prompt.
-            You can also check manually from the Browsemium menu.
+            You can also check manually from the Browsemium menu, or re-run the terminal install
+            command — it detects when you are already current, and every update path leaves your
+            tabs, history, bookmarks, and profiles exactly where they are.
           </p>
         </div>
       </details>
