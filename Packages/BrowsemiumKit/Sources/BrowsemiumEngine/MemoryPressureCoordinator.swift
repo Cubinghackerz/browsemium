@@ -19,8 +19,12 @@ public final class MemoryPressureCoordinator {
             eventMask: [.warning, .critical],
             queue: DispatchQueue.global(qos: .utility)
         )
-        source.setEventHandler { [weak self] in
-            guard let self, let source = self.source else { return }
+        // The handler fires on the source's utility queue, not the main actor.
+        // Reading `self.source`/`self.handler` here would trap the runtime
+        // isolation check (EXC_BREAKPOINT), so only the captured source is
+        // touched and the callback hops to the main actor explicitly.
+        source.setEventHandler { [weak self, weak source] in
+            guard let source else { return }
             let event = source.data
             let level: MemoryPressureLevel
             if event.contains(.critical) {
@@ -30,8 +34,8 @@ public final class MemoryPressureCoordinator {
             } else {
                 return
             }
-            Task { @MainActor in
-                self.handler?(level)
+            Task { @MainActor [weak self] in
+                self?.handler?(level)
             }
         }
         source.resume()

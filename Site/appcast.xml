@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Browsemium Updates</title>
+    <link>https://browsemium.vercel.app/appcast.xml</link>
+    <description>Latest Browsemium builds for macOS.</description>
+    <language>en</language>
+    <item>
+      <title>Browsemium 1.0.2</title>
+      <sparkle:releaseNotesLink>https://github.com/Cubinghackerz/browsemium/releases/tag/v1.0.2</sparkle:releaseNotesLink>
+      <pubDate>Sun, 20 Sep 2026 00:00:00 +0800</pubDate>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure
+        url="https://github.com/Cubinghackerz/browsemium/releases/download/v1.0.2/Browsemium-1.0.2.dmg"
+        sparkle:version="102"
+        sparkle:shortVersionString="1.0.2"
+        sparkle:edSignature="GvFiFKQUbw2VMiVpJxMD6IHboVhoMlVuQEAVsgHJhKflpWpLEkLwjvXtEZM/Im+Paf1562TcOrat+oJRj5FuCQ=="
+        length="7004892"
+        type="application/octet-stream" />
+    </item>
+  </channel>
+</rss>

@@ -131,6 +131,18 @@ SPARKLE_BIN=<sparkle bin> DOWNLOAD_URL_PREFIX=https://… Scripts/release/genera
 Signing and notarization credentials live in the keychain or CI secrets; never in
 the repository or in build logs.
 
-After each published release, update `Site/checksum.txt` with the DMG's SHA-256.
-`Site/install.sh` verifies downloads against that file, which is served from a
-different host than the release asset.
+After each published release:
+
+1. Update `Site/checksum.txt` with the DMG's SHA-256 — `Site/install.sh`
+   verifies downloads against it.
+2. Sign the DMG for Sparkle: `swift Scripts/release/sparkle-eddsa.swift sign
+   build/Browsemium-<version>.dmg` and update the `enclosure` in
+   `Site/appcast.xml` (URL, sparkle:version, sparkle:shortVersionString,
+   sparkle:edSignature, length, pubDate).
+3. Deploy `Site/` so the appcast is live before announcing the release.
+
+The Sparkle EdDSA private key lives at `~/.config/browsemium/sparkle-ed25519.key`
+(chmod 600). It is the release-signing secret — never commit it. The public key
+is `SUPublicEDKey` in `project.yml`/`Info.plist`. Regenerate only with
+`swift Scripts/release/sparkle-eddsa.swift keygen` if the key file is lost —
+rotating the key orphans every installed copy's updater.
