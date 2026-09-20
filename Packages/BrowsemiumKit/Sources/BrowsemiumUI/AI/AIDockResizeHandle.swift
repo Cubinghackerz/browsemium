@@ -30,15 +30,19 @@ struct AIDockResizeHandle: View {
                     .frame(width: 2)
             }
             .gesture(
-                DragGesture(minimumDistance: 1)
+                // Global (window) coordinates on purpose: the handle moves
+                // while the dock resizes, so a local-space translation feeds
+                // the movement back into the drag and the width oscillates.
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .updating($isDragging) { _, state, _ in
                         state = true
                     }
                     .onChanged { value in
+                        let anchor = dragStartWidth ?? width
                         if dragStartWidth == nil {
-                            dragStartWidth = width
+                            dragStartWidth = anchor
                         }
-                        width = clampedWidth((dragStartWidth ?? width) - value.translation.width)
+                        width = clampedWidth(anchor - value.translation.width)
                     }
                     .onEnded { _ in
                         dragStartWidth = nil
@@ -46,6 +50,13 @@ struct AIDockResizeHandle: View {
                         onCommit()
                     }
             )
+            .onChange(of: isDragging) { _, dragging in
+                // A cancelled gesture never calls onEnded; clear the anchor so
+                // the next drag does not start from a stale width.
+                if !dragging {
+                    dragStartWidth = nil
+                }
+            }
             .onContinuousHover { phase in
                 switch phase {
                 case .active:

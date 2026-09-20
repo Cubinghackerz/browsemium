@@ -16,6 +16,8 @@ public enum TabRuntimeEvent: Sendable {
     case downloadFinished(UUID)
     case downloadFailed(UUID, String)
     case audioStateChanged(TabAudioState)
+    /// The user chose "Ask Browsemium AI" from the page context menu.
+    case requestedAISelection
 }
 
 @MainActor
@@ -270,7 +272,7 @@ public final class TabRuntime {
             lifecycle = lastCommittedURL == nil ? .metadataOnly : .crashed
         case .crashed:
             lifecycle = .crashed
-        case .progressChanged, .requestedNewWindow, .requestedExternalScheme, .downloadStarted, .downloadFinished, .downloadFailed, .audioStateChanged:
+        case .progressChanged, .requestedNewWindow, .requestedExternalScheme, .downloadStarted, .downloadFinished, .downloadFailed, .audioStateChanged, .requestedAISelection:
             break
         }
         onEvent?(event)

@@ -125,6 +125,11 @@ public struct BrowsemiumAppView: View {
             ai.clearConversation()
             ai.refreshCredentialState()
         }
+        .onChange(of: model.aiContextToken) {
+            // Context captured from the page's context menu lands in the
+            // assistant composer, ready for the user's question.
+            ai.adopt(model.consumePendingAIContext())
+        }
     }
 
     private var dockTransition: AnyTransition {

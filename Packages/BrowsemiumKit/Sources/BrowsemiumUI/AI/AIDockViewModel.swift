@@ -41,6 +41,8 @@ public final class AIDockViewModel {
     public var handoff: ProviderHandoff?
     public var isReviewPresented: Bool = false
     public var reviewPrompt: String = ""
+    public private(set) var conversationList: [AIConversationSummary] = []
+    public private(set) var currentConversationID: ConversationID?
 
     private var streamTask: Task<Void, Never>?
 
@@ -92,11 +94,37 @@ public final class AIDockViewModel {
     }
 
     public func refreshCredentialState() {
+        // A local Ollama server needs no credential; treat it as always ready.
+        if provider.isLocal {
+            hasStoredCredential = true
+            return
+        }
         hasStoredCredential = (try? environment.keychain.hasSecret(account: credentialAccount)) ?? false
     }
 
     public func connect() async {
         credentialStatus = nil
+        if provider.isLocal {
+            // No key: probe the local server and report what it offers.
+            isWorking = true
+            defer { isWorking = false }
+            do {
+                let fetched = try await OllamaAdapter().listModels()
+                models = fetched
+                if selectedModelID == nil {
+                    selectedModelID = models.first?.id
+                }
+                hasStoredCredential = true
+                credentialStatus = fetched.isEmpty
+                    ? "Ollama is running, but it has no models yet. Pull one with `ollama pull llama3.2`."
+                    : "Connected to Ollama on this Mac. \(models.count) models available."
+                errorMessage = nil
+            } catch {
+                credentialStatus = nil
+                errorMessage = "Ollama is not reachable at localhost:11434. Install it from ollama.com and run `ollama serve`."
+            }
+            return
+        }
         let credential = credentialInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !credential.isEmpty else {
             credentialStatus = "Enter an API key first."
@@ -124,6 +152,19 @@ public final class AIDockViewModel {
     }
 
     public func loadModels() async {
+        if provider.isLocal {
+            isWorking = true
+            defer { isWorking = false }
+            do {
+                models = try await OllamaAdapter().listModels()
+                if selectedModelID == nil {
+                    selectedModelID = models.first?.id
+                }
+            } catch {
+                errorMessage = "Ollama is not reachable at localhost:11434."
+            }
+            return
+        }
         guard let credential = try? environment.keychain.secret(account: credentialAccount), !credential.isEmpty else {
             refreshCredentialState()
             return
@@ -180,6 +221,24 @@ public final class AIDockViewModel {
         attachments.remove(at: index)
     }
 
+    /// Adopts context captured outside the dock (the page context menu),
+    /// replacing any attachment of the same kind so stale content never
+    /// travels with a new selection.
+    public func adopt(_ incoming: [AIContextAttachment]) {
+        for attachment in incoming {
+            attachments.removeAll { existing in
+                switch (attachment, existing) {
+                case (.selection, .selection), (.readablePage, .readablePage), (.viewportImage, .viewportImage):
+                    true
+                default:
+                    false
+                }
+            }
+            attachments.append(attachment)
+        }
+        errorMessage = nil
+    }
+
     public func clearAttachments() {
         attachments.removeAll()
     }
@@ -190,6 +249,80 @@ public final class AIDockViewModel {
         messages.removeAll()
         isStreaming = false
         errorMessage = nil
+        currentConversationID = nil
+    }
+
+    // MARK: - Persisted conversations
+
+    private var shouldPersistConversations: Bool {
+        environment.loadSettings().persistAIConversations
+    }
+
+    public func refreshConversations() {
+        conversationList = (try? environment.conversationRepository.conversations()) ?? []
+    }
+
+    /// Restores the most recent conversation once per launch, so a restart
+    /// does not lose an in-progress chat.
+    public func restoreLastConversationIfNeeded() {
+        refreshConversations()
+        guard messages.isEmpty,
+              shouldPersistConversations,
+              let latest = conversationList.first else { return }
+        openConversation(latest.id)
+    }
+
+    public func openConversation(_ id: ConversationID) {
+        guard let restored = try? environment.conversationRepository.messages(conversationID: id) else { return }
+        streamTask?.cancel()
+        streamTask = nil
+        isStreaming = false
+        messages = restored
+        currentConversationID = id
+        errorMessage = nil
+    }
+
+    public func deleteConversation(_ id: ConversationID) {
+        try? environment.conversationRepository.delete(conversationID: id)
+        if currentConversationID == id {
+            clearConversation()
+        }
+        refreshConversations()
+    }
+
+    private func persistUserMessage(_ content: String) {
+        guard shouldPersistConversations else { return }
+        do {
+            if currentConversationID == nil {
+                let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+                let title = String(trimmed.prefix(60))
+                currentConversationID = try environment.conversationRepository.createConversation(
+                    title: title.isEmpty ? "Conversation" : title
+                )
+            }
+            if let id = currentConversationID {
+                try environment.conversationRepository.appendMessage(
+                    conversationID: id,
+                    role: .user,
+                    content: content
+                )
+            }
+            refreshConversations()
+        } catch {
+            // Persistence is best-effort; the chat itself keeps working.
+        }
+    }
+
+    private func persistAssistantMessage(_ content: String) {
+        guard shouldPersistConversations,
+              let id = currentConversationID,
+              !content.isEmpty else { return }
+        try? environment.conversationRepository.appendMessage(
+            conversationID: id,
+            role: .assistant,
+            content: content
+        )
+        refreshConversations()
     }
 
     public func beginReview() {
@@ -246,6 +379,7 @@ public final class AIDockViewModel {
         }
 
         messages.append(AIMessage(role: .user, content: prompt))
+        persistUserMessage(prompt)
         let note = handoff.note ?? "Sent to \(descriptor.displayName)."
         messages.append(AIMessage(role: .assistant, content: note))
         draft = ""
@@ -280,12 +414,19 @@ public final class AIDockViewModel {
             errorMessage = "Choose a model first."
             return
         }
-        guard let credential = try? environment.keychain.secret(account: credentialAccount), !credential.isEmpty else {
-            errorMessage = "Connect an API key for \(descriptor.displayName) first."
-            return
+        let credential: String
+        if provider.isLocal {
+            credential = ""
+        } else {
+            guard let stored = try? environment.keychain.secret(account: credentialAccount), !stored.isEmpty else {
+                errorMessage = "Connect an API key for \(descriptor.displayName) first."
+                return
+            }
+            credential = stored
         }
 
         messages.append(AIMessage(role: .user, content: prompt))
+        persistUserMessage(prompt)
         let assistantIndex = messages.count
         messages.append(AIMessage(role: .assistant, content: ""))
         let request = AIRequest(model: model, messages: Array(messages.prefix(assistantIndex)), attachments: attachments)
@@ -304,11 +445,17 @@ public final class AIDockViewModel {
                         self.appendToAssistant(at: assistantIndex, text: text)
                     case .completed(let message):
                         self.finalizeAssistant(at: assistantIndex, content: message.content)
+                        self.persistAssistantMessage(message.content)
                     }
                 }
             } catch {
                 guard let self else { return }
                 self.errorMessage = error.localizedDescription
+                if self.messages.indices.contains(assistantIndex),
+                   !self.messages[assistantIndex].content.isEmpty {
+                    // Keep the partial answer rather than losing it.
+                    self.persistAssistantMessage(self.messages[assistantIndex].content)
+                }
                 self.removeAssistantIfEmpty(at: assistantIndex)
             }
             self?.isStreaming = false
@@ -348,6 +495,8 @@ public final class AIDockViewModel {
             GeminiAdapter(credential: credential)
         case .xAI:
             XAIAdapter(credential: credential)
+        case .ollama:
+            OllamaAdapter()
         }
     }
 

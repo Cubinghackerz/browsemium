@@ -50,6 +50,12 @@ public enum AIProviderID: String, CaseIterable, Codable, Sendable {
     case anthropic
     case gemini
     case xAI
+    /// A local Ollama server. Needs no credential and never leaves the Mac.
+    case ollama
+
+    public var isLocal: Bool {
+        self == .ollama
+    }
 }
 
 public struct BrowserSpace: Hashable, Codable, Sendable, Identifiable {

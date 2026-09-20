@@ -103,7 +103,11 @@ public struct AIHTTPClient: Sendable {
         guard let url = request.url, let host = url.host?.lowercased() else {
             throw HTTPError.invalidResponse
         }
-        guard url.scheme?.lowercased() == "https" else {
+        // Remote providers must be HTTPS. Loopback is allowed over HTTP for
+        // local servers like Ollama: the traffic never leaves the machine.
+        let scheme = url.scheme?.lowercased()
+        let isLoopback = host == "localhost" || host == "127.0.0.1" || host == "::1"
+        guard scheme == "https" || (scheme == "http" && isLoopback) else {
             throw HTTPError.hostNotAllowed(url.absoluteString)
         }
         guard host == allowedHost.lowercased() else {

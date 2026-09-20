@@ -474,25 +474,31 @@ struct SettingsView: View {
 
             ForEach(AIProviderID.allCases, id: \.self) { provider in
                 SettingsRow(ProviderPanelDescriptor.descriptor(for: provider).displayName) {
-                    HStack(spacing: 12) {
-                        Text(credentialStates[provider] == true ? "API key saved" : "No API key")
+                    if provider.isLocal {
+                        Text("Runs on this Mac — no key, nothing leaves it")
                             .font(.system(size: 11.5))
-                            .foregroundStyle(
-                                credentialStates[provider] == true
-                                    ? Color.browsemiumSecondary
-                                    : Color.browsemiumTertiary
-                            )
-                        if credentialStates[provider] == true {
-                            BrowsemiumTextButton("Remove", role: .destructive) {
-                                try? model.environment.keychain.deleteSecret(
-                                    account: model.environment.providerCredentialAccount(provider)
+                            .foregroundStyle(Color.browsemiumSecondary)
+                    } else {
+                        HStack(spacing: 12) {
+                            Text(credentialStates[provider] == true ? "API key saved" : "No API key")
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(
+                                    credentialStates[provider] == true
+                                        ? Color.browsemiumSecondary
+                                        : Color.browsemiumTertiary
                                 )
-                                refreshCredentials()
-                            }
-                        } else {
-                            BrowsemiumTextButton("Add key…") {
-                                keyInput = ""
-                                keyPromptProvider = provider
+                            if credentialStates[provider] == true {
+                                BrowsemiumTextButton("Remove", role: .destructive) {
+                                    try? model.environment.keychain.deleteSecret(
+                                        account: model.environment.providerCredentialAccount(provider)
+                                    )
+                                    refreshCredentials()
+                                }
+                            } else {
+                                BrowsemiumTextButton("Add key…") {
+                                    keyInput = ""
+                                    keyPromptProvider = provider
+                                }
                             }
                         }
                     }
@@ -797,6 +803,10 @@ struct SettingsView: View {
     private func refreshCredentials() {
         var states: [AIProviderID: Bool] = [:]
         for provider in AIProviderID.allCases {
+            if provider.isLocal {
+                states[provider] = true
+                continue
+            }
             states[provider] = (try? model.environment.keychain.hasSecret(account: model.environment.providerCredentialAccount(provider))) ?? false
         }
         credentialStates = states

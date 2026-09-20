@@ -66,7 +66,19 @@ public struct ProviderPanelDescriptor: Sendable, Identifiable {
         privacyURL: URL(string: "https://x.ai/legal/privacy-policy")!
     )
 
-    public static let all: [ProviderPanelDescriptor] = [.chatGPT, .claude, .gemini, .grok]
+    public static let ollama = ProviderPanelDescriptor(
+        id: .ollama,
+        displayName: "Ollama (local)",
+        baseURL: URL(string: "http://localhost:11434")!,
+        newConversationURL: URL(string: "http://localhost:11434")!,
+        queryParameter: nil,
+        maximumQueryCharacters: 0,
+        prefillReliability: .unsupported,
+        termsURL: URL(string: "https://ollama.com/")!,
+        privacyURL: URL(string: "https://ollama.com/")!
+    )
+
+    public static let all: [ProviderPanelDescriptor] = [.chatGPT, .claude, .gemini, .grok, .ollama]
 
     public static func descriptor(for provider: AIProviderID) -> ProviderPanelDescriptor {
         all.first { $0.id == provider } ?? .chatGPT

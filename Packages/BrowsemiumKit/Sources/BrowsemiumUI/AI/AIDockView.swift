@@ -2,6 +2,7 @@ import BrowsemiumAI
 import BrowsemiumCore
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import WebKit
 
 @MainActor
@@ -43,6 +44,7 @@ struct AIDockView: View {
         .task {
             // Only touch the keychain once the assistant is actually visible.
             ai.refreshCredentialState()
+            ai.restoreLastConversationIfNeeded()
         }
         .onChange(of: ai.mode) {
             if ai.mode == .api {
@@ -58,6 +60,11 @@ struct AIDockView: View {
                     ForEach(AIProviderID.allCases, id: \.self) { provider in
                         Button(ProviderPanelDescriptor.descriptor(for: provider).displayName) {
                             ai.provider = provider
+                            // A local server has no website to embed; it is
+                            // API-only by nature.
+                            if provider.isLocal {
+                                ai.mode = .api
+                            }
                         }
                     }
                 } label: {
@@ -87,6 +94,8 @@ struct AIDockView: View {
                 )
                 .accessibilityLabel("Assistant mode")
 
+                conversationMenu
+
                 BrowsemiumIconButton(systemName: "xmark", label: "Close assistant") {
                     model.toggleAIDock()
                 }
@@ -101,9 +110,64 @@ struct AIDockView: View {
         .padding(.bottom, ai.mode == .api ? 8 : 4)
     }
 
+    /// Saved conversations on this Mac: start a new one, reopen an earlier
+    /// one, or clear them.
+    private var conversationMenu: some View {
+        Menu {
+            Button("New Chat") { ai.clearConversation() }
+            if !ai.conversationList.isEmpty {
+                Divider()
+                ForEach(ai.conversationList.prefix(12)) { summary in
+                    Button(summary.title) { ai.openConversation(summary.id) }
+                }
+                Divider()
+                Button("Clear Saved Chats", role: .destructive) {
+                    for summary in ai.conversationList {
+                        ai.deleteConversation(summary.id)
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 11))
+                .foregroundStyle(Color.browsemiumSecondary)
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Saved chats on this Mac")
+        .accessibilityLabel("Saved chats")
+    }
+
     private var apiControls: some View {
         VStack(spacing: 6) {
-            if ai.hasStoredCredential {
+            if ai.provider.isLocal {
+                HStack(spacing: 8) {
+                    if ai.models.isEmpty {
+                        BrowsemiumPrimaryButton("Look for Ollama", isDisabled: ai.isWorking) {
+                            Task { await ai.connect() }
+                        }
+                    } else {
+                        Picker("Model", selection: $ai.selectedModelID) {
+                            ForEach(ai.models) { model in
+                                Text(model.name).tag(String?.some(model.id))
+                            }
+                        }
+                        .labelsHidden()
+                        .accessibilityLabel("Model")
+
+                        BrowsemiumTextButton("Refresh models") {
+                            Task { await ai.loadModels() }
+                        }
+                    }
+                }
+                Text("Runs on this Mac through Ollama at localhost:11434. No key, no account, and nothing you send leaves the machine.")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Color.browsemiumTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if ai.hasStoredCredential {
                 HStack(spacing: 8) {
                     Picker("Model", selection: $ai.selectedModelID) {
                         if ai.models.isEmpty {
@@ -155,7 +219,8 @@ struct AIDockView: View {
                         ForEach(Array(ai.attachments.enumerated()), id: \.offset) { index, attachment in
                             AttachmentChip(
                                 label: ai.label(for: attachment),
-                                thumbnail: ai.thumbnail(for: attachment)
+                                thumbnail: ai.thumbnail(for: attachment),
+                                dragProvider: { dragProvider(for: attachment) }
                             ) {
                                 ai.removeAttachment(at: index)
                             }
@@ -242,8 +307,44 @@ struct AIDockView: View {
             // field and confirm visibly so it never looks like nothing happened.
             if ai.errorMessage == nil {
                 composerFocused = true
-                model.statusMessage = confirmation
+                model.statusMessage = ai.mode == .web
+                    ? "\(confirmation) — drag it into the chat, or send and press ⌘V"
+                    : confirmation
             }
+        }
+    }
+
+    /// Captures become real drag sources: the screenshot chip can be dragged
+    /// straight into the provider's composer inside the panel, and text can be
+    /// dragged into any app. Files are written on demand, so a drag that never
+    /// happens costs nothing.
+    private func dragProvider(for attachment: AIContextAttachment) -> NSItemProvider {
+        switch attachment {
+        case .viewportImage(let image):
+            let provider = NSItemProvider()
+            let type = UTType(mimeType: image.mimeType) ?? .png
+            let ext = type.preferredFilenameExtension ?? "png"
+            provider.registerFileRepresentation(
+                forTypeIdentifier: type.identifier,
+                fileOptions: [],
+                visibility: .all
+            ) { completion in
+                let url = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("browsemium-capture-\(UUID().uuidString).\(ext)")
+                do {
+                    try image.data.write(to: url)
+                    completion(url, false, nil)
+                } catch {
+                    completion(nil, false, error)
+                }
+                return nil
+            }
+            provider.suggestedName = "Browsemium capture"
+            return provider
+        case .selection(let context):
+            return NSItemProvider(object: context.text as NSString)
+        case .readablePage(let context):
+            return NSItemProvider(object: context.text as NSString)
         }
     }
 
@@ -324,6 +425,7 @@ private struct CurrentPageBar: View {
 private struct AttachmentChip: View {
     let label: String
     var thumbnail: NSImage? = nil
+    var dragProvider: (() -> NSItemProvider)? = nil
     let onRemove: () -> Void
 
     @State private var isHovering = false
@@ -362,6 +464,20 @@ private struct AttachmentChip: View {
                 .fill(isHovering ? Color.browsemiumSelection : Color.browsemiumField)
         )
         .onHover { isHovering = $0 }
+        .modifier(DraggableAttachment(provider: dragProvider))
+    }
+}
+
+/// Makes a chip a drag source when it has something to hand over.
+private struct DraggableAttachment: ViewModifier {
+    let provider: (() -> NSItemProvider)?
+
+    func body(content: Content) -> some View {
+        if let provider {
+            content.onDrag { provider() }
+        } else {
+            content
+        }
     }
 }
 

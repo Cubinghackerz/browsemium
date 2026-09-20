@@ -5,52 +5,190 @@
     "openAI": {
       "defaultVision": false,
       "rules": [
-        { "pattern": "gpt-4o*", "vision": true },
-        { "pattern": "gpt-4.1*", "vision": true },
-        { "pattern": "gpt-5*", "vision": true },
-        { "pattern": "gpt-6*", "vision": true },
-        { "pattern": "o3*", "vision": true },
-        { "pattern": "o4*", "vision": true },
-        { "pattern": "*audio*", "vision": false },
-        { "pattern": "*realtime*", "vision": false },
-        { "pattern": "*tts*", "vision": false },
-        { "pattern": "*embedding*", "vision": false }
+        {
+          "pattern": "gpt-4o*",
+          "vision": true
+        },
+        {
+          "pattern": "gpt-4.1*",
+          "vision": true
+        },
+        {
+          "pattern": "gpt-5*",
+          "vision": true
+        },
+        {
+          "pattern": "gpt-6*",
+          "vision": true
+        },
+        {
+          "pattern": "o3*",
+          "vision": true
+        },
+        {
+          "pattern": "o4*",
+          "vision": true
+        },
+        {
+          "pattern": "*audio*",
+          "vision": false
+        },
+        {
+          "pattern": "*realtime*",
+          "vision": false
+        },
+        {
+          "pattern": "*tts*",
+          "vision": false
+        },
+        {
+          "pattern": "*embedding*",
+          "vision": false
+        }
       ]
     },
     "anthropic": {
       "defaultVision": false,
       "rules": [
-        { "pattern": "claude-3*", "vision": true },
-        { "pattern": "claude-4*", "vision": true },
-        { "pattern": "claude-5*", "vision": true },
-        { "pattern": "claude-6*", "vision": true },
-        { "pattern": "claude-opus*", "vision": true },
-        { "pattern": "claude-sonnet*", "vision": true },
-        { "pattern": "claude-haiku*", "vision": true },
-        { "pattern": "*embedding*", "vision": false }
+        {
+          "pattern": "claude-3*",
+          "vision": true
+        },
+        {
+          "pattern": "claude-4*",
+          "vision": true
+        },
+        {
+          "pattern": "claude-5*",
+          "vision": true
+        },
+        {
+          "pattern": "claude-6*",
+          "vision": true
+        },
+        {
+          "pattern": "claude-opus*",
+          "vision": true
+        },
+        {
+          "pattern": "claude-sonnet*",
+          "vision": true
+        },
+        {
+          "pattern": "claude-haiku*",
+          "vision": true
+        },
+        {
+          "pattern": "*embedding*",
+          "vision": false
+        }
       ]
     },
     "gemini": {
       "defaultVision": false,
       "rules": [
-        { "pattern": "gemini-1.5*", "vision": true },
-        { "pattern": "gemini-2*", "vision": true },
-        { "pattern": "gemini-3*", "vision": true },
-        { "pattern": "gemini-4*", "vision": true },
-        { "pattern": "*embedding*", "vision": false },
-        { "pattern": "*-tts*", "vision": false },
-        { "pattern": "*image-generation*", "vision": false },
-        { "pattern": "aqa*", "vision": false }
+        {
+          "pattern": "gemini-1.5*",
+          "vision": true
+        },
+        {
+          "pattern": "gemini-2*",
+          "vision": true
+        },
+        {
+          "pattern": "gemini-3*",
+          "vision": true
+        },
+        {
+          "pattern": "gemini-4*",
+          "vision": true
+        },
+        {
+          "pattern": "*embedding*",
+          "vision": false
+        },
+        {
+          "pattern": "*-tts*",
+          "vision": false
+        },
+        {
+          "pattern": "*image-generation*",
+          "vision": false
+        },
+        {
+          "pattern": "aqa*",
+          "vision": false
+        }
       ]
     },
     "xAI": {
       "defaultVision": false,
       "rules": [
-        { "pattern": "grok-2-vision*", "vision": true },
-        { "pattern": "grok-3*", "vision": true },
-        { "pattern": "grok-4*", "vision": true },
-        { "pattern": "grok-5*", "vision": true },
-        { "pattern": "*imagine*", "vision": false }
+        {
+          "pattern": "grok-2-vision*",
+          "vision": true
+        },
+        {
+          "pattern": "grok-3*",
+          "vision": true
+        },
+        {
+          "pattern": "grok-4*",
+          "vision": true
+        },
+        {
+          "pattern": "grok-5*",
+          "vision": true
+        },
+        {
+          "pattern": "*imagine*",
+          "vision": false
+        }
+      ]
+    },
+    "ollama": {
+      "defaultVision": false,
+      "rules": [
+        {
+          "pattern": "llava*",
+          "vision": true
+        },
+        {
+          "pattern": "*llava*",
+          "vision": true
+        },
+        {
+          "pattern": "llama3.2-vision*",
+          "vision": true
+        },
+        {
+          "pattern": "qwen2.5vl*",
+          "vision": true
+        },
+        {
+          "pattern": "qwen2.5-vl*",
+          "vision": true
+        },
+        {
+          "pattern": "minicpm-v*",
+          "vision": true
+        },
+        {
+          "pattern": "moondream*",
+          "vision": true
+        },
+        {
+          "pattern": "gemma3*",
+          "vision": true
+        },
+        {
+          "pattern": "mistral-small3.1*",
+          "vision": true
+        },
+        {
+          "pattern": "mistral-small3.2*",
+          "vision": true
+        }
       ]
     }
   }

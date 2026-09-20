@@ -19,6 +19,27 @@ final class WebUIDelegate: NSObject, WKUIDelegate {
         return nil
     }
 
+    /// Adds "Ask Browsemium AI" to the page context menu when text is
+    /// selected. The selection is captured and attached in the assistant; the
+    /// message itself is still typed and sent by the user.
+    func webView(_ webView: WKWebView, willOpenMenu menu: NSMenu, with event: NSEvent) {
+        let copySelector = Selector(("copy:"))
+        let hasSelection = menu.items.contains { $0.action == copySelector }
+        guard hasSelection else { return }
+        let item = NSMenuItem(
+            title: "Ask Browsemium AI About Selection",
+            action: #selector(askAIAboutSelection(_:)),
+            keyEquivalent: ""
+        )
+        item.target = self
+        menu.insertItem(item, at: 0)
+        menu.insertItem(.separator(), at: 1)
+    }
+
+    @objc private func askAIAboutSelection(_ sender: NSMenuItem) {
+        runtime?.report(.requestedAISelection)
+    }
+
     func webView(
         _ webView: WKWebView,
         runJavaScriptAlertPanelWithMessage message: String,

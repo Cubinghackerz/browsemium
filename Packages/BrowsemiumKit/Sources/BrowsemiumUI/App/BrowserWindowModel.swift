@@ -656,6 +656,37 @@ public final class BrowserWindowModel {
         persistSession()
     }
 
+    // MARK: - Ask AI
+
+    /// Context handed to the assistant dock from outside it — the page context
+    /// menu, for now. The dock adopts it and the user still types and sends.
+    public private(set) var pendingAIContext: [AIContextAttachment] = []
+    public private(set) var aiContextToken = 0
+
+    public func consumePendingAIContext() -> [AIContextAttachment] {
+        defer { pendingAIContext = [] }
+        return pendingAIContext
+    }
+
+    private func captureSelectionForAI(tabID: TabID) {
+        Task {
+            do {
+                let captured = try await environment.runtime.capture(
+                    tabID: tabID,
+                    request: CaptureRequest(kinds: [.selection])
+                )
+                pendingAIContext = captured.attachments
+                aiContextToken += 1
+                if !isAIDockVisible {
+                    toggleAIDock()
+                }
+                statusMessage = "Selection attached — ask your question"
+            } catch {
+                statusMessage = error.localizedDescription
+            }
+        }
+    }
+
     // MARK: - Reader mode
 
     /// The article currently shown in Reader, or nil when the page itself is
@@ -1137,6 +1168,8 @@ public final class BrowserWindowModel {
 
     private func handle(_ event: TabRuntimeEvent, for tabID: TabID) {
         switch event {
+        case .requestedAISelection:
+            captureSelectionForAI(tabID: tabID)
         case .audioStateChanged(let state):
             if state.isPlaying || state.isMuted {
                 tabAudio[tabID] = state
