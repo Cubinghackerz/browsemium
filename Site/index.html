@@ -1,774 +1,771 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Browsemium: a macOS browser built around the AI you already use</title>
-<meta name="description" content="Browsemium is a native macOS browser for people who work with AI all day. Local-first, no account, no telemetry, and it unloads background tabs instead of pretending to be faster.">
-<meta name="color-scheme" content="dark light">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 5 27 25H5Z' fill='none' stroke='%23999' stroke-width='2' stroke-linejoin='round'/%3E%3Cpath d='M16 5v20' stroke='%23999' stroke-width='2'/%3E%3C/svg%3E">
+<title>Browsemium. A macOS browser built around the AI you already use.</title>
+<meta name="description" content="Browsemium is a fast, private macOS browser for people who work with AI all day. Profiles, built-in ChatGPT, Claude, Gemini, Grok, and Ollama, ad and tracker blocking, and imports from every major browser. No account. No telemetry.">
+<meta name="theme-color" content="#09090B">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 4 28 26H4z' fill='none' stroke='%235B8DEF' stroke-width='2.5' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
   :root {
-    --canvas: #e9e7e4;
-    --raised: #faf9f8;
-    --sunken: #e2dfdb;
-    --text: #191919;
-    --secondary: rgba(0, 0, 0, 0.68);
-    --tertiary: rgba(0, 0, 0, 0.55);
-    --hairline: rgba(0, 0, 0, 0.10);
-    --hairline-strong: rgba(0, 0, 0, 0.18);
-    --invert-bg: #191919;
-    --invert-fg: #faf9f8;
-    --hover: rgba(0, 0, 0, 0.05);
-    --selection: rgba(0, 0, 0, 0.14);
-    --shadow: 0 18px 40px -24px rgba(0, 0, 0, 0.45);
-
-    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
-    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-
-    --step: clamp(1.5rem, 3.5vw, 2.75rem);
-    --gutter: clamp(1.25rem, 5vw, 4rem);
-    --measure: 68ch;
-    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    color-scheme: dark light;
+    --canvas: #09090B;
+    --raised: #111113;
+    --field: #17171A;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --text: #ECECEE;
+    --muted: #A0A0A8;
+    --faint: #6E6E76;
+    --accent: #7BA4F5;
+    --accent-fill: #5B8DEF;
+    --accent-ink: #09090B;
+    --good: #6FCF97;
+    --warn: #E0B252;
+    --shadow: 0 1px 0 rgba(255, 255, 255, 0.04), 0 24px 60px rgba(0, 0, 0, 0.5);
+    --radius: 12px;
+    --radius-lg: 18px;
+    --shell: 1080px;
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   }
-
-  @media (prefers-color-scheme: dark) {
+  @media (prefers-color-scheme: light) {
     :root {
-      --canvas: #1b1b1b;
-      --raised: #232323;
-      --sunken: #161616;
-      --text: rgba(255, 255, 255, 0.92);
-      --secondary: rgba(255, 255, 255, 0.66);
-      --tertiary: rgba(255, 255, 255, 0.50);
-      --hairline: rgba(255, 255, 255, 0.10);
-      --hairline-strong: rgba(255, 255, 255, 0.18);
-      --invert-bg: rgba(255, 255, 255, 0.94);
-      --invert-fg: #161616;
-      --hover: rgba(255, 255, 255, 0.06);
-      --selection: rgba(255, 255, 255, 0.16);
-      --shadow: 0 24px 60px -30px rgba(0, 0, 0, 0.8);
+      --canvas: #FAFAF8;
+      --raised: #FFFFFF;
+      --field: #F1F1EF;
+      --border: rgba(9, 9, 11, 0.1);
+      --border-strong: rgba(9, 9, 11, 0.2);
+      --text: #16161A;
+      --muted: #4E4E56;
+      --faint: #75757E;
+      --accent: #2F5FD0;
+      --accent-fill: #2F5FD0;
+      --accent-ink: #FFFFFF;
+      --good: #1F7A44;
+      --warn: #8A6206;
+      --shadow: 0 1px 0 rgba(255, 255, 255, 0.8), 0 20px 50px rgba(9, 9, 11, 0.08);
     }
   }
 
   * { box-sizing: border-box; }
-
-  html {
-    scrollbar-color: var(--hairline-strong) transparent;
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation: none !important; transition: none !important; }
   }
-
   body {
     margin: 0;
     background: var(--canvas);
     color: var(--text);
-    font-family: var(--sans);
+    font-family: var(--font);
     font-size: 16px;
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
+  ::selection { background: var(--accent-fill); color: var(--accent-ink); }
 
-  ::selection { background: var(--selection); }
-  body { caret-color: var(--text); accent-color: var(--text); }
-  :focus-visible {
-    outline: 2px solid var(--text);
+  a { color: inherit; }
+  a:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent);
     outline-offset: 3px;
-    border-radius: 3px;
+    border-radius: 6px;
   }
 
-  a {
-    color: inherit;
-    text-decoration-color: var(--hairline-strong);
-    text-underline-offset: 0.22em;
-    text-decoration-thickness: 1px;
+  .shell { width: min(var(--shell), calc(100% - 48px)); margin-inline: auto; }
+  @media (max-width: 640px) { .shell { width: calc(100% - 32px); } }
+
+  /* ---------- nav ---------- */
+  .nav {
+    position: sticky; top: 0; z-index: 40;
+    backdrop-filter: saturate(160%) blur(14px);
+    -webkit-backdrop-filter: saturate(160%) blur(14px);
+    background: color-mix(in srgb, var(--canvas) 82%, transparent);
+    border-bottom: 1px solid var(--border);
   }
-  a:hover { text-decoration-color: currentColor; }
-
-  .shell {
-    max-width: 1120px;
-    margin: 0 auto;
-    padding: 0 var(--gutter);
-  }
-
-  /* ---------- masthead ---------- */
-
-  .masthead {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1.5rem;
-    padding: 1.75rem 0 0;
-  }
-
+  .nav .shell { display: flex; align-items: center; gap: 20px; height: 56px; }
   .wordmark {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.6rem;
-    font-weight: 600;
-    letter-spacing: -0.015em;
+    display: inline-flex; align-items: center; gap: 9px;
+    font-weight: 600; font-size: 14.5px; letter-spacing: -0.01em;
     text-decoration: none;
   }
   .wordmark svg { display: block; }
-
-  .masthead nav {
-    display: flex;
-    align-items: center;
-    gap: 1.5rem;
-    font-size: 0.875rem;
-    color: var(--secondary);
+  .nav-links { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+  .nav-links a {
+    text-decoration: none; font-size: 13.5px; color: var(--muted);
+    padding: 7px 11px; border-radius: 8px;
   }
-  .masthead nav a { text-decoration: none; }
-  .masthead nav a:hover { color: var(--text); }
+  .nav-links a:hover { color: var(--text); background: var(--field); }
+  .nav-cta {
+    background: var(--text); color: var(--canvas) !important;
+    font-weight: 550;
+  }
+  .nav-cta:hover { background: var(--text) !important; opacity: 0.9; }
 
   /* ---------- hero ---------- */
-
-  .hero { padding: clamp(3.5rem, 9vw, 7rem) 0 0; }
-
+  .hero { padding: 96px 0 56px; }
+  @media (max-width: 720px) { .hero { padding: 64px 0 40px; } }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 12.5px; color: var(--muted);
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 6px 13px; margin-bottom: 26px;
+    background: var(--raised);
+  }
+  .eyebrow b { color: var(--text); font-weight: 600; }
+  .eyebrow .pip {
+    width: 6px; height: 6px; border-radius: 999px; background: var(--accent-fill);
+  }
   h1 {
-    font-size: clamp(2.25rem, 5.2vw, 3.6rem);
-    line-height: 1.04;
+    margin: 0 0 20px;
+    font-size: clamp(38px, 6.4vw, 76px);
+    line-height: 1.02;
     letter-spacing: -0.035em;
-    font-weight: 600;
-    margin: 0;
-    max-width: 22ch;
+    font-weight: 640;
+    max-width: 15ch;
     text-wrap: balance;
   }
-
   .lede {
-    margin: 1.5rem 0 0;
-    max-width: var(--measure);
-    font-size: 1.0625rem;
-    color: var(--secondary);
+    margin: 0 0 36px;
+    font-size: clamp(16.5px, 2vw, 19px);
+    color: var(--muted);
+    max-width: 58ch;
+    text-wrap: pretty;
   }
-  .lede strong { color: var(--text); font-weight: 500; }
+  .lede strong { color: var(--text); font-weight: 550; }
 
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.75rem 1.25rem;
-    margin-top: 2.25rem;
+  .install {
+    display: grid; gap: 12px;
+    max-width: 640px;
   }
-
-  .button {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.55rem;
-    background: var(--invert-bg);
-    color: var(--invert-fg);
-    border: 1px solid transparent;
-    border-radius: 8px;
-    padding: 0.7rem 1.05rem;
-    font-size: 0.9375rem;
-    font-weight: 500;
-    text-decoration: none;
-    transition: transform 180ms var(--ease), opacity 180ms var(--ease);
-  }
-  .button:hover { transform: translateY(-1px); }
-  .button:active { transform: translateY(0); }
-
-  .button--quiet {
-    background: transparent;
-    color: var(--text);
-    border-color: var(--hairline-strong);
-  }
-
-  .actions .note {
-    font-size: 0.8125rem;
-    color: var(--tertiary);
-    max-width: 34ch;
-  }
-
-  /* ---------- the browser, rendered in CSS ---------- */
-
-  .browser {
-    margin: clamp(2.5rem, 6vw, 4.5rem) 0 0;
+  .cmd {
+    display: flex; align-items: center; gap: 12px;
     background: var(--raised);
-    border: 1px solid var(--hairline);
-    border-radius: 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    padding: 13px 14px;
+    box-shadow: var(--shadow);
+  }
+  .cmd svg { flex: none; color: var(--faint); }
+  .cmd code {
+    font-family: var(--mono); font-size: 13.5px; color: var(--text);
+    overflow-x: auto; white-space: nowrap; scrollbar-width: none;
+    flex: 1; min-width: 0; padding: 2px 0;
+  }
+  .cmd code::-webkit-scrollbar { display: none; }
+  .cmd button {
+    flex: none;
+    font: inherit; font-size: 12.5px; font-weight: 550;
+    color: var(--text); background: var(--field);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 12px; cursor: pointer;
+  }
+  .cmd button:hover { border-color: var(--border-strong); }
+  .paths { display: flex; flex-wrap: wrap; gap: 10px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 14px; font-weight: 550; text-decoration: none;
+    padding: 11px 18px; border-radius: 10px;
+    background: var(--accent-fill); color: var(--accent-ink);
+    border: 1px solid transparent;
+  }
+  .btn:hover { filter: brightness(1.07); }
+  .btn-quiet {
+    background: transparent; color: var(--text);
+    border-color: var(--border-strong);
+  }
+  .btn-quiet:hover { background: var(--field); filter: none; }
+  .release {
+    margin-top: 18px;
+    font-size: 12.5px; color: var(--faint);
+    display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center;
+  }
+  .release code { font-family: var(--mono); color: var(--muted); }
+
+  /* ---------- browser mock ---------- */
+  .mock-wrap { padding: 24px 0 80px; }
+  .browser {
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    background: var(--raised);
     box-shadow: var(--shadow);
     overflow: hidden;
+    font-size: 12px;
   }
-
-  @media (prefers-reduced-motion: no-preference) {
-    .browser { animation: settle 620ms var(--ease) both; }
-    .tabstrip .tab--active { animation: fade 620ms var(--ease) 120ms both; }
+  .strip {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--canvas) 55%, var(--raised));
   }
-  @keyframes settle {
-    from { opacity: 0; transform: translateY(14px); }
-    to { opacity: 1; transform: none; }
+  .lights { display: flex; gap: 6px; margin-right: 6px; }
+  .lights i { width: 11px; height: 11px; border-radius: 999px; background: var(--field); border: 1px solid var(--border); }
+  .group {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--muted);
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 3px 10px; background: var(--field); white-space: nowrap;
   }
-  @keyframes fade {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-
-  .tabstrip {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 12px 8px 6px 12px;
-    border-bottom: 1px solid var(--hairline);
-  }
-
-  .lights { display: flex; gap: 6px; margin-right: 12px; }
-  .lights i {
-    width: 10px; height: 10px;
-    border-radius: 50%;
-    background: var(--hairline-strong);
-    display: block;
-  }
-
+  .group .swatch { width: 7px; height: 7px; border-radius: 999px; background: var(--accent-fill); }
   .tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    height: 28px;
-    padding: 0 9px;
-    border-radius: 8px;
-    font-size: 12px;
-    color: var(--secondary);
-    max-width: 200px;
-    white-space: nowrap;
-    overflow: hidden;
+    display: inline-flex; align-items: center; gap: 7px;
+    border-radius: 8px; padding: 5px 11px; color: var(--muted);
+    white-space: nowrap; border: 1px solid transparent; min-width: 0;
   }
-  .tab--active {
-    background: var(--hover);
-    color: var(--text);
-    box-shadow: inset 0 0 0 1px var(--hairline);
+  .tab-active { background: var(--field); border-color: var(--border); color: var(--text); }
+  .tab .fav { width: 12px; height: 12px; border-radius: 3px; background: var(--border-strong); flex: none; }
+  .tab .spk { color: var(--accent); display: inline-flex; flex: none; }
+  .tab .add {
+    color: var(--faint); border: 1px dashed var(--border-strong);
+    border-radius: 7px; padding: 3px 8px;
   }
-  .tab .dot {
-    width: 13px; height: 13px;
-    border-radius: 3px;
-    background: var(--hairline-strong);
-    flex: none;
+  .bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; border-bottom: 1px solid var(--border);
   }
-  .tab .x { margin-left: auto; color: var(--tertiary); display: grid; place-items: center; }
-  .newtab {
-    margin-left: auto;
-    color: var(--secondary);
-    width: 28px; height: 28px;
-    border-radius: 8px;
-    border: 1px solid var(--hairline);
-    display: grid; place-items: center;
-    color: var(--secondary);
-    font-size: 15px;
-    line-height: 1;
+  .navbtn { color: var(--faint); display: inline-flex; }
+  .addr {
+    flex: 1; display: flex; align-items: center; gap: 9px;
+    background: var(--field); border: 1px solid var(--border);
+    border-radius: 999px; padding: 6px 13px; color: var(--muted);
+    min-width: 0;
   }
+  .addr .engine { font-weight: 650; color: var(--text); font-size: 11px; }
+  .addr .sep { width: 1px; height: 12px; background: var(--border-strong); }
+  .addr .url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 3px 9px; font-size: 10.5px; color: var(--muted);
+    background: var(--field); white-space: nowrap;
+  }
+  .chip .avatar {
+    width: 15px; height: 15px; border-radius: 999px;
+    background: var(--accent-fill); color: var(--accent-ink);
+    font-size: 8px; font-weight: 700;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .stage { display: grid; grid-template-columns: 1fr 300px; min-height: 300px; }
+  @media (max-width: 820px) { .stage { grid-template-columns: 1fr; } .dock { border-left: 0 !important; border-top: 1px solid var(--border); } }
+  .page { padding: 26px 28px; display: grid; gap: 11px; align-content: start; }
+  .page h4 { margin: 0 0 4px; font-size: 17px; letter-spacing: -0.02em; }
+  .blk { height: 9px; border-radius: 5px; background: var(--field); }
+  .blk.short { width: 62%; }
+  .dock { border-left: 1px solid var(--border); background: color-mix(in srgb, var(--canvas) 45%, var(--raised)); display: grid; grid-template-rows: auto auto auto 1fr; }
+  .dock-head { display: flex; align-items: center; gap: 8px; padding: 11px 13px; border-bottom: 1px solid var(--border); }
+  .dock-head .name { font-weight: 600; font-size: 11.5px; }
+  .seg { margin-left: auto; display: inline-flex; background: var(--field); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+  .seg b, .seg i { font-style: normal; font-size: 10.5px; padding: 3px 9px; }
+  .seg b { background: var(--border-strong); color: var(--text); }
+  .seg i { color: var(--faint); }
+  .ctx { display: flex; align-items: center; gap: 8px; margin: 11px 13px 0; padding: 7px 10px; border: 1px solid var(--border); border-radius: 9px; color: var(--muted); font-size: 10.5px; }
+  .ctx .fav { width: 11px; height: 11px; border-radius: 3px; background: var(--border-strong); }
+  .dock .chips { display: flex; gap: 6px; margin: 9px 13px 0; flex-wrap: wrap; }
+  .chip.drag {
+    border-style: dashed; border-color: var(--accent);
+    color: var(--accent);
+  }
+  .composer { margin: 12px 13px 13px; border: 1px solid var(--border); border-radius: 10px; padding: 10px; color: var(--faint); font-size: 11px; background: var(--raised); }
+  .composer .send { margin-top: 9px; display: flex; justify-content: flex-end; }
+  .composer .send span { width: 18px; height: 18px; border-radius: 999px; background: var(--field); border: 1px solid var(--border); }
 
-  .toolbar {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--hairline);
+  /* ---------- stories ---------- */
+  .stories { border-top: 1px solid var(--border); }
+  .story { padding: 74px 0; border-bottom: 1px solid var(--border); }
+  .story .shell { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+  .story.flip .copy { order: 2; }
+  @media (max-width: 880px) {
+    .story .shell { grid-template-columns: 1fr; gap: 28px; }
+    .story.flip .copy { order: 0; }
+    .story { padding: 52px 0; }
   }
-
-  .navbtns { display: flex; gap: 2px; color: var(--tertiary); font-size: 13px; }
-  .navbtns span, .tools span { width: 22px; height: 22px; display: grid; place-items: center; }
-
-  .address {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    height: 30px;
-    padding: 0 10px;
-    border-radius: 15px;
-    background: var(--hover);
-    box-shadow: inset 0 0 0 1px var(--hairline);
-    font-size: 12.5px;
-    color: var(--secondary);
-    overflow: hidden;
-  }
-  .address .engine {
-    display: inline-flex; align-items: center; gap: 3px;
-    font-weight: 600; font-size: 11px; color: var(--secondary);
-  }
-  .address .sep { width: 1px; height: 14px; background: var(--hairline); }
-  .address .url { color: var(--text); }
-
-  @media (prefers-reduced-motion: no-preference) {
-    .address::after {
-      content: "";
-      position: absolute;
-      left: 10px; bottom: 3px;
-      height: 1.5px;
-      width: 12px;
-      border-radius: 2px;
-      background: var(--text);
-      opacity: 0.45;
-      animation: load 1.6s var(--ease) 500ms both;
-    }
-  }
-  @keyframes load {
-    from { width: 12px; }
-    to { width: calc(100% - 20px); }
-  }
-
-  .tools { display: flex; gap: 4px; color: var(--tertiary); font-size: 12px; }
-
-  .stage {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 280px;
-    min-height: 260px;
-  }
-
-  .page {
-    padding: 22px 24px;
-    border-right: 1px solid var(--hairline);
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-  .page h3 {
-    margin: 0;
-    font-size: 15px;
-    letter-spacing: -0.015em;
-    font-weight: 600;
-  }
-  .page p { margin: 0; font-size: 12.5px; color: var(--secondary); max-width: 46ch; }
-  .page .rule { height: 1px; background: var(--hairline); margin: 6px 0 2px; }
-  .page .blk { height: 9px; border-radius: 3px; background: var(--hover); }
-
-  .dock {
-    padding: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    background: var(--sunken);
-  }
-  .dock .head {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 6px;
-    font-size: 12px; font-weight: 600;
-  }
-  .dock .seg {
-    display: inline-flex;
-    gap: 2px;
-    padding: 2px;
-    border-radius: 8px;
-    background: var(--hover);
-    font-size: 10.5px;
-    font-weight: 500;
-    color: var(--secondary);
-  }
-  .dock .seg b {
-    padding: 2px 8px; border-radius: 6px;
-    background: var(--raised);
-    color: var(--text);
-    font-weight: 500;
-  }
-  .dock .seg i { padding: 2px 8px; font-style: normal; }
-  .context {
-    display: flex; align-items: center; gap: 7px;
-    padding: 7px 9px;
-    border-radius: 8px;
-    background: var(--hover);
-    font-size: 11px;
-  }
-  .context .dot { width: 12px; height: 12px; border-radius: 3px; background: var(--hairline-strong); flex: none; }
-  .context .host { margin-left: auto; color: var(--tertiary); font-size: 10px; }
-  .composer {
-    margin-top: auto;
-    display: flex; align-items: flex-end; gap: 8px;
-  }
-  .composer .field {
-    flex: 1;
-    min-height: 34px;
-    border-radius: 8px;
-    background: var(--raised);
-    box-shadow: inset 0 0 0 1px var(--hairline);
-    padding: 9px 10px;
-    font-size: 12px;
-    color: var(--tertiary);
-  }
-  .composer .send {
-    width: 26px; height: 26px;
-    border-radius: 50%;
-    background: var(--invert-bg);
-    color: var(--invert-fg);
-    display: grid; place-items: center;
-    font-size: 12px;
-  }
-  .chips { display: flex; gap: 6px; font-size: 10px; color: var(--secondary); }
-  .chips span {
-    padding: 3px 7px;
-    border-radius: 999px;
-    background: var(--hover);
-    box-shadow: inset 0 0 0 1px var(--hairline);
-  }
-
-  @media (max-width: 820px) {
-    .stage { grid-template-columns: minmax(0, 1fr); }
-    .page { border-right: 0; border-bottom: 1px solid var(--hairline); }
-    .dock { min-height: 190px; }
-  }
-
-  /* ---------- sections ---------- */
-
-  section { padding: clamp(4rem, 9vw, 7rem) 0 0; }
-
-  h2 {
-    font-size: var(--step);
-    line-height: 1.1;
-    letter-spacing: -0.03em;
-    font-weight: 600;
-    margin: 0 0 2rem;
-    max-width: 26ch;
+  .story h2 {
+    margin: 0 0 14px;
+    font-size: clamp(23px, 3.2vw, 31px);
+    letter-spacing: -0.025em; line-height: 1.15; font-weight: 620;
     text-wrap: balance;
   }
+  .story p { margin: 0 0 12px; color: var(--muted); max-width: 52ch; }
+  .story p:last-child { margin-bottom: 0; }
+  .story ul { margin: 16px 0 0; padding: 0; list-style: none; display: grid; gap: 9px; }
+  .story li { display: flex; gap: 10px; color: var(--muted); font-size: 14.5px; }
+  .story li svg { flex: none; margin-top: 4px; color: var(--good); }
+  .story li b { color: var(--text); font-weight: 550; }
 
-  .rows { border-top: 1px solid var(--hairline); }
-
+  .art {
+    border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+    background: var(--raised); box-shadow: var(--shadow);
+    padding: 18px; display: grid; gap: 10px;
+  }
   .row {
-    display: grid;
-    grid-template-columns: minmax(0, 15rem) minmax(0, 1fr);
-    gap: 1rem 3rem;
-    padding: 1.6rem 0;
-    border-bottom: 1px solid var(--hairline);
-    align-items: start;
+    display: flex; align-items: center; gap: 10px;
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 12px; font-size: 13px; background: var(--canvas);
   }
-  .row h3 {
-    margin: 0;
-    font-size: 1rem;
-    font-weight: 600;
-    letter-spacing: -0.015em;
+  .row .avatar {
+    width: 22px; height: 22px; border-radius: 999px; flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700;
+    background: var(--field); color: var(--muted);
+    border: 1px solid var(--border);
   }
-  .row p {
-    margin: 0;
-    max-width: var(--measure);
-    color: var(--secondary);
-  }
-  .row p + p { margin-top: 0.6rem; }
-  .row code {
-    font-family: var(--mono);
-    font-size: 0.85em;
-    padding: 0.1em 0.35em;
-    border-radius: 4px;
-    background: var(--hover);
-  }
-
-  @media (max-width: 720px) {
-    .row { grid-template-columns: minmax(0, 1fr); gap: 0.5rem; }
-  }
-
-  .limits {
-    margin-top: 3rem;
-    border: 1px solid var(--hairline);
-    border-radius: 12px;
-    padding: clamp(1.5rem, 3vw, 2.25rem);
-    background: var(--raised);
-  }
-  .limits h2 { margin-bottom: 1rem; }
-  .limits ul { margin: 0; padding: 0; list-style: none; }
-  .limits li {
-    padding: 0.7rem 0;
-    border-top: 1px solid var(--hairline);
-    color: var(--secondary);
-    max-width: var(--measure);
-  }
-  .limits li:first-child { border-top: 0; padding-top: 0; }
-  .limits li strong { color: var(--text); font-weight: 500; }
+  .row .avatar.on { background: var(--accent-fill); color: var(--accent-ink); border-color: transparent; }
+  .row .tag { margin-left: auto; font-size: 11px; color: var(--faint); }
+  .row .tag.live { color: var(--good); }
+  .row.dim { opacity: 0.45; }
+  .row code { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+  .arrowline { display: flex; justify-content: center; color: var(--faint); }
 
   /* ---------- install ---------- */
-
-  .install { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3rem; }
-  @media (max-width: 860px) { .install { grid-template-columns: minmax(0, 1fr); gap: 2rem; } }
-
-  .install ol { margin: 0; padding-left: 1.15rem; }
-  .install li { padding: 0.4rem 0; color: var(--secondary); }
-  .install li strong { color: var(--text); font-weight: 500; }
-
-  pre {
-    margin: 0;
-    padding: 1rem 1.1rem;
-    border-radius: 10px;
-    background: var(--sunken);
-    border: 1px solid var(--hairline);
-    overflow-x: auto;
-    font-family: var(--mono);
-    font-size: 12.5px;
-    line-height: 1.7;
-    color: var(--secondary);
+  .install-section { padding: 80px 0; }
+  .install-section h2, .faq h2, .verify h2 {
+    margin: 0 0 12px; font-size: clamp(23px, 3.2vw, 31px);
+    letter-spacing: -0.025em; font-weight: 620;
   }
-  pre b { color: var(--text); font-weight: 400; }
+  .section-lede { margin: 0 0 34px; color: var(--muted); max-width: 60ch; }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  @media (max-width: 880px) { .cards { grid-template-columns: 1fr; } }
+  .card {
+    border: 1px solid var(--border-strong); border-radius: var(--radius);
+    background: var(--raised); padding: 20px; display: grid; gap: 10px;
+    align-content: start; box-shadow: var(--shadow);
+  }
+  .card h3 { margin: 0; font-size: 15.5px; letter-spacing: -0.01em; }
+  .card .badge {
+    justify-self: start; font-size: 11px; font-weight: 600;
+    color: var(--good); border: 1px solid var(--border);
+    border-radius: 999px; padding: 2px 9px; background: var(--field);
+  }
+  .card p { margin: 0; color: var(--muted); font-size: 13.5px; }
+  .card pre {
+    margin: 2px 0 0; padding: 11px 12px;
+    background: var(--canvas); border: 1px solid var(--border);
+    border-radius: 9px; overflow-x: auto;
+    font-family: var(--mono); font-size: 12px; color: var(--text);
+  }
+
+  /* ---------- verify ---------- */
+  .verify { padding: 0 0 80px; }
+  .verify pre {
+    margin: 0; padding: 16px 18px; background: var(--raised);
+    border: 1px solid var(--border-strong); border-radius: var(--radius);
+    font-family: var(--mono); font-size: 12.5px; overflow-x: auto;
+    color: var(--muted); box-shadow: var(--shadow);
+  }
+  .verify code { color: var(--text); }
+
+  /* ---------- honesty ---------- */
+  .honesty { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: var(--raised); padding: 60px 0; }
+  .honesty h2 { margin: 0 0 22px; font-size: 20px; letter-spacing: -0.02em; }
+  .honesty-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 40px; }
+  @media (max-width: 760px) { .honesty-grid { grid-template-columns: 1fr; } }
+  .honesty-grid p { margin: 0; color: var(--muted); font-size: 14.5px; display: flex; gap: 10px; }
+  .honesty-grid svg { flex: none; margin-top: 4px; color: var(--warn); }
+  .honesty-grid b { color: var(--text); font-weight: 550; }
+
+  /* ---------- faq ---------- */
+  .faq { padding: 80px 0; }
+  details {
+    border-bottom: 1px solid var(--border);
+  }
+  details summary {
+    list-style: none; cursor: pointer;
+    display: flex; align-items: center; gap: 14px;
+    padding: 19px 2px; font-size: 15.5px; font-weight: 550;
+  }
+  details summary::-webkit-details-marker { display: none; }
+  details summary .plus { margin-left: auto; color: var(--faint); flex: none; transition: transform 0.18s ease; }
+  details[open] summary .plus { transform: rotate(45deg); }
+  details .answer { padding: 0 2px 20px; color: var(--muted); max-width: 72ch; }
+  details .answer p { margin: 0 0 10px; }
+  details .answer p:last-child { margin-bottom: 0; }
+  details .answer code { font-family: var(--mono); font-size: 13px; color: var(--text); background: var(--field); padding: 2px 6px; border-radius: 6px; }
 
   /* ---------- footer ---------- */
-
-  footer {
-    margin-top: clamp(4rem, 9vw, 7rem);
-    border-top: 1px solid var(--hairline);
-    padding: 2rem 0 4rem;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem 2rem;
-    justify-content: space-between;
-    font-size: 0.8125rem;
-    color: var(--tertiary);
-  }
-  footer a { text-decoration: none; }
+  footer { border-top: 1px solid var(--border); padding: 40px 0 56px; }
+  footer .shell { display: flex; flex-wrap: wrap; gap: 14px 26px; align-items: center; color: var(--faint); font-size: 13px; }
+  footer .links { margin-left: auto; display: flex; flex-wrap: wrap; gap: 6px 18px; }
+  footer a { color: var(--muted); text-decoration: none; }
   footer a:hover { color: var(--text); }
 </style>
 </head>
-<body>
+<body id="top">
 
-<header class="shell masthead">
-  <a class="wordmark" href="#top" aria-label="Browsemium, home">
-    <svg width="20" height="20" viewBox="0 0 32 32" aria-hidden="true">
-      <path d="M16 4.5 27.5 25.5H4.5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-      <path d="M16 4.5v21" stroke="currentColor" stroke-width="2"/>
-      <path d="M16 25.5 9 15.5" stroke="currentColor" stroke-width="1.25" opacity="0.5"/>
-    </svg>
-    Browsemium
-  </a>
-  <nav>
-    <a href="#what">What it does</a>
-    <a href="#limits">What it won't claim</a>
-    <a href="#install">Install</a>
-    <a href="https://github.com/Cubinghackerz/browsemium">Source</a>
-  </nav>
+<header class="nav">
+  <div class="shell">
+    <a class="wordmark" href="#top">
+      <svg width="17" height="17" viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M16 4 28 26H4z" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linejoin="round"/>
+      </svg>
+      Browsemium
+    </a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="#faq">FAQ</a>
+      <a href="https://github.com/Cubinghackerz/browsemium">GitHub</a>
+      <a class="nav-cta" href="#install">Download</a>
+    </nav>
+  </div>
 </header>
 
-<main id="top">
+<main>
 
-  <section class="shell hero">
-    <h1>A macOS browser built around the AI you already use.</h1>
-    <p class="lede">
-      Browsemium keeps ChatGPT, Claude, Gemini, and Grok beside your page, shares only the
-      context you choose, and <strong>unloads background tabs instead of pretending to render
-      faster</strong>. No account. No telemetry. Everything stays on your Mac.
-    </p>
-
-    <div class="actions">
-      <a class="button" href="https://github.com/Cubinghackerz/browsemium/releases/latest/download/Browsemium-1.0.2.dmg">
-        Download for macOS
-        <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M8 2v8m0 0 3-3m-3 3L5 7M3 13h10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </a>
-      <a class="button button--quiet" href="https://github.com/Cubinghackerz/browsemium">Read the source</a>
-      <p class="note">
-        6.7 MB · macOS 14 or newer · Apple silicon. Version 1.0.2.
-        <a href="https://github.com/Cubinghackerz/browsemium/releases/latest">Release notes</a>.
+  <section class="hero">
+    <div class="shell">
+      <p class="eyebrow"><span class="pip" aria-hidden="true"></span> Version <b><span data-release-version>1.0.2</span></b> &middot; Profiles, groups, reader, local models</p>
+      <h1>A macOS browser built around the AI you already use.</h1>
+      <p class="lede">
+        Browsemium keeps ChatGPT, Claude, Gemini, Grok, or a local Ollama model beside your page,
+        shares only the context you choose, and <strong>unloads background tabs instead of pretending
+        to render faster</strong>. Separate profiles keep work and personal apart, and nothing here needs an account or phones home.
       </p>
-    </div>
 
-    <div class="rows" style="margin-top: 2.5rem;">
-      <div class="row">
-        <h3>Install without the warning — recommended</h3>
-        <p>
-          The "can't check for malware" dialog only appears on files a browser flags as
-          downloaded. This installer fetches the same DMG with curl instead — no flag, no
-          warning — and verifies the checksum against this site before installing:
+      <div class="install" id="install">
+        <div class="cmd">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2.5 4.5 5.5 8l-3 3.5M7.5 11.5h6"/>
+          </svg>
+          <code id="install-command">curl -fsSL https://browsemium.vercel.app/install.sh | bash</code>
+          <button type="button" data-copy="#install-command">Copy</button>
+        </div>
+        <div class="paths">
+          <a class="btn" href="https://github.com/Cubinghackerz/browsemium/releases/latest/download/Browsemium-1.0.2.dmg">
+            Download for macOS
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M8 2.5v8m0 0 3-3m-3 3-3-3M3 13h10"/>
+            </svg>
+          </a>
+          <a class="btn btn-quiet" href="https://github.com/Cubinghackerz/homebrew-tap">brew install --cask cubinghackerz/tap/browsemium</a>
+        </div>
+        <p class="release">
+          <span>6.7&nbsp;MB &middot; macOS&nbsp;14+ &middot; Apple&nbsp;silicon</span>
+          <span>SHA-256 <code data-release-checksum>66cff5850a0d56ba81554850ad557e1f6844fd534cfbd18d4bf4e0230711a57c</code></span>
         </p>
-        <pre style="margin-top: 0.8rem;"><b>curl -fsSL https://browsemium.vercel.app/install.sh | bash</b></pre>
-        <p>
-          Read it first if you like:
-          <a href="https://browsemium.vercel.app/install.sh">view the installer source</a>.
-          It downloads the release, checks SHA-256, copies the app to /Applications, and
-          opens it.
-        </p>
-      </div>
-
-      <div class="row">
-        <h3>Downloaded the DMG instead?</h3>
-        <p>
-          Browser downloads carry the quarantine flag, so macOS will refuse the first launch.
-          This build is signed ad-hoc rather than with a Developer ID — the dialog is
-          Gatekeeper reacting to the missing certificate, not a detection. Allow it once:
-        </p>
-        <p>
-          <strong>System Settings → Privacy &amp; Security</strong>, scroll to Security, click
-          <strong>Open Anyway</strong>. Or clear the flag directly:
-        </p>
-        <pre style="margin-top: 0.8rem;"><b>xattr -dr com.apple.quarantine /Applications/Browsemium.app</b></pre>
-        <p>
-          Notarization is what removes this step for good. It requires a paid Apple Developer
-          ID, which this build does not have yet.
-        </p>
-      </div>
-
-      <div class="row">
-        <h3>Verify your download</h3>
-        <p>Compare the SHA-256 before opening it:</p>
-        <pre style="margin-top: 0.8rem;"><b>shasum -a 256 ~/Downloads/Browsemium-1.0.2.dmg</b>
-66cff5850a0d56ba81554850ad557e1f6844fd534cfbd18d4bf4e0230711a57c</pre>
       </div>
     </div>
+  </section>
 
-    <div class="browser" role="img" aria-label="The Browsemium window: a horizontal tab strip, a centered address field with a search-engine switcher, and the assistant dock open on the right showing ChatGPT.">
-      <div class="tabstrip">
-        <div class="lights"><i></i><i></i><i></i></div>
-        <span class="tab tab--active"><span class="dot"></span> Swift concurrency <span class="x"><svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 4.5l7 7m0-7-7 7"/></svg></span></span>
-        <span class="tab"><span class="dot"></span> Pull requests</span>
-        <span class="newtab"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"/></svg></span>
-      </div>
-
-      <div class="toolbar">
-        <div class="navbtns"><span><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg></span><span><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg></span><span><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M13 3v3h-3"/></svg></span></div>
-        <div class="address">
-          <span class="engine">G <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5 8 10.5l4-4"/></svg></span>
-          <span class="sep"></span>
-          <span aria-hidden="true"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 2.5h7v11l-3.5-2.6L4.5 13.5z"/></svg></span>
-          <span class="url">swift.org/documentation</span>
+  <div class="mock-wrap">
+    <div class="shell">
+      <div class="browser" role="img" aria-label="The Browsemium window: a tab strip with a tab group picker and an audio indicator, an address bar with a profile chip, and the assistant dock showing a captured screenshot chip ready to drag into the chat.">
+        <div class="strip">
+          <div class="lights" aria-hidden="true"><i></i><i></i><i></i></div>
+          <span class="group"><span class="swatch" aria-hidden="true"></span> Work</span>
+          <span class="tab tab-active"><span class="fav" aria-hidden="true"></span> Swift concurrency</span>
+          <span class="tab"><span class="fav" aria-hidden="true"></span> Pull requests</span>
+          <span class="tab"><span class="fav" aria-hidden="true"></span> Release notes <span class="spk" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.5h2.5L9 3.5v9L5.5 9.5H3z"/><path d="M11.5 6a3 3 0 0 1 0 4"/></svg></span></span>
+          <span class="tab add" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg></span>
         </div>
-        <div class="tools"><span><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 2.5h7v11l-3.5-2.6L4.5 13.5z"/></svg></span><span><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.5" cy="8" r="2.5"/><path d="M8 8h6m-2 0v2.5"/></svg></span><span><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6h4v4H6z"/><path d="M6 6V4.5a1.5 1.5 0 1 0-1.5 1.5H6m4 0h1.5A1.5 1.5 0 1 0 10 4.5V6m0 4v1.5a1.5 1.5 0 1 0 1.5-1.5H10m-4 0H4.5A1.5 1.5 0 1 0 6 11.5V10"/></svg></span><span><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5l1.4 3.6L13 7.5l-3.6 1.4L8 12.5 6.6 8.9 3 7.5l3.6-1.4z"/></svg></span><span><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="3.5" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="12.5" cy="8" r="1"/></svg></span></div>
-      </div>
-
-      <div class="stage">
-        <div class="page">
-          <h3>Swift Documentation</h3>
-          <p>Structured concurrency ties the lifetime of a task to the scope that created it, so cancellation and errors travel together.</p>
-          <div class="rule"></div>
-          <div class="blk" style="width: 92%"></div>
-          <div class="blk" style="width: 78%"></div>
-          <div class="blk" style="width: 85%"></div>
-          <div class="blk" style="width: 61%"></div>
+        <div class="bar">
+          <span class="navbtn" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg></span>
+          <span class="navbtn" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"/></svg></span>
+          <span class="addr">
+            <span class="engine">G</span>
+            <span class="sep" aria-hidden="true"></span>
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 2.5h7v11l-3.5-2.6L4.5 13.5z"/></svg>
+            <span class="url">swift.org/documentation</span>
+          </span>
+          <span class="chip"><span class="avatar">W</span> Work</span>
         </div>
+        <div class="stage">
+          <div class="page">
+            <h4>Concurrency</h4>
+            <div class="blk" style="width: 92%"></div>
+            <div class="blk" style="width: 78%"></div>
+            <div class="blk" style="width: 86%"></div>
+            <div class="blk short"></div>
+            <div class="blk" style="width: 71%"></div>
+          </div>
+          <div class="dock">
+            <div class="dock-head">
+              <span class="name">Assistant</span>
+              <span class="seg" aria-hidden="true"><b>Web</b><i>API</i></span>
+            </div>
+            <div class="ctx"><span class="fav" aria-hidden="true"></span> Concurrency &middot; <span style="color: var(--faint)">swift.org</span></div>
+            <div class="chips">
+              <span class="chip">Page text &middot; 18,204</span>
+              <span class="chip drag">Screenshot &middot; drag into the chat</span>
+            </div>
+            <div class="composer">
+              Ask about this page&hellip;
+              <div class="send" aria-hidden="true"><span></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-        <div class="dock">
-          <div class="head">
-            <span>ChatGPT <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5 8 10.5l4-4"/></svg></span>
-            <span class="seg"><b>Web</b><i>API</i></span>
-          </div>
-          <div class="context">
-            <span class="dot"></span>
-            Swift Documentation
-            <span class="host">swift.org</span>
-          </div>
-          <div class="chips"><span>Page text · 18,204</span><span>Screenshot</span></div>
-          <div class="composer">
-            <div class="field">Ask about this page…</div>
-            <div class="send" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 12.5V4m0 0L4.5 7.5M8 4l3.5 3.5"/></svg></div>
-          </div>
+  <div class="stories" id="features">
+
+    <section class="story">
+      <div class="shell">
+        <div class="copy">
+          <h2>Profiles that actually separate your life.</h2>
+          <p>
+            Every profile gets its own cookies, logins, history, bookmarks, tabs, and passwords.
+            Sign into work tools in one profile and personal accounts in another, on the same Mac,
+            without a single crossover.
+          </p>
+          <p>
+            When you import from Chrome or Firefox, Browsemium finds every profile in that browser
+            and can turn each one into its own profile here, named the way you named it there.
+          </p>
+        </div>
+        <div class="art" aria-hidden="true">
+          <div class="row"><span class="avatar on">W</span> Work <span class="tag live">active</span></div>
+          <div class="row"><span class="avatar">P</span> Personal <span class="tag">switch</span></div>
+          <div class="row"><span class="avatar">C</span> Chrome / Work <span class="tag">imported</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="story flip">
+      <div class="shell">
+        <div class="copy">
+          <h2>The assistant lives in the browser, not on top of it.</h2>
+          <p>
+            ChatGPT, Claude, Gemini, and Grok open in the dock beside your page. Select text,
+            capture a screenshot, or share the readable page, review exactly what will be sent,
+            then send it. Drag a capture straight into the chat when you prefer.
+          </p>
+          <ul>
+            <li><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5 6.5 12 13 4.5"/></svg> <span><b>Right-click a selection</b> and ask about it without leaving the page.</span></li>
+            <li><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5 6.5 12 13 4.5"/></svg> <span><b>Ollama runs entirely on this Mac</b>, with no key and no account.</span></li>
+            <li><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5 6.5 12 13 4.5"/></svg> <span><b>The assistant never clicks, types, or submits</b>, so every action stays yours.</span></li>
+          </ul>
+        </div>
+        <div class="art" aria-hidden="true">
+          <div class="row"><span class="avatar">W</span> Selected paragraph <span class="tag">attached</span></div>
+          <div class="arrowline"><svg width="16" height="22" viewBox="0 0 16 22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v15m0 0-4-4m4 4 4-4"/></svg></div>
+          <div class="row"><code>Ask about this page&hellip;</code> <span class="tag live">ready to send</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="story">
+      <div class="shell">
+        <div class="copy">
+          <h2>Background tabs get unloaded, and it tells you.</h2>
+          <p>
+            Browsemium does not claim to render pages faster than Chrome. It claims to stop
+            wasting memory on tabs you have not looked at in an hour. Idle tabs are unloaded on a
+            schedule you control, with a ceiling on how many stay live.
+          </p>
+          <p>
+            The trade-off is stated plainly in the app: a tab you return to reloads. WebKit does not
+            report per-tab memory, so Browsemium never shows a number it cannot verify.
+          </p>
+        </div>
+        <div class="art" aria-hidden="true">
+          <div class="row"><span class="avatar on">1</span> Swift concurrency <span class="tag live">live</span></div>
+          <div class="row dim"><span class="avatar">2</span> Pull requests <span class="tag">unloaded</span></div>
+          <div class="row dim"><span class="avatar">3</span> Release notes <span class="tag">unloaded</span></div>
+          <div class="row dim"><span class="avatar">4</span> Old dashboard <span class="tag">unloaded</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="story flip">
+      <div class="shell">
+        <div class="copy">
+          <h2>Blocking that is honest about what it blocks.</h2>
+          <p>
+            Ads and trackers are blocked with compiled WebKit content rules, on by default and
+            configurable. WebKit does not expose a blocked-request count, so the app reports rule
+            state instead of inventing a number that looks impressive.
+          </p>
+          <p>
+            Local history and bookmark suggestions in the address bar, search-engine switching, and
+            one-off <code>!g</code> <code>!d</code> <code>!b</code> <code>!br</code> prefixes are all
+            there too.
+          </p>
+        </div>
+        <div class="art" aria-hidden="true">
+          <div class="row"><span class="avatar">G</span> google-analytics.com <span class="tag live">blocked</span></div>
+          <div class="row"><span class="avatar">D</span> doubleclick.net <span class="tag live">blocked</span></div>
+          <div class="row"><span class="avatar">F</span> fonts.gstatic.com <span class="tag">allowed</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="story">
+      <div class="shell">
+        <div class="copy">
+          <h2>Bring everything over, then leave the old browser behind.</h2>
+          <p>
+            Chrome, Brave, Edge, Vivaldi, Arc, Chromium, Firefox, and Safari are all detected.
+            Import bookmarks with their folders, history, Safari's reading list, your default search
+            engine, and Chromium-family passwords into the macOS keychain.
+          </p>
+          <p>
+            Firefox and Safari passwords are not importable, and the app says why instead of failing
+            quietly. Cookies are never imported. Nothing is uploaded, and nothing is removed from the
+            browser you came from.
+          </p>
+        </div>
+        <div class="art" aria-hidden="true">
+          <div class="row"><span class="avatar">C</span> Chrome / Work <span class="tag live">1,204 bookmarks</span></div>
+          <div class="row"><span class="avatar">F</span> Firefox / default <span class="tag live">890 bookmarks</span></div>
+          <div class="arrowline"><svg width="16" height="22" viewBox="0 0 16 22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v15m0 0-4-4m4 4 4-4"/></svg></div>
+          <div class="row"><span class="avatar on">W</span> New profile: Work <span class="tag live">ready</span></div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <section class="install-section">
+    <div class="shell">
+      <h2>Three ways to install</h2>
+      <p class="section-lede">
+        Browsemium is signed ad-hoc rather than with an Apple Developer ID. That means a browser
+        download is refused once by Gatekeeper, and it says so right here instead of pretending
+        otherwise. The first two paths avoid that entirely.
+      </p>
+      <div class="cards">
+        <div class="card">
+          <span class="badge">Recommended</span>
+          <h3>Terminal installer</h3>
+          <p>Fetches the release with curl, verifies its SHA-256 against this site, installs to Applications. No Gatekeeper prompt, because nothing marks the file as a browser download.</p>
+          <pre>curl -fsSL https://browsemium.vercel.app/install.sh | bash</pre>
+        </div>
+        <div class="card">
+          <h3>Homebrew</h3>
+          <p>One command for people who already live in the terminal. The cask is updated by the release workflow on every version.</p>
+          <pre>brew install --cask \
+  cubinghackerz/tap/browsemium</pre>
+        </div>
+        <div class="card">
+          <h3>Download the DMG</h3>
+          <p>Drag Browsemium into Applications, then allow it once under System Settings &rarr; Privacy &amp; Security &rarr; Open Anyway. The dialog is Apple's missing certificate, not a detection.</p>
+          <pre>xattr -dr com.apple.quarantine \
+  /Applications/Browsemium.app</pre>
         </div>
       </div>
     </div>
   </section>
 
-  <section class="shell" id="what">
-    <h2>What it does, specifically.</h2>
-
-    <div class="rows">
-      <div class="row">
-        <h3>AI beside the page</h3>
-        <p>
-          Open ChatGPT, Claude, Gemini, or Grok in the dock and keep your subscriptions. Attach
-          the selection, the readable page text, or a screenshot of the current tab. Each one is
-          captured only when you ask.
-        </p>
-        <p>
-          Prefer API access? Add your own key for any of the four providers. Keys live in the
-          macOS keychain and go only to that provider.
-        </p>
-      </div>
-
-      <div class="row">
-        <h3>Nothing sent by accident</h3>
-        <p>
-          Every attachment is reviewed in a sheet that names the destination and shows exactly
-          what will be shared. The assistant never clicks, types, or submits anything for you. It suggests;
-          you decide.
-        </p>
-      </div>
-
-      <div class="row">
-        <h3>Lower memory, honestly measured</h3>
-        <p>
-          Background tabs are unloaded after an idle period you choose, with a ceiling on how
-          many stay loaded. The trade-off is stated in the app: pages reload when you return to
-          them. Memory saver, the idle window, and the ceiling are all yours to set.
-        </p>
-      </div>
-
-      <div class="row">
-        <h3>Ads and trackers blocked</h3>
-        <p>
-          WebKit content rules compiled from Browsemium's own list, applied to every tab. WebKit
-          does not report how many requests it stopped, so the app shows rule state rather than
-          inventing a count.
-        </p>
-      </div>
-
-      <div class="row">
-        <h3>Passwords that stay yours</h3>
-        <p>
-          Saved logins live in your keychain. Browsemium fills one only after you pick it, only
-          on HTTPS, only for the matching site. It never submits the form.
-        </p>
-      </div>
-
-      <div class="row">
-        <h3>Your data comes with you</h3>
-        <p>
-          Import bookmarks, history, reading list, default search engine, and passwords from
-          Chrome, Brave, Edge, Vivaldi, Arc, and Chromium, plus bookmarks and history from
-          Firefox and Safari. A preview shows exactly what was found before anything is written.
-        </p>
-      </div>
-
-      <div class="row">
-        <h3>Small things that matter daily</h3>
-        <p>
-          Horizontal tabs you can drag to reorder, session restore, find in page, zoom, print,
-          a bookmarks bar, a downloads indicator with live progress, private browsing, per-site
-          permissions, and quick search-engine switching from the address bar, including
-          <code>!d</code>, <code>!b</code>, and <code>!br</code> for a one-off search.
-        </p>
-      </div>
-    </div>
-
-    <div class="limits" id="limits">
-      <h2>What it won't claim.</h2>
-      <ul>
-        <li><strong>It is not faster at rendering pages.</strong> Browsemium is WebKit. It is faster to get to an answer, and that is a different sentence.</li>
-        <li><strong>It does not measure memory for you in the abstract.</strong> The app reports its own real footprint and whether a tab holds a web view. WebKit renders in separate processes, so per-tab memory is not measurable, so it is not shown.</li>
-        <li><strong>It never shows a blocked-item count.</strong> WebKit does not expose one, and a made-up number would be a lie told in a progress bar.</li>
-        <li><strong>It does not sync, sign you in, or phone home.</strong> There is no account system and no telemetry, by design rather than by setting.</li>
-        <li><strong>It cannot move every password.</strong> Firefox keeps passwords in its own encrypted key database and Safari keeps them in your iCloud Keychain. Chromium-family browsers can be read once you allow keychain access; the others cannot, and the app says so before you start.</li>
-        <li><strong>It is macOS only.</strong> macOS 14 or newer, Apple silicon or Intel.</li>
-      </ul>
+  <section class="verify">
+    <div class="shell">
+      <h2>Verify your download</h2>
+      <p class="section-lede">Every release publishes its SHA-256. Compare it before opening the DMG.</p>
+      <pre>shasum -a 256 ~/Downloads/Browsemium-1.0.2.dmg
+<code data-release-checksum>66cff5850a0d56ba81554850ad557e1f6844fd534cfbd18d4bf4e0230711a57c</code></pre>
     </div>
   </section>
 
-  <section class="shell" id="install">
-    <h2>Install.</h2>
-
-    <div class="install">
-      <ol>
-        <li><strong>Download</strong> the latest DMG from Releases, or build from source below.</li>
-        <li><strong>Drag Browsemium</strong> into Applications.</li>
-        <li><strong>Open it</strong> and pick your search engine, appearance, privacy level, and whether the assistant is on.</li>
-        <li><strong>Import</strong> your bookmarks, history, and passwords from another browser if you like, with a preview first.</li>
-      </ol>
-
-      <div>
-        <pre><b># Build from source</b>
-git clone https://github.com/Cubinghackerz/browsemium
-cd browsemium
-
-# Full Xcode and XcodeGen are required
-xcodegen generate --spec project.yml
-xcodebuild -project Browsemium.xcodeproj \
-  -scheme Browsemium -configuration Debug build</pre>
-        <p class="note" style="margin-top: 1rem; font-size: 0.8125rem; color: var(--tertiary);">
-          The test suite runs with <code style="font-family: var(--mono);">swift test --package-path Packages/BrowsemiumKit</code>.
-        </p>
+  <section class="honesty">
+    <div class="shell">
+      <h2>What Browsemium does not claim</h2>
+      <div class="honesty-grid">
+        <p><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 4.5v4.5M8 11.6v.2"/><circle cx="8" cy="8" r="6.2"/></svg> <span><b>Rendering speed is not claimed.</b> Browsemium gets you to an answer sooner; it does not claim to paint pages faster.</span></p>
+        <p><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 4.5v4.5M8 11.6v.2"/><circle cx="8" cy="8" r="6.2"/></svg> <span><b>Per-tab memory is not reported</b>, because WebKit does not expose it.</span></p>
+        <p><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 4.5v4.5M8 11.6v.2"/><circle cx="8" cy="8" r="6.2"/></svg> <span><b>Blocked-item counts are not shown</b>, because WebKit does not report them; the app shows rule state instead.</span></p>
+        <p><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 4.5v4.5M8 11.6v.2"/><circle cx="8" cy="8" r="6.2"/></svg> <span><b>There is no account and no sync.</b> Browsing data stays on this Mac.</span></p>
       </div>
+    </div>
+  </section>
+
+  <section class="faq" id="faq">
+    <div class="shell">
+      <h2>Questions</h2>
+
+      <details>
+        <summary>Why does macOS warn about the DMG? <span class="plus" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg></span></summary>
+        <div class="answer">
+          <p>
+            The build is signed ad-hoc instead of with a paid Apple Developer ID, so Gatekeeper has no
+            certificate to check it against and refuses the first launch. It is Apple's response to a
+            missing certificate, not a malware detection.
+          </p>
+          <p>
+            The terminal installer and the Homebrew cask avoid the prompt entirely. Notarization is the
+            permanent fix and is planned once a Developer ID is in place.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Where does my data live? <span class="plus" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg></span></summary>
+        <div class="answer">
+          <p>
+            In Browsemium's own folder under Application Support, one database per profile, plus
+            WebKit's data store per profile. Passwords and API keys live in the macOS keychain.
+            Nothing is uploaded anywhere unless you send it to a site or a provider you chose.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>How do updates work? <span class="plus" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg></span></summary>
+        <div class="answer">
+          <p>
+            Sparkle checks a signed feed once a day and verifies an EdDSA signature before installing
+            anything. Updates carry no quarantine flag, so they install without a Gatekeeper prompt.
+            You can also check manually from the Browsemium menu.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Can the AI click or type for me? <span class="plus" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg></span></summary>
+        <div class="answer">
+          <p>
+            No, by design. The assistant can read the page text, a selection, or a screenshot when you
+            ask it to, and it is reviewed before sending. It never clicks, types, submits, or runs
+            anything on a page, and it will say so if you ask it to.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Do I need API keys? <span class="plus" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg></span></summary>
+        <div class="answer">
+          <p>
+            No. The dock can load ChatGPT, Claude, Gemini, and Grok websites with your existing
+            subscriptions. API keys are optional, stored in the macOS keychain, and only needed if you
+            prefer the API. A local Ollama server needs no key at all.
+          </p>
+        </div>
+      </details>
+
     </div>
   </section>
 
 </main>
 
-<footer class="shell">
-  <span>Browsemium 1.0.2 · WebKit · macOS 14+</span>
-  <span>
-    <a href="https://github.com/Cubinghackerz/browsemium">Source</a> ·
-    <a href="https://github.com/Cubinghackerz/browsemium/issues">Issues</a> ·
-    No account, no telemetry
-  </span>
+<footer>
+  <div class="shell">
+    <span>Browsemium <span data-release-version>1.0.2</span> &middot; WebKit &middot; macOS 14+</span>
+    <span>No account and no telemetry.</span>
+    <span class="links">
+      <a href="https://github.com/Cubinghackerz/browsemium">Source</a>
+      <a href="https://github.com/Cubinghackerz/browsemium/releases">Releases</a>
+      <a href="https://github.com/Cubinghackerz/browsemium/issues">Issues</a>
+      <a href="https://github.com/Cubinghackerz/homebrew-tap">Homebrew tap</a>
+    </span>
+  </div>
 </footer>
+
+<script>
+  // Progressive enhancement only: the command is readable and selectable
+  // without this. No tracking, no external requests.
+  document.addEventListener("click", function (event) {
+    var button = event.target.closest("[data-copy]");
+    if (!button) return;
+    var source = document.querySelector(button.getAttribute("data-copy"));
+    if (!source) return;
+    navigator.clipboard.writeText(source.textContent.trim()).then(function () {
+      var original = button.textContent;
+      button.textContent = "Copied";
+      setTimeout(function () { button.textContent = original; }, 1600);
+    });
+  });
+</script>
 
 </body>
 </html>

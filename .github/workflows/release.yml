@@ -71,12 +71,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          NOTES="ReleaseNotes/$VERSION.md"
+          if [ ! -f "$NOTES" ]; then
+            NOTES="$(mktemp)"
+            printf 'Browsemium %s. See the repository for details.\n' "$VERSION" > "$NOTES"
+          fi
           if gh release view "v$VERSION" >/dev/null 2>&1; then
             gh release upload "v$VERSION" "build/Browsemium-$VERSION.dmg" --clobber
+            gh release edit "v$VERSION" --notes-file "$NOTES"
           else
             gh release create "v$VERSION" "build/Browsemium-$VERSION.dmg" \
               --title "Browsemium $VERSION" \
-              --notes "See the release page for details. Update notes are maintained in the repository."
+              --notes-file "$NOTES"
           fi
 
       - name: Refresh the appcast and checksum

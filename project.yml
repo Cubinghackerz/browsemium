@@ -14,8 +14,8 @@ settings:
     SWIFT_VERSION: 6.0
     SWIFT_STRICT_CONCURRENCY: complete
     MACOSX_DEPLOYMENT_TARGET: 14.0
-    MARKETING_VERSION: "1.0.2"
-    CURRENT_PROJECT_VERSION: "102"
+    MARKETING_VERSION: "2.0.0"
+    CURRENT_PROJECT_VERSION: "200"
     # Xcode's default for app targets. Without it the embedded Sparkle
     # framework cannot be found at launch (dyld: Library not loaded).
     LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
