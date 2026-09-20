@@ -94,6 +94,9 @@ public final class AppDatabase: @unchecked Sendable {
         migrator.registerMigration("profile-v2-saved-credentials") { database in
             try createSavedCredentialsTable(database)
         }
+        migrator.registerMigration("profile-v3-space-color") { database in
+            try database.execute(sql: "ALTER TABLE spaces ADD COLUMN color TEXT")
+        }
         return migrator
     }
 
@@ -288,10 +291,10 @@ public final class BrowserSessionRepository: @unchecked Sendable {
                 for space in session.spaces {
                         try database.execute(
                             sql: """
-                                INSERT INTO spaces (id, name, created_at) VALUES (?, ?, ?)
-                                ON CONFLICT(id) DO UPDATE SET name = excluded.name
+                                INSERT INTO spaces (id, name, created_at, color) VALUES (?, ?, ?, ?)
+                                ON CONFLICT(id) DO UPDATE SET name = excluded.name, color = excluded.color
                                 """,
-                            arguments: [space.id.rawValue.uuidString, space.name, space.createdAt]
+                            arguments: [space.id.rawValue.uuidString, space.name, space.createdAt, space.color]
                         )
                     }
                     try database.execute(sql: "DELETE FROM tabs")
@@ -336,13 +339,14 @@ public final class BrowserSessionRepository: @unchecked Sendable {
             return try database.databaseQueue.read { database in
                 let spaces: [BrowserSpace] = try Row.fetchAll(
                     database,
-                    sql: "SELECT id, name, created_at FROM spaces ORDER BY created_at"
+                    sql: "SELECT id, name, created_at, color FROM spaces ORDER BY created_at"
                 ).compactMap { row in
                     guard let idString = row["id"] as String?, let id = UUID(uuidString: idString) else { return nil }
                     return BrowserSpace(
                         id: SpaceID(rawValue: id),
                         name: row["name"] ?? "Personal",
-                        createdAt: row["created_at"] ?? Date()
+                        createdAt: row["created_at"] ?? Date(),
+                        color: row["color"] as String?
                     )
                 }
                 guard let activeSpace = spaces.first else { return nil }

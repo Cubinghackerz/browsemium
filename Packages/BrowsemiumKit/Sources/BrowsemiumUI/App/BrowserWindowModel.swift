@@ -59,6 +59,10 @@ public final class BrowserWindowModel {
     private var bookmarkedURLs: Set<String> = []
     public var isBookmarksBarVisible: Bool = true
 
+    /// Extra windows are ephemeral: only the first window writes the session,
+    /// so two windows cannot clobber each other's saved tabs.
+    public var persistsSession = true
+
     /// Increments whenever the active profile changes. Views use it to
     /// release profile-scoped web content, like AI provider panels.
     public private(set) var profileSwitchToken = 0
@@ -392,16 +396,18 @@ public final class BrowserWindowModel {
         environment.runtime.discard(tabID: targetID)
         tabURLs[targetID] = nil
 
-        let closedIndex = session.tabs.firstIndex { $0.id == targetID } ?? 0
+        let closedIndex = session.tabs.filter { $0.spaceID == tab.spaceID }.firstIndex { $0.id == targetID } ?? 0
         var tabs = session.tabs.filter { $0.id != targetID }
-        if tabs.isEmpty {
-            let replacement = BrowserTab(spaceID: session.activeSpaceID, title: "New Tab")
-            tabs = [replacement]
+        var remainingInGroup = tabs.filter { $0.spaceID == tab.spaceID }
+        if remainingInGroup.isEmpty {
+            let replacement = BrowserTab(spaceID: tab.spaceID, title: "New Tab")
+            tabs.append(replacement)
+            remainingInGroup = [replacement]
         }
         // Activate the tab that slid into the closed tab's place, falling back
         // to the one before it — the same behaviour as Chrome and Safari.
-        let neighbourIndex = min(closedIndex, tabs.count - 1)
-        let nextActiveID = session.activeTabID == targetID ? tabs[neighbourIndex].id : session.activeTabID
+        let neighbourIndex = min(closedIndex, remainingInGroup.count - 1)
+        let nextActiveID = session.activeTabID == targetID ? remainingInGroup[neighbourIndex].id : session.activeTabID
         session = BrowserSessionState(
             spaces: session.spaces,
             tabs: tabs,
@@ -438,6 +444,7 @@ public final class BrowserWindowModel {
             isPrivate: session.isPrivate
         )
         activePanel = .none
+        readerArticle = nil
         addressText = tabURLs[tabID]?.absoluteString ?? activeTab?.lastCommittedURL?.absoluteString ?? ""
         refreshNavigationState()
         persistSession()
@@ -445,13 +452,20 @@ public final class BrowserWindowModel {
     }
 
     public func moveTab(_ sourceID: TabID, before targetID: TabID) {
-        guard sourceID != targetID,
-              let sourceIndex = session.tabs.firstIndex(where: { $0.id == sourceID }),
-              let targetIndex = session.tabs.firstIndex(where: { $0.id == targetID }) else { return }
-        var tabs = session.tabs
-        let moved = tabs.remove(at: sourceIndex)
+        guard sourceID != targetID else { return }
+        let group = session.activeSpaceID
+        var groupTabs = session.tabs.filter { $0.spaceID == group }
+        guard let sourceIndex = groupTabs.firstIndex(where: { $0.id == sourceID }),
+              let targetIndex = groupTabs.firstIndex(where: { $0.id == targetID }) else { return }
+        let moved = groupTabs.remove(at: sourceIndex)
         let insertionIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex
-        tabs.insert(moved, at: insertionIndex)
+        groupTabs.insert(moved, at: insertionIndex)
+        // Splice the reordered group back into the global tab list, leaving
+        // other groups' tabs untouched.
+        var iterator = groupTabs.makeIterator()
+        var tabs = session.tabs.map { tab in
+            tab.spaceID == group ? (iterator.next() ?? tab) : tab
+        }
         tabs = tabs.enumerated().map { position, tab in
             BrowserTab(
                 id: tab.id,
@@ -490,6 +504,208 @@ public final class BrowserWindowModel {
             )
         }
         persistSession()
+    }
+
+    // MARK: - Tab groups
+
+    /// Tabs in the active group, in strip order.
+    public var visibleTabs: [BrowserTab] {
+        session.tabs.filter { $0.spaceID == session.activeSpaceID }
+    }
+
+    public var activeGroup: BrowserSpace? {
+        session.spaces.first { $0.id == session.activeSpaceID }
+    }
+
+    @discardableResult
+    public func createGroup(named name: String, color: String? = nil) -> SpaceID {
+        let palette = ["#5B8DEF", "#8F6BE8", "#E8734A", "#3FA46A", "#D9A93B", "#C8557F"]
+        let space = BrowserSpace(
+            name: name,
+            color: color ?? palette[session.spaces.count % palette.count]
+        )
+        let tab = BrowserTab(spaceID: space.id, title: "New Tab", position: session.tabs.count)
+        session = BrowserSessionState(
+            spaces: session.spaces + [space],
+            tabs: session.tabs + [tab],
+            activeSpaceID: space.id,
+            activeTabID: tab.id,
+            isPrivate: session.isPrivate
+        )
+        activePanel = .none
+        addressText = ""
+        refreshNavigationState()
+        persistSession()
+        statusMessage = "Group “\(name)” created"
+        return space.id
+    }
+
+    public func switchGroup(_ spaceID: SpaceID) {
+        guard session.spaces.contains(where: { $0.id == spaceID }),
+              spaceID != session.activeSpaceID else { return }
+        var tabs = session.tabs
+        var target = tabs.filter { $0.spaceID == spaceID }.max { $0.lastAccessedAt < $1.lastAccessedAt }?.id
+        if target == nil {
+            let tab = BrowserTab(spaceID: spaceID, title: "New Tab", position: tabs.count)
+            tabs.append(tab)
+            target = tab.id
+        }
+        session = BrowserSessionState(
+            spaces: session.spaces,
+            tabs: tabs,
+            activeSpaceID: spaceID,
+            activeTabID: target,
+            isPrivate: session.isPrivate
+        )
+        activePanel = .none
+        addressText = target
+            .flatMap { id in session.tabs.first { $0.id == id }?.lastCommittedURL?.absoluteString } ?? ""
+        refreshNavigationState()
+        persistSession()
+        if let target {
+            Task { await environment.runtime.activate(tabID: target, in: paneID) }
+        }
+    }
+
+    public func renameGroup(_ spaceID: SpaceID, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let spaces = session.spaces.map { space in
+            space.id == spaceID
+                ? BrowserSpace(id: space.id, name: trimmed, createdAt: space.createdAt, color: space.color)
+                : space
+        }
+        session = BrowserSessionState(
+            spaces: spaces,
+            tabs: session.tabs,
+            activeSpaceID: session.activeSpaceID,
+            activeTabID: session.activeTabID,
+            isPrivate: session.isPrivate
+        )
+        persistSession()
+    }
+
+    /// Deletes a group and closes its tabs. The last remaining group cannot be
+    /// deleted.
+    public func deleteGroup(_ spaceID: SpaceID) {
+        guard session.spaces.count > 1,
+              let space = session.spaces.first(where: { $0.id == spaceID }) else { return }
+        let doomed = session.tabs.filter { $0.spaceID == spaceID }
+        for tab in doomed {
+            environment.runtime.discard(tabID: tab.id)
+            tabURLs[tab.id] = nil
+        }
+        let spaces = session.spaces.filter { $0.id != spaceID }
+        let tabs = session.tabs.filter { $0.spaceID != spaceID }
+        var nextActiveTab = session.activeTabID
+        var nextSpace = session.activeSpaceID
+        if session.activeSpaceID == spaceID {
+            nextSpace = spaces.first?.id ?? session.activeSpaceID
+            nextActiveTab = tabs.filter { $0.spaceID == nextSpace }.max { $0.lastAccessedAt < $1.lastAccessedAt }?.id
+            if nextActiveTab == nil, let firstSpace = spaces.first {
+                let tab = BrowserTab(spaceID: firstSpace.id, title: "New Tab", position: tabs.count)
+                nextActiveTab = tab.id
+                session = BrowserSessionState(
+                    spaces: spaces,
+                    tabs: tabs + [tab],
+                    activeSpaceID: firstSpace.id,
+                    activeTabID: tab.id,
+                    isPrivate: session.isPrivate
+                )
+                statusMessage = "Deleted “\(space.name)”"
+                addressText = ""
+                refreshNavigationState()
+                persistSession()
+                return
+            }
+        }
+        session = BrowserSessionState(
+            spaces: spaces,
+            tabs: tabs,
+            activeSpaceID: nextSpace,
+            activeTabID: nextActiveTab,
+            isPrivate: session.isPrivate
+        )
+        addressText = activeTab?.lastCommittedURL?.absoluteString ?? ""
+        refreshNavigationState()
+        persistSession()
+        statusMessage = "Deleted “\(space.name)”"
+    }
+
+    public func moveTab(_ tabID: TabID, toGroup spaceID: SpaceID) {
+        guard let tab = session.tabs.first(where: { $0.id == tabID }),
+              tab.spaceID != spaceID,
+              session.spaces.contains(where: { $0.id == spaceID }) else { return }
+        updateTab(tabID) { tab in
+            BrowserTab(
+                id: tab.id,
+                spaceID: spaceID,
+                title: tab.title,
+                lastCommittedURL: tab.lastCommittedURL,
+                position: tab.position,
+                isPinned: tab.isPinned,
+                lifecycle: tab.lifecycle,
+                createdAt: tab.createdAt,
+                lastAccessedAt: tab.lastAccessedAt
+            )
+        }
+        // If the active tab just left the visible group, follow it.
+        if session.activeTabID == tabID, spaceID != session.activeSpaceID {
+            switchGroup(spaceID)
+        }
+        persistSession()
+    }
+
+    // MARK: - Reader mode
+
+    /// The article currently shown in Reader, or nil when the page itself is
+    /// displayed.
+    public private(set) var readerArticle: ReaderArticle?
+    public var isReaderLoading = false
+
+    public var isReaderModeActive: Bool { readerArticle != nil }
+
+    /// Extracts the page with Readability and shows the reading view. Pressing
+    /// it again (or Done in the view) returns to the page.
+    public func toggleReaderMode() {
+        if readerArticle != nil {
+            closeReader()
+            return
+        }
+        guard let tabID = session.activeTabID else { return }
+        isReaderLoading = true
+        Task {
+            defer { isReaderLoading = false }
+            do {
+                readerArticle = try await environment.runtime.extractArticle(tabID: tabID)
+                activePanel = .none
+            } catch {
+                statusMessage = error.localizedDescription
+            }
+        }
+    }
+
+    public func closeReader() {
+        readerArticle = nil
+    }
+
+    /// Whether this site should open in Reader automatically.
+    public func prefersReader(for url: URL?) -> Bool {
+        guard let origin = url?.host else { return false }
+        return (try? environment.sitePreferenceRepository.value(origin: origin, preference: "reader")) == "always"
+    }
+
+    public func setReaderPreference(always: Bool) {
+        guard let host = (tabURLs[session.activeTabID ?? TabID()] ?? activeTab?.lastCommittedURL)?.host else {
+            return
+        }
+        if always {
+            try? environment.sitePreferenceRepository.set(origin: host, preference: "reader", value: "always")
+            statusMessage = "Reader will open automatically on \(host)"
+        } else {
+            try? environment.sitePreferenceRepository.remove(origin: host, preference: "reader")
+            statusMessage = "Reader will not open automatically on \(host)"
+        }
     }
 
     public func focusAddress() {
@@ -657,18 +873,19 @@ public final class BrowserWindowModel {
     }
 
     /// Open tabs as palette results, so ⌘K doubles as a tab switcher: type a
-    /// few letters of a page title or address and jump straight to it.
+    /// few letters of a page title or address and jump straight to it. The
+    /// active tab is never listed — jumping to where you already are is noise.
     private func tabPaletteCommands(matching query: String) -> [BrowserPaletteCommand] {
+        let others = session.tabs.filter { $0.id != session.activeTabID }
         let candidates: [BrowserTab]
         if query.isEmpty {
             // Show a few most-recently-used tabs even before typing.
-            candidates = session.tabs
-                .filter { $0.id != session.activeTabID }
+            candidates = others
                 .sorted { $0.lastAccessedAt > $1.lastAccessedAt }
                 .prefix(5)
                 .map { $0 }
         } else {
-            candidates = session.tabs.filter { tab in
+            candidates = others.filter { tab in
                 tab.title.localizedCaseInsensitiveContains(query)
                     || (tab.lastCommittedURL?.absoluteString.localizedCaseInsensitiveContains(query) ?? false)
             }
@@ -989,6 +1206,10 @@ public final class BrowserWindowModel {
                 addressText = url?.absoluteString ?? addressText
                 refreshNavigationState()
             }
+            // Sites marked "always use Reader" open straight into it.
+            if session.activeTabID == tabID, readerArticle == nil, let url, prefersReader(for: url) {
+                toggleReaderMode()
+            }
             recordHistory(url: url, title: title)
             persistSession()
             applySleepPolicy()
@@ -1208,6 +1429,7 @@ public final class BrowserWindowModel {
         })
         addressText = activeTab?.lastCommittedURL?.absoluteString ?? ""
         activePanel = .none
+        readerArticle = nil
         isFindBarVisible = false
         findText = ""
         findStatus = nil
@@ -1244,7 +1466,7 @@ public final class BrowserWindowModel {
     }
 
     private func persistSession() {
-        guard !session.isPrivate else { return }
+        guard !session.isPrivate, persistsSession else { return }
         // Serialized off the main thread: session saves happen on every tab
         // switch and page finish, and SQLite writes are not free. The queue is
         // serial on purpose so the newest snapshot always wins.

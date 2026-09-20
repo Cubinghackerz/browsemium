@@ -56,11 +56,14 @@ public struct BrowserSpace: Hashable, Codable, Sendable, Identifiable {
     public let id: SpaceID
     public let name: String
     public let createdAt: Date
+    /// Optional accent for tab groups. Hex string like "#5B8DEF".
+    public let color: String?
 
-    public init(id: SpaceID = SpaceID(), name: String, createdAt: Date = Date()) {
+    public init(id: SpaceID = SpaceID(), name: String, createdAt: Date = Date(), color: String? = nil) {
         self.id = id
         self.name = name
         self.createdAt = createdAt
+        self.color = color
     }
 }
 

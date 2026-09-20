@@ -28,8 +28,7 @@ public final class ContentCaptureService {
         readabilitySource = Self.loadReadabilitySource()
     }
 
-    public func capture(_ request: CaptureRequest, from webView: WKWebView, tabID: TabID?) async throws -> CapturedContext {
-        var attachments: [AIContextAttachment] = []
+    public func capture(_ request: CaptureRequest, from webView: WKWebView, tabID: TabID?) async throws -> CapturedContext {        var attachments: [AIContextAttachment] = []
 
         if request.kinds.contains(.selection) {
             let text = try await selectionText(from: webView)
@@ -56,6 +55,21 @@ public final class ContentCaptureService {
             throw BrowsemiumError.captureUnavailable("Nothing was captured.")
         }
         return CapturedContext(attachments: attachments)
+    }
+
+    /// Reader mode extraction: the same Readability pass used for AI context,
+    /// returned as a titled article.
+    public func extractArticle(from webView: WKWebView) async throws -> ReaderArticle {
+        let extracted = try await readableText(from: webView)
+        let text = extracted.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.count > 400 else {
+            throw BrowsemiumError.captureUnavailable("This page has no article to read.")
+        }
+        return ReaderArticle(
+            title: extracted.title ?? webView.title ?? "Reader",
+            url: webView.url,
+            text: text
+        )
     }
 
     private func pageText(_ text: String, webView: WKWebView, titleOverride: String? = nil) -> PageTextContext {

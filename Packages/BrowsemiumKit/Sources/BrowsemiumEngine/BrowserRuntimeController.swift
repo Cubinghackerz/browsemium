@@ -160,6 +160,13 @@ public final class BrowserRuntimeController: BrowserRuntime {
         return try await runtime.capture(request)
     }
 
+    public func extractArticle(tabID: TabID) async throws -> ReaderArticle {
+        guard let webView = runtimes[tabID]?.currentWebView else {
+            throw BrowsemiumError.webContentUnavailable
+        }
+        return try await captureService.extractArticle(from: webView)
+    }
+
     public func find(tabID: TabID, query: String, backwards: Bool = false) async -> Bool {
         await runtimes[tabID]?.find(query, backwards: backwards) ?? false
     }

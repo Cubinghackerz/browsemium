@@ -2,6 +2,18 @@ import AppKit
 import BrowsemiumCore
 import SwiftUI
 
+/// Lets menu commands act on the focused window's model.
+public struct BrowserModelFocusKey: FocusedValueKey {
+    public typealias Value = BrowserWindowModel
+}
+
+public extension FocusedValues {
+    var browserModel: BrowserWindowModel? {
+        get { self[BrowserModelFocusKey.self] }
+        set { self[BrowserModelFocusKey.self] = newValue }
+    }
+}
+
 @MainActor
 public struct BrowsemiumAppView: View {
     @State private var model: BrowserWindowModel
@@ -99,6 +111,7 @@ public struct BrowsemiumAppView: View {
         .onAppear {
             model.ensureLoaded(model.session.activeTabID ?? TabID())
         }
+        .focusedSceneValue(\.browserModel, model)
         .onOpenURL { url in
             // Links from other apps (Mail, Slack, Terminal) when Browsemium is
             // the default browser.
@@ -188,22 +201,26 @@ public struct BrowsemiumAppView: View {
 
     @ViewBuilder
     private var content: some View {
-        switch model.activePanel {
-        case .history, .bookmarks, .downloads:
-            LibraryView(model: model)
-        case .settings:
-            SettingsView(model: model)
-        case .none:
-            if let tabID = model.session.activeTabID,
-               model.tabURLs[tabID] != nil || model.activeTab?.lastCommittedURL != nil {
-                WebViewHost(
-                    runtime: model.environment.runtime,
-                    tabID: tabID,
-                    isPrivate: model.session.isPrivate
-                )
-                .onAppear { model.ensureLoaded(tabID) }
-            } else {
-                NewTabView(model: model)
+        if let article = model.readerArticle, model.activePanel == .none {
+            ReaderView(model: model, article: article)
+        } else {
+            switch model.activePanel {
+            case .history, .bookmarks, .downloads:
+                LibraryView(model: model)
+            case .settings:
+                SettingsView(model: model)
+            case .none:
+                if let tabID = model.session.activeTabID,
+                   model.tabURLs[tabID] != nil || model.activeTab?.lastCommittedURL != nil {
+                    WebViewHost(
+                        runtime: model.environment.runtime,
+                        tabID: tabID,
+                        isPrivate: model.session.isPrivate
+                    )
+                    .onAppear { model.ensureLoaded(tabID) }
+                } else {
+                    NewTabView(model: model)
+                }
             }
         }
     }

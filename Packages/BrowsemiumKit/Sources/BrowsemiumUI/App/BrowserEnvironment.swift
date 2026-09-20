@@ -20,6 +20,7 @@ public final class BrowserEnvironment {
     public private(set) var permissionRepository: PermissionRepository
     public private(set) var closedTabRepository: ClosedTabRepository
     public private(set) var savedCredentialRepository: SavedCredentialRepository
+    public private(set) var sitePreferenceRepository: SitePreferenceRepository
     public private(set) var privacyDataManager: PrivacyDataManager
     public private(set) var maintenance: DatabaseMaintenance
     public let keychain: KeychainStore
@@ -38,6 +39,7 @@ public final class BrowserEnvironment {
         permissionRepository = PermissionRepository(database: database)
         closedTabRepository = ClosedTabRepository(database: database)
         savedCredentialRepository = SavedCredentialRepository(database: database)
+        sitePreferenceRepository = SitePreferenceRepository(database: database)
         privacyDataManager = PrivacyDataManager(database: database)
         maintenance = DatabaseMaintenance(database: database)
         keychain = KeychainStore()
@@ -116,6 +118,7 @@ public final class BrowserEnvironment {
         permissionRepository = PermissionRepository(database: database)
         closedTabRepository = ClosedTabRepository(database: database)
         savedCredentialRepository = SavedCredentialRepository(database: database)
+        sitePreferenceRepository = SitePreferenceRepository(database: database)
         privacyDataManager = PrivacyDataManager(database: database)
         maintenance = DatabaseMaintenance(database: database)
         WebViewFactory.dataStoreIdentifier = profile.dataStoreUUID

@@ -8,13 +8,17 @@ import SwiftUI
 @MainActor
 struct BrowserTabStrip: View {
     @Bindable var model: BrowserWindowModel
+    @State private var isNamingGroup = false
+    @State private var newGroupName = ""
+    @State private var isRenamingGroup = false
+    @State private var groupRenameText = ""
 
     private var pinnedTabs: [BrowserTab] {
-        model.session.tabs.filter(\.isPinned)
+        model.visibleTabs.filter(\.isPinned)
     }
 
     private var regularTabs: [BrowserTab] {
-        model.session.tabs.filter { !$0.isPinned }
+        model.visibleTabs.filter { !$0.isPinned }
     }
 
     var body: some View {
@@ -22,6 +26,8 @@ struct BrowserTabStrip: View {
             HStack(spacing: 4) {
                 Color.clear
                     .frame(width: BrowserMetrics.titlebarLeadingInset, height: 1)
+
+                groupPicker
 
                 ForEach(pinnedTabs) { tab in
                     TabItem(model: model, tab: tab, width: 30)
@@ -57,10 +63,92 @@ struct BrowserTabStrip: View {
         }
         .frame(height: BrowserMetrics.tabStripHeight)
         .background(WindowDragView())
+        .alert("New Tab Group", isPresented: $isNamingGroup) {
+            TextField("Name", text: $newGroupName)
+            Button("Create") {
+                let name = newGroupName
+                newGroupName = ""
+                model.createGroup(named: name.isEmpty ? "Group \(model.session.spaces.count)" : name)
+            }
+            Button("Cancel", role: .cancel) { newGroupName = "" }
+        } message: {
+            Text("Groups keep related tabs together and switch as a set.")
+        }
+        .alert("Rename Group", isPresented: $isRenamingGroup) {
+            TextField("Name", text: $groupRenameText)
+            Button("Rename") {
+                if let id = model.activeGroup?.id {
+                    model.renameGroup(id, to: groupRenameText)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    /// Safari-style tab group picker at the head of the strip.
+    private var groupPicker: some View {
+        Menu {
+            ForEach(model.session.spaces) { space in
+                Button {
+                    model.switchGroup(space.id)
+                } label: {
+                    if space.id == model.session.activeSpaceID {
+                        Label(space.name, systemImage: "checkmark")
+                    } else {
+                        Text(space.name)
+                    }
+                }
+            }
+            Divider()
+            Button("New Group…") {
+                newGroupName = ""
+                isNamingGroup = true
+            }
+            if model.session.spaces.count > 1, let group = model.activeGroup {
+                Button("Rename “\(group.name)”…") {
+                    groupRenameText = group.name
+                    isRenamingGroup = true
+                }
+                Button("Delete “\(group.name)”", role: .destructive) {
+                    model.deleteGroup(group.id)
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(groupColor)
+                    .frame(width: 7, height: 7)
+                Text(model.activeGroup?.name ?? "Tabs")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(Color.browsemiumSecondary)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 6.5, weight: .semibold))
+                    .foregroundStyle(Color.browsemiumTertiary)
+            }
+            .padding(.horizontal, 6)
+            .frame(height: 20)
+            .background(
+                Capsule().fill(Color.browsemiumField)
+            )
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Tab groups — switch, create, or manage groups")
+        .accessibilityLabel("Tab group, \(model.activeGroup?.name ?? "Tabs")")
+    }
+
+    private var groupColor: Color {
+        guard let hex = model.activeGroup?.color else {
+            return Color.browsemiumTertiary
+        }
+        return Color(browsemiumHex: hex) ?? Color.browsemiumTertiary
     }
 
     private func width(for available: CGFloat) -> CGFloat {
-        let reserved = BrowserMetrics.titlebarLeadingInset + CGFloat(pinnedTabs.count) * 34 + 48
+        let reserved = BrowserMetrics.titlebarLeadingInset + CGFloat(pinnedTabs.count) * 34 + 48 + 90
         let usable = max(available - reserved, 60)
         let count = max(regularTabs.count, 1)
         let even = usable / CGFloat(count) - 4

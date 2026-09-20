@@ -46,7 +46,7 @@ func foreignKeysAreEnabledAndDeclared() throws {
 
 @Test
 func privateSessionPersistenceIsRejected() throws {
-    let appDatabase = try AppDatabase.inMemory()
+    let appDatabase = try AppDatabase.inMemoryProfile()
     let repository = BrowserSessionRepository(database: appDatabase)
     let space = BrowserSpace(name: "Private")
     let tab = BrowserTab(spaceID: space.id, title: "New Tab")
@@ -75,7 +75,7 @@ func privateSessionPersistenceIsRejected() throws {
 
 @Test
 func savedSessionRestoresTabsAndPinnedState() throws {
-    let appDatabase = try AppDatabase.inMemory()
+    let appDatabase = try AppDatabase.inMemoryProfile()
     let repository = BrowserSessionRepository(database: appDatabase)
     let space = BrowserSpace(name: "Personal")
     let tab = BrowserTab(

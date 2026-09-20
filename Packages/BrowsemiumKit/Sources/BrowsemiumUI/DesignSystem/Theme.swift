@@ -473,3 +473,26 @@ public extension View {
             }
     }
 }
+
+extension Color {
+    /// Parses "#RRGGBB" or "#RGB" into a colour. Returns nil for anything else.
+    init?(browsemiumHex hex: String) {
+        var value = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.hasPrefix("#") { value.removeFirst() }
+        guard value.count == 6 || value.count == 3,
+              let number = UInt64(value, radix: 16) else {
+            return nil
+        }
+        let red, green, blue: Double
+        if value.count == 3 {
+            red = Double((number >> 8) & 0xF) / 15
+            green = Double((number >> 4) & 0xF) / 15
+            blue = Double(number & 0xF) / 15
+        } else {
+            red = Double((number >> 16) & 0xFF) / 255
+            green = Double((number >> 8) & 0xFF) / 255
+            blue = Double(number & 0xFF) / 255
+        }
+        self.init(red: red, green: green, blue: blue)
+    }
+}
