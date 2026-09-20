@@ -8,14 +8,14 @@
     <item>
       <title>Browsemium 2.0.0</title>
       <sparkle:releaseNotesLink>https://github.com/Cubinghackerz/browsemium/releases/tag/v2.0.0</sparkle:releaseNotesLink>
-      <pubDate>Sun, 20 Sep 2026 15:13:55 +0800</pubDate>
+      <pubDate>Sun, 20 Sep 2026 07:21:59 +0000</pubDate>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
       <enclosure
         url="https://github.com/Cubinghackerz/browsemium/releases/download/v2.0.0/Browsemium-2.0.0.dmg"
         sparkle:version="200"
         sparkle:shortVersionString="2.0.0"
-        sparkle:edSignature="/K9zzi9dsHSXQMAfb1HrlGSFcxC9Fjh7JX6T0LAPhnRPDoiU+WGdn69FF/I6DmQ3vu8dWJlcOkKle6giIwjIDw=="
-        length="7523143"
+        sparkle:edSignature="7jWda/j8VkeIVghxyjBFaJp2Pv5ziY4s5j/WI+PFJE0lrLFPWlwSoT8eWUIWK4ASJQCkxvkVOC9o+9pVAUh2CA=="
+        length="7523107"
         type="application/octet-stream" />
     </item>
     <item>

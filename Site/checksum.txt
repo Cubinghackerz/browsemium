@@ -1,1 +1,1 @@
-20c9e6bd3a3491ba7db35d4be68de3198ee2fb449703bf6b975fc81644e73fd5  Browsemium-2.0.0.dmg
+c1a1d8875fce80f9d66a27fc7d1fabf913cfa3ada9c0fbfa41db8ad6be2cb112  Browsemium-2.0.0.dmg
