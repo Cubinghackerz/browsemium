@@ -65,7 +65,13 @@ xcodebuild \
   MARKETING_VERSION="$VERSION" \
   CURRENT_PROJECT_VERSION="$(echo "$VERSION" | tr -cd '0-9')" \
   build > "${BUILD_DIR}/local/build.log" 2>&1 \
-  || { tail -30 "${BUILD_DIR}/local/build.log" >&2; exit 1; }
+  || {
+    echo "Build failed. Errors:" >&2
+    grep -E "error:" "${BUILD_DIR}/local/build.log" | head -30 >&2
+    echo "--- last 15 lines ---" >&2
+    tail -15 "${BUILD_DIR}/local/build.log" >&2
+    exit 1
+  }
 
 if [[ ! -d "$APP_PATH" ]]; then
   echo "Build did not produce Browsemium.app" >&2

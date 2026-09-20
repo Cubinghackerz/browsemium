@@ -95,6 +95,11 @@ enum TabAudioMonitor {
 
 /// Receives audio reports from a tab's pages. Holds the runtime weakly so the
 /// content controller never keeps a discarded tab alive.
+///
+/// The protocol requirement is nonisolated: older WebKit SDKs do not annotate
+/// `WKScriptMessageHandler` with `@MainActor`, so the conformance has to be
+/// portable across toolchains. Values are extracted on the callback thread and
+/// the state update hops to the main actor.
 @MainActor
 final class TabAudioMessageProxy: NSObject, WKScriptMessageHandler {
     weak var runtime: TabRuntime?
@@ -103,13 +108,15 @@ final class TabAudioMessageProxy: NSObject, WKScriptMessageHandler {
         self.runtime = runtime
     }
 
-    func userContentController(
+    nonisolated func userContentController(
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
         guard let payload = message.body as? [String: Any] else { return }
         let playing = payload["playing"] as? Bool ?? false
         let muted = payload["muted"] as? Bool ?? false
-        runtime?.updateAudioState(isPlaying: playing, isMuted: muted)
+        Task { @MainActor [weak self] in
+            self?.runtime?.updateAudioState(isPlaying: playing, isMuted: muted)
+        }
     }
 }
