@@ -133,9 +133,12 @@ public enum ProcessMemory {
         }
         var info = rusage_info_v4()
         let result = withUnsafeMutablePointer(to: &info) { pointer -> Int32 in
-            // libproc takes a pointer to an opaque pointer, not the struct.
-            var raw: rusage_info_t? = UnsafeMutableRawPointer(pointer)
-            return proc_pid_rusage(pid, RUSAGE_INFO_V4, &raw)
+            // rusage_info_t is void*, so the parameter is a pointer to the
+            // struct itself, not to a pointer-sized slot — the kernel writes
+            // sizeof(rusage_info_v4) bytes at the address it is given.
+            pointer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { rebound in
+                proc_pid_rusage(pid, RUSAGE_INFO_V4, rebound)
+            }
         }
         guard result == 0 else { return 0 }
         return info.ri_phys_footprint

@@ -711,25 +711,27 @@ struct HeadlessRunner {
         let own = ProcessMemory.footprintBytes()
         try expect(own > 0, "The app's own footprint must be measurable")
 
+        // With a real child process the group path must measure it. The
+        // Chromium edition's helpers are genuine children of the browser
+        // process, so this is the path a CEF runtime actually exercises — and
+        // proc_pid_rusage must not corrupt the stack on a foreign pid.
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        child.arguments = ["30"]
+        try child.run()
         let group = ProcessMemory.groupFootprint()
+        try expect(group.measuredProcesses >= 2, "A live child process must be measured in the group")
         try expect(group.bytes >= own, "The process group cannot be smaller than this process")
-        try expect(group.measuredProcesses >= 1, "At least this process must be measured")
         try expect(group.isComplete, "This runner owns no unreadable processes")
         try expect(ProcessMemory.formattedFootprint() != "Unavailable", "The app figure must format")
 
         let summary = ProcessMemory.summary()
+        child.terminate()
         try expect(summary.bytes > 0, "The summary must carry a figure")
-        if group.measuredProcesses == 1 {
-            try expect(
-                !summary.includesPageProcesses,
-                "With no visible children the scope must be reported as the app process alone"
-            )
-        } else {
-            try expect(
-                summary.includesPageProcesses,
-                "Visible page processes must be reported as included"
-            )
-        }
+        try expect(
+            summary.includesPageProcesses,
+            "Visible page processes must be reported as included"
+        )
 
         // The sandbox decides whether helpers answer; the flag has to reflect
         // that honestly rather than silently under-reporting.
