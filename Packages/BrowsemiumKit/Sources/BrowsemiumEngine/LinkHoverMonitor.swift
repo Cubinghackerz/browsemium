@@ -25,17 +25,28 @@ enum LinkHoverMonitor {
       if (window.__browsemiumLinkHoverInstalled) { return; }
       window.__browsemiumLinkHoverInstalled = true;
       var last = null;
+      var hideTimer = null;
+      var evalTimer = null;
+      var px = 0;
+      var py = 0;
+      var hasPointer = false;
 
-      function hrefFor(target) {
-        var el = target;
-        while (el && el !== document) {
+      // Climbs past shadow boundaries; parentElement alone cannot see anchors
+      // inside shadow roots, which is most modern component-based pages.
+      function climb(el) {
+        while (el && el !== document && el !== window) {
           if (el.tagName === 'A' && el.href) { return el.href; }
-          el = el.parentElement;
+          var parent = el.parentElement;
+          if (!parent && el.getRootNode) {
+            var root = el.getRootNode();
+            parent = root && root.host ? root.host : null;
+          }
+          el = parent;
         }
         return null;
       }
 
-      function report(href) {
+      function deliver(href) {
         if (href === last) { return; }
         last = href;
         try {
@@ -43,17 +54,71 @@ enum LinkHoverMonitor {
         } catch (error) {}
       }
 
+      // Clears are debounced so brief gaps — iframe edges, shadow-DOM
+      // retargets, element churn — do not flash the bar off and on. Showing a
+      // link stays instant.
+      function report(href) {
+        if (href !== null) {
+          if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+          deliver(href);
+          return;
+        }
+        if (last === null || hideTimer) { return; }
+        hideTimer = setTimeout(function() {
+          hideTimer = null;
+          deliver(null);
+        }, 90);
+      }
+
+      // composedPath sees through shadow roots, unlike event.target.
+      function hrefFromEvent(event) {
+        var path = event.composedPath ? event.composedPath() : null;
+        if (path) {
+          for (var i = 0; i < path.length; i++) {
+            var node = path[i];
+            if (node && node.tagName === 'A' && node.href) { return node.href; }
+            if (node === window) { break; }
+          }
+        }
+        return climb(event.target);
+      }
+
+      document.addEventListener('mousemove', function(event) {
+        px = event.clientX;
+        py = event.clientY;
+        hasPointer = true;
+      }, true);
+
       document.addEventListener('mouseover', function(event) {
-        report(hrefFor(event.target));
+        report(hrefFromEvent(event));
       }, true);
 
       // Moving within the same anchor must not flicker the status bar, so the
       // cleared value is taken from where the pointer actually went.
       document.addEventListener('mouseout', function(event) {
-        report(hrefFor(event.relatedTarget));
+        var to = event.relatedTarget;
+        report(to ? climb(to) : null);
       }, true);
 
       document.addEventListener('mouseleave', function() { report(null); }, true);
+
+      window.addEventListener('blur', function() {
+        if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+        deliver(null);
+      });
+
+      // Scrolling moves the page under a still pointer without firing mouse
+      // events; re-evaluate what is actually underneath, throttled.
+      function scheduleEvaluate() {
+        if (!hasPointer || evalTimer) { return; }
+        evalTimer = setTimeout(function() {
+          evalTimer = null;
+          var el = document.elementFromPoint(px, py);
+          report(el ? climb(el) : null);
+        }, 60);
+      }
+      document.addEventListener('scroll', scheduleEvaluate, true);
+      window.addEventListener('resize', scheduleEvaluate);
     })();
     """
 }

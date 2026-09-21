@@ -230,7 +230,12 @@ public struct BrowsemiumAppView: View {
                     }
                 }
                 .overlay(alignment: .bottomLeading) {
-                    if let hovered = model.hoveredLinkURL {
+                    // Panels and reader replace the page entirely; a leftover
+                    // hover state can never clear there because the pointer is
+                    // over app chrome, so the bar is gated off.
+                    if let hovered = model.hoveredLinkURL,
+                       model.activePanel == .none,
+                       model.readerArticle == nil {
                         LinkStatusBar(url: hovered)
                             .padding(.leading, 8)
                             .padding(.bottom, 8)
