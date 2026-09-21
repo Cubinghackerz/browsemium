@@ -1,28 +1,9 @@
 import AppKit
 import BrowsemiumCore
+import BrowsemiumEngineKit
 import Foundation
 import WebKit
 
-public enum TabRuntimeEvent: Sendable {
-    case startedLoading(URL?)
-    case committed(URL?)
-    case finished(title: String?, url: URL?)
-    case failed(String)
-    case crashed
-    case progressChanged(Double)
-    case requestedNewWindow(URL)
-    case requestedExternalScheme(URL)
-    case downloadStarted(UUID)
-    case downloadFinished(UUID)
-    case downloadFailed(UUID, String)
-    case audioStateChanged(TabAudioState)
-    /// The tab moved between load states without a navigation event, for
-    /// example when it was suspended or hibernated. The model mirrors this so
-    /// the UI and the sleep policy agree about what is actually loaded.
-    case lifecycleChanged(TabLifecycle)
-    /// The user chose "Ask Browsemium AI" from the page context menu.
-    case requestedAISelection
-}
 
 @MainActor
 public final class TabRuntime {

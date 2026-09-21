@@ -1,5 +1,6 @@
 import BrowsemiumCore
 import Foundation
+import BrowsemiumEngineKit
 
 /// Defines what Browsemium captures automatically when a Web AI message is
 /// sent. Images remain an explicit user action so a normal Send never opens a

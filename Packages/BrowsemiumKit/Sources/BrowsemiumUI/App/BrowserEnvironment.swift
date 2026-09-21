@@ -2,7 +2,9 @@ import BrowsemiumAI
 import BrowsemiumCore
 import BrowsemiumData
 import BrowsemiumEngine
+import BrowsemiumEngineKit
 import Foundation
+import BrowsemiumEngineKit
 
 @MainActor
 public final class BrowserEnvironment {
@@ -11,7 +13,9 @@ public final class BrowserEnvironment {
     public private(set) var activeProfile: BrowserProfile
     public private(set) var database: AppDatabase
 
-    public let runtime: BrowserRuntimeController
+    /// The web engine this window browses with. WebKit by default; the
+    /// Chromium edition passes its own.
+    public let engine: any BrowserEngine
     public private(set) var settingsRepository: SettingsRepository
     public private(set) var sessionRepository: BrowserSessionRepository
     public private(set) var historyRepository: HistoryRepository
@@ -26,12 +30,17 @@ public final class BrowserEnvironment {
     public private(set) var maintenance: DatabaseMaintenance
     public let keychain: KeychainStore
 
-    public init(rootDatabase: AppDatabase, profileStore: ProfileStore, activeProfile: BrowserProfile) throws {
+    public init(
+        rootDatabase: AppDatabase,
+        profileStore: ProfileStore,
+        activeProfile: BrowserProfile,
+        engine: (any BrowserEngine)? = nil
+    ) throws {
         self.rootDatabase = rootDatabase
         self.profileStore = profileStore
         self.activeProfile = activeProfile
         database = try profileStore.database(for: activeProfile)
-        runtime = BrowserRuntimeController()
+        self.engine = engine ?? BrowserRuntimeController()
         settingsRepository = SettingsRepository(database: database)
         sessionRepository = BrowserSessionRepository(database: database)
         historyRepository = HistoryRepository(database: database)
@@ -48,7 +57,7 @@ public final class BrowserEnvironment {
         WebViewFactory.dataStoreIdentifier = activeProfile.dataStoreUUID
     }
 
-    public static func live() throws -> BrowserEnvironment {
+    public static func live(engine: (any BrowserEngine)? = nil) throws -> BrowserEnvironment {
         let directory = try applicationSupportDirectory()
         let databaseURL = directory.appendingPathComponent("browsemium.sqlite")
         let rootDatabase = try AppDatabase(path: databaseURL.path)
@@ -64,10 +73,15 @@ public final class BrowserEnvironment {
         guard let active = profiles.max(by: { $0.lastUsedAt < $1.lastUsedAt }) else {
             throw BrowsemiumError.databaseFailure("No browser profile could be created.")
         }
-        return try BrowserEnvironment(rootDatabase: rootDatabase, profileStore: profileStore, activeProfile: active)
+        return try BrowserEnvironment(
+            rootDatabase: rootDatabase,
+            profileStore: profileStore,
+            activeProfile: active,
+            engine: engine
+        )
     }
 
-    public static func inMemory() -> BrowserEnvironment {
+    public static func inMemory(engine: (any BrowserEngine)? = nil) -> BrowserEnvironment {
         do {
             let rootDatabase = try AppDatabase.inMemory()
             let profileStore = ProfileStore(
@@ -79,7 +93,12 @@ public final class BrowserEnvironment {
             guard let profile = try profileStore.profiles().first else {
                 fatalError("Browsemium could not create an in-memory profile.")
             }
-            return try BrowserEnvironment(rootDatabase: rootDatabase, profileStore: profileStore, activeProfile: profile)
+            return try BrowserEnvironment(
+                rootDatabase: rootDatabase,
+                profileStore: profileStore,
+                activeProfile: profile,
+                engine: engine
+            )
         } catch {
             fatalError("Browsemium could not create its in-memory database: \(error)")
         }

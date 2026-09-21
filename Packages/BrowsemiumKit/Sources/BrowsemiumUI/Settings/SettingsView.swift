@@ -3,6 +3,7 @@ import BrowsemiumAI
 import BrowsemiumCore
 import BrowsemiumData
 import SwiftUI
+import BrowsemiumEngineKit
 
 @MainActor
 struct SettingsView: View {

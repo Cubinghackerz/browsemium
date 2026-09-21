@@ -1,5 +1,6 @@
 import BrowsemiumData
 import Foundation
+import BrowsemiumEngineKit
 
 /// Remembers a browser-profile folder the user granted once, so later imports
 /// are a single click instead of another folder picker. The app is sandboxed,

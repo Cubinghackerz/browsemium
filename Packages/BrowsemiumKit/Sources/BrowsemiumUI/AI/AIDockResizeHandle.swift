@@ -1,5 +1,6 @@
 import AppKit 
 import SwiftUI
+import BrowsemiumEngineKit
 
 /// Drag handle for the assistant dock. Keeps its own transient gesture state
 /// so the drag is never re-created mid-gesture — the previous implementation

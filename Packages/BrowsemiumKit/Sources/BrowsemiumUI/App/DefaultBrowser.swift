@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import BrowsemiumEngineKit
 
 /// Registers Browsemium as a candidate for http/https links and reports
 /// whether it currently is the system default.

@@ -5,6 +5,7 @@ import BrowsemiumEngine
 import Foundation
 import Observation
 import WebKit
+import BrowsemiumEngineKit
 
 public struct BrowserPaletteCommand: Identifiable, Hashable, Sendable {
     public let id: String
@@ -133,18 +134,18 @@ public final class BrowserWindowModel: PermissionPrompting {
         isBookmarksBarVisible = UserDefaults.standard.object(forKey: "browsemium.bookmarksBarVisible") as? Bool ?? true
 
         startObservingRuntime()
-        environment.runtime.beginMemoryPressureMonitoring { [weak self] level in
+        environment.engine.beginMemoryPressureMonitoring { [weak self] level in
             guard let self else { return }
             self.memoryPressureHandler?(level)
             switch level {
             case .warning:
                 self.applySleepPolicy()
             case .critical:
-                self.environment.runtime.hibernateInactiveTabs()
+                self.environment.engine.hibernateInactiveTabs()
                 self.statusMessage = "Inactive tabs were unloaded to reduce memory use"
             }
         }
-        environment.runtime.apply(storedSettings)
+        environment.engine.apply(storedSettings)
         applyAppearanceToApp()
         environment.runMaintenance()
         refreshBookmarks()
@@ -159,7 +160,7 @@ public final class BrowserWindowModel: PermissionPrompting {
     }
 
     public var liveWebViewCount: Int {
-        environment.runtime.liveWebViewCount
+        environment.engine.liveTabCount
     }
 
     /// One row in the address-bar suggestion list.
@@ -317,7 +318,7 @@ public final class BrowserWindowModel: PermissionPrompting {
     /// live web view, and the app's measured footprint with its scope stated.
     public func tabStats(for tab: BrowserTab) -> TabStats {
         TabStats(
-            isLive: environment.runtime.webView(for: tab.id) != nil,
+            isLive: environment.engine.isLive(tabID: tab.id),
             lifecycle: tab.lifecycle,
             liveTabs: liveWebViewCount,
             sleepingTabs: sleepingTabCount,
@@ -392,7 +393,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         addressText = url?.absoluteString ?? ""
         if let url {
             tabURLs[tab.id] = url
-            Task { try? await environment.runtime.navigate(tabID: tab.id, to: NavigationRequest(url: url)) }
+            Task { try? await environment.engine.navigate(tabID: tab.id, to: NavigationRequest(url: url)) }
         }
         refreshNavigationState()
         persistSession()
@@ -406,7 +407,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         if !session.isPrivate {
             try? environment.closedTabRepository.record(tab)
         }
-        environment.runtime.discard(tabID: targetID)
+        environment.engine.discard(tabID: targetID)
         tabURLs[targetID] = nil
         tabAudio[targetID] = nil
         keepAwakeTabIDs.remove(targetID)
@@ -463,7 +464,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         addressText = tabURLs[tabID]?.absoluteString ?? activeTab?.lastCommittedURL?.absoluteString ?? ""
         refreshNavigationState()
         persistSession()
-        Task { await environment.runtime.activate(tabID: tabID, in: paneID) }
+        Task { await environment.engine.activate(tabID: tabID, in: paneID) }
     }
 
     public func moveTab(_ sourceID: TabID, before targetID: TabID) {
@@ -578,7 +579,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         refreshNavigationState()
         persistSession()
         if let target {
-            Task { await environment.runtime.activate(tabID: target, in: paneID) }
+            Task { await environment.engine.activate(tabID: target, in: paneID) }
         }
     }
 
@@ -607,7 +608,7 @@ public final class BrowserWindowModel: PermissionPrompting {
               let space = session.spaces.first(where: { $0.id == spaceID }) else { return }
         let doomed = session.tabs.filter { $0.spaceID == spaceID }
         for tab in doomed {
-            environment.runtime.discard(tabID: tab.id)
+            environment.engine.discard(tabID: tab.id)
             tabURLs[tab.id] = nil
         }
         let spaces = session.spaces.filter { $0.id != spaceID }
@@ -686,7 +687,7 @@ public final class BrowserWindowModel: PermissionPrompting {
     private func captureSelectionForAI(tabID: TabID) {
         Task {
             do {
-                let captured = try await environment.runtime.capture(
+                let captured = try await environment.engine.capture(
                     tabID: tabID,
                     request: CaptureRequest(kinds: [.selection])
                 )
@@ -723,7 +724,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         Task {
             defer { isReaderLoading = false }
             do {
-                readerArticle = try await environment.runtime.extractArticle(tabID: tabID)
+                readerArticle = try await environment.engine.extractArticle(tabID: tabID)
                 activePanel = .none
             } catch {
                 statusMessage = error.localizedDescription
@@ -763,7 +764,7 @@ public final class BrowserWindowModel: PermissionPrompting {
     public func toggleTabMute(_ tabID: TabID) {
         let isMuted = tabAudio[tabID]?.isMuted ?? false
         let next = !isMuted
-        environment.runtime.setMuted(tabID: tabID, muted: next)
+        environment.engine.setMuted(tabID: tabID, muted: next)
         tabAudio[tabID] = TabAudioState(isPlaying: next ? false : (tabAudio[tabID]?.isPlaying ?? false), isMuted: next)
         if !next, tabAudio[tabID]?.isPlaying != true, tabAudio[tabID]?.isMuted != true {
             tabAudio[tabID] = nil
@@ -780,7 +781,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         findStatus = nil
         findText = ""
         if let tabID = session.activeTabID {
-            environment.runtime.clearFindHighlight(tabID: tabID)
+            environment.engine.clearFindHighlight(tabID: tabID)
         }
     }
 
@@ -792,43 +793,42 @@ public final class BrowserWindowModel: PermissionPrompting {
             return
         }
         Task {
-            let found = await environment.runtime.find(tabID: tabID, query: query, backwards: backwards)
-            findStatus = found ? nil : "No matches"
+            let outcome = await environment.engine.find(tabID: tabID, query: query, backwards: backwards)
+            findStatus = outcome.found ? outcome.describedResult : "No matches"
         }
     }
 
     public func zoomIn() {
         guard let tabID = session.activeTabID else { return }
-        environment.runtime.adjustZoom(tabID: tabID, by: 0.1)
+        environment.engine.adjustZoom(tabID: tabID, by: 0.1)
     }
 
     public func zoomOut() {
         guard let tabID = session.activeTabID else { return }
-        environment.runtime.adjustZoom(tabID: tabID, by: -0.1)
+        environment.engine.adjustZoom(tabID: tabID, by: -0.1)
     }
 
     public func resetZoom() {
         guard let tabID = session.activeTabID else { return }
-        environment.runtime.resetZoom(tabID: tabID)
+        environment.engine.resetZoom(tabID: tabID)
     }
 
     public func printPage() {
         guard let tabID = session.activeTabID else { return }
-        environment.runtime.printPage(tabID: tabID)
+        environment.engine.printPage(tabID: tabID)
     }
 
     public func ensureLoaded(_ tabID: TabID) {
-        let runtime = environment.runtime.runtime(for: tabID, isPrivate: session.isPrivate)
-        guard runtime.currentWebView == nil else {
-            Task { await environment.runtime.activate(tabID: tabID, in: paneID) }
+        guard !environment.engine.isLive(tabID: tabID) else {
+            Task { await environment.engine.activate(tabID: tabID, in: paneID) }
             return
         }
         let url = tabURLs[tabID] ?? session.tabs.first { $0.id == tabID }?.lastCommittedURL
         guard let url else { return }
         tabURLs[tabID] = url
         Task {
-            await environment.runtime.activate(tabID: tabID, in: paneID)
-            try? await environment.runtime.navigate(tabID: tabID, to: NavigationRequest(url: url))
+            await environment.engine.activate(tabID: tabID, in: paneID)
+            try? await environment.engine.navigate(tabID: tabID, to: NavigationRequest(url: url))
         }
     }
 
@@ -838,7 +838,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         environment.saveSettings(settings)
         appearance = settings.appearance
         isAIDockVisible = settings.isAIDockEnabled
-        environment.runtime.apply(settings)
+        environment.engine.apply(settings)
         applyAppearanceToApp()
     }
 
@@ -865,7 +865,7 @@ public final class BrowserWindowModel: PermissionPrompting {
     /// only reported when the app process itself measurably shrank.
     public func freeMemoryNow() {
         let before = ProcessMemory.footprintBytes()
-        environment.runtime.hibernateInactiveTabs()
+        environment.engine.hibernateInactiveTabs()
         Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(700))
             let after = ProcessMemory.footprintBytes()
@@ -896,12 +896,12 @@ public final class BrowserWindowModel: PermissionPrompting {
             : "app process; WebKit manages the page processes"
     }
 
-    public var contentRuleState: ContentRuleListManager.State {
-        environment.runtime.contentRules.state
+    public var contentRuleState: BlockingState {
+        environment.engine.blocking
     }
 
     public var contentRuleCount: Int {
-        environment.runtime.contentRules.ruleCount
+        environment.engine.blocking.ruleCount
     }
 
     public func currentSettings() -> BrowserSettings {
@@ -1047,7 +1047,7 @@ public final class BrowserWindowModel: PermissionPrompting {
             }
             isLoading = true
             statusMessage = nil
-            Task { try? await environment.runtime.navigate(tabID: tabID, to: request) }
+            Task { try? await environment.engine.navigate(tabID: tabID, to: request) }
         } catch {
             statusMessage = error.localizedDescription
         }
@@ -1055,24 +1055,24 @@ public final class BrowserWindowModel: PermissionPrompting {
 
     public func reload() {
         guard let tabID = session.activeTabID else { return }
-        environment.runtime.runtime(for: tabID, isPrivate: session.isPrivate).reload()
+        environment.engine.reload(tabID: tabID)
         isLoading = true
     }
 
     public func stopLoading() {
         guard let tabID = session.activeTabID else { return }
-        environment.runtime.runtime(for: tabID, isPrivate: session.isPrivate).stopLoading()
+        environment.engine.stopLoading(tabID: tabID)
         isLoading = false
     }
 
     public func goBack() {
         guard let tabID = session.activeTabID else { return }
-        environment.runtime.runtime(for: tabID, isPrivate: session.isPrivate).goBack()
+        environment.engine.goBack(tabID: tabID)
     }
 
     public func goForward() {
         guard let tabID = session.activeTabID else { return }
-        environment.runtime.runtime(for: tabID, isPrivate: session.isPrivate).goForward()
+        environment.engine.goForward(tabID: tabID)
     }
 
     public func toggleBookmark() {
@@ -1157,7 +1157,7 @@ public final class BrowserWindowModel: PermissionPrompting {
                     statusMessage = "The password is missing from Keychain"
                     return
                 }
-                let filled = try await environment.runtime.fillCredential(
+                let filled = try await environment.engine.fillCredential(
                     tabID: tabID,
                     username: credential.username,
                     password: password
@@ -1201,7 +1201,11 @@ public final class BrowserWindowModel: PermissionPrompting {
         let storeIdentifier = environment.activeProfile.dataStoreUUID
         Task { [weak self] in
             guard let self else { return }
-            await self.environment.runtime.clearSiteData(dataStoreIdentifier: storeIdentifier)
+            await self.environment.engine.clearSiteData(
+                dataStoreIdentifier: storeIdentifier,
+                includeCache: true,
+                modifiedSince: .distantPast
+            )
             self.statusMessage = "Cookies, site data, and cache cleared for this profile"
         }
     }
@@ -1210,7 +1214,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         let storeIdentifier = environment.activeProfile.dataStoreUUID
         Task { [weak self] in
             guard let self else { return }
-            await self.environment.runtime.clearCache(dataStoreIdentifier: storeIdentifier)
+            await self.environment.engine.clearCache(dataStoreIdentifier: storeIdentifier)
             self.statusMessage = "Cache cleared for this profile"
         }
     }
@@ -1218,9 +1222,9 @@ public final class BrowserWindowModel: PermissionPrompting {
     public func applySleepPolicy() {
         let tabs = session.tabs
         let signals = sleepSignals(for: tabs)
-        let runtime = environment.runtime
+        let engine = environment.engine
         Task {
-            await runtime.applySleepPolicy(tabs: tabs, signals: signals)
+            await engine.applySleepPolicy(tabs: tabs, signals: signals, now: Date())
         }
     }
 
@@ -1230,7 +1234,7 @@ public final class BrowserWindowModel: PermissionPrompting {
     /// mid-flight is how a background call or a download used to disappear.
     func sleepSignals(for tabs: [BrowserTab]) -> [TabID: TabSleepSignals] {
         let busyDownloads = Set(
-            environment.runtime.downloads.allDownloads()
+            environment.engine.downloads.allDownloads()
                 .filter { !$0.isFinished && $0.failureMessage == nil }
                 .compactMap(\.tabID)
         )
@@ -1352,25 +1356,25 @@ public final class BrowserWindowModel: PermissionPrompting {
     public func startObservingRuntime() {
         guard runtimeObserverTokens.isEmpty else { return }
         runtimeObserverTokens = [
-            environment.runtime.addEventObserver { [weak self] tabID, event in
+            environment.engine.addEventObserver { [weak self] tabID, event in
                 self?.handle(event, for: tabID)
             }
         ]
-        downloadObserverToken = environment.runtime.downloads.addObserver { [weak self] info in
+        downloadObserverToken = environment.engine.downloads.addObserver { [weak self] info in
             self?.handleDownload(info)
         }
-        environment.runtime.permissionPrompter = self
+        environment.engine.permissionPrompter = self
     }
 
     /// Stops observing the shared runtime. Called when a window closes so a
     /// closed window is not kept alive by its own registrations.
     public func stopObservingRuntime() {
         for token in runtimeObserverTokens {
-            environment.runtime.removeEventObserver(token)
+            environment.engine.removeEventObserver(token)
         }
         runtimeObserverTokens = []
         if let downloadObserverToken {
-            environment.runtime.downloads.removeObserver(downloadObserverToken)
+            environment.engine.downloads.removeObserver(downloadObserverToken)
         }
         downloadObserverToken = nil
     }
@@ -1433,13 +1437,11 @@ public final class BrowserWindowModel: PermissionPrompting {
             }
             if let url {
                 tabURLs[tabID] = url
-                if let webView = environment.runtime.webView(for: tabID) {
-                    // Icon discovery runs JavaScript and a network fetch. Let
-                    // the page settle first so it never competes with loading.
-                    Task { [favicons] in
-                        try? await Task.sleep(for: .milliseconds(350))
-                        favicons.fetchIcon(for: webView, pageURL: url)
-                    }
+                // Icon discovery runs JavaScript and a network fetch. Let the
+                // page settle first so it never competes with loading.
+                Task { [favicons, engine = environment.engine] in
+                    try? await Task.sleep(for: .milliseconds(350))
+                    favicons.fetchIcon(engine: engine, tabID: tabID, pageURL: url)
                 }
             }
             if session.activeTabID == tabID {
@@ -1456,7 +1458,7 @@ public final class BrowserWindowModel: PermissionPrompting {
             persistSession()
             applySleepPolicy()
             // A finished load is the right moment to refill the warm tab.
-            environment.runtime.prepareWarmTab()
+            environment.engine.prepareWarmTab()
         case .progressChanged(let progress):
             if session.activeTabID == tabID {
                 loadingProgress = progress
@@ -1511,7 +1513,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         }
     }
 
-    private func handleDownload(_ info: DownloadCoordinator.DownloadInfo) {
+    private func handleDownload(_ info: DownloadInfo) {
         let state: DownloadState = info.failureMessage != nil ? .failed : (info.isFinished ? .finished : .inProgress)
         let progress = DownloadProgress(
             id: info.id,
@@ -1603,7 +1605,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         guard profile.id != environment.activeProfile.id else { return }
         persistSession()
         let previous = environment.activeProfile
-        environment.runtime.teardownForProfileSwitch()
+        environment.engine.teardownForProfileSwitch()
         do {
             try environment.activate(profile)
         } catch {
@@ -1659,10 +1661,10 @@ public final class BrowserWindowModel: PermissionPrompting {
         // The profile's own web views must never be reused, and its cookies and
         // logins must not outlive it.
         let storeIdentifier = profile.dataStoreUUID
-        Task { await environment.runtime.removeAllData(dataStoreIdentifier: storeIdentifier) }
+        Task { await environment.engine.removeAllData(dataStoreIdentifier: storeIdentifier) }
 
         if wasActive {
-            environment.runtime.teardownForProfileSwitch()
+            environment.engine.teardownForProfileSwitch()
             let fallback = environment.profiles.first
                 ?? (try? environment.createProfile(name: ProfileStore.personalProfileName))
             if let fallback {
@@ -1718,10 +1720,9 @@ public final class BrowserWindowModel: PermissionPrompting {
             isBookmarked = false
             return
         }
-        let runtime = environment.runtime.runtime(for: tabID, isPrivate: session.isPrivate)
-        canGoBack = runtime.canGoBack
-        canGoForward = runtime.canGoForward
-        isLoading = runtime.isLoading
+        canGoBack = environment.engine.canGoBack(tabID: tabID)
+        canGoForward = environment.engine.canGoForward(tabID: tabID)
+        isLoading = environment.engine.isLoading(tabID: tabID)
         if !isLoading {
             loadingProgress = 0
         }

@@ -6,6 +6,7 @@ import Foundation
 import Observation
 import UniformTypeIdentifiers
 import WebKit
+import BrowsemiumEngineKit
 
 public struct ProviderComposerPreparation: Sendable {
     /// Stable identity for this preparation. The provider bridge checks it

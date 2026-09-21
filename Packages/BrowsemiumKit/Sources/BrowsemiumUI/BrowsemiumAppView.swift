@@ -1,6 +1,7 @@
 import AppKit
 import BrowsemiumCore
 import SwiftUI
+import BrowsemiumEngineKit
 
 /// Lets menu commands act on the focused window's model.
 public struct BrowserModelFocusKey: FocusedValueKey {
@@ -237,7 +238,7 @@ public struct BrowsemiumAppView: View {
                 if let tabID = model.session.activeTabID,
                    model.tabURLs[tabID] != nil || model.activeTab?.lastCommittedURL != nil {
                     WebViewHost(
-                        runtime: model.environment.runtime,
+                        engine: model.environment.engine,
                         tabID: tabID,
                         isPrivate: model.session.isPrivate
                     )

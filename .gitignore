@@ -12,6 +12,11 @@ Packages/*/.build/
 .tools/
 .build-stamp
 
+# Chromium Embedded Framework (~300 MB unpacked), fetched by
+# Scripts/fetch-cef.sh. Never commit the binaries: the pinned version and its
+# SHA-1 live in the script, and the release pipeline downloads it.
+Vendors/CEF/
+
 # The Xcode project is generated from project.yml but is committed on purpose,
 # so the app can be opened without installing XcodeGen. Regenerate it with
 # `xcodegen generate --spec project.yml` and commit the result; never hand-edit

@@ -1,6 +1,7 @@
 import BrowsemiumCore
 import BrowsemiumEngine
 import SwiftUI
+import BrowsemiumEngineKit
 
 /// The camera/microphone prompt. WebKit routes these requests through the UI
 /// delegate; without a prompt the request was denied silently and a voice

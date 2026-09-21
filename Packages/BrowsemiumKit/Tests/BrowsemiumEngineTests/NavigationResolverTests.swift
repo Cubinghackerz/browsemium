@@ -2,6 +2,7 @@ import BrowsemiumCore
 import BrowsemiumEngine
 import Foundation
 import Testing
+import BrowsemiumEngineKit
 
 private let resolver = NavigationResolver()
 

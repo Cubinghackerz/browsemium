@@ -1,21 +1,6 @@
+import BrowsemiumEngineKit
 import Foundation
 import WebKit
-
-/// Per-tab audio state reported by the injected page script.
-public struct TabAudioState: Hashable, Sendable {
-    public let isPlaying: Bool
-    public let isMuted: Bool
-    /// True while the page holds a live microphone, camera, or screen-share
-    /// track. A call can be silent (muted mic) and still be in progress, so
-    /// this is reported separately from `isPlaying`.
-    public let isCapturingMedia: Bool
-
-    public init(isPlaying: Bool, isMuted: Bool, isCapturingMedia: Bool = false) {
-        self.isPlaying = isPlaying
-        self.isMuted = isMuted
-        self.isCapturingMedia = isCapturingMedia
-    }
-}
 
 /// WebKit has no public per-tab "is playing audio" API, so this observes the
 /// page instead: media elements, AudioContexts, and microphone/camera/screen

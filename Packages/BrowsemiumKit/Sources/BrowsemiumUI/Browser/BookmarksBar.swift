@@ -2,6 +2,7 @@ import AppKit
 import BrowsemiumCore
 import BrowsemiumData
 import SwiftUI
+import BrowsemiumEngineKit
 
 /// A slim strip of bookmarks below the toolbar. Appears only when the bar is
 /// enabled and at least one bookmark exists, so it never occupies dead space.

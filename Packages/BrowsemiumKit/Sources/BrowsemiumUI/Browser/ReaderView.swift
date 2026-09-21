@@ -1,5 +1,6 @@
 import BrowsemiumCore
 import SwiftUI
+import BrowsemiumEngineKit
 
 /// Reading view: the page's article as text, styled for reading. Nothing from
 /// the original page is rendered here, so no page CSS or script can affect it.

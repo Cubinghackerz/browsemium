@@ -1,5 +1,6 @@
 import BrowsemiumData
 import SwiftUI
+import BrowsemiumEngineKit
 
 /// The quiet start surface: the mark, the name, and the shortcuts that matter.
 struct NewTabView: View {

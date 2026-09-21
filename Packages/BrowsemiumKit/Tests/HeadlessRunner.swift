@@ -5,6 +5,7 @@ import BrowsemiumEngine
 import Foundation
 import GRDB
 import WebKit
+import BrowsemiumEngineKit
 
 private enum VerificationFailure: Error, CustomStringConvertible {
     case failed(String)

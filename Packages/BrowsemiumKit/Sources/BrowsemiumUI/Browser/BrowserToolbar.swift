@@ -1,5 +1,6 @@
 import BrowsemiumCore
 import SwiftUI
+import BrowsemiumEngineKit
 
 @MainActor
 struct BrowserToolbar: View {

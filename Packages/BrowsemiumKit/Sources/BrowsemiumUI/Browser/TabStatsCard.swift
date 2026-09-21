@@ -1,5 +1,6 @@
 import BrowsemiumCore
 import SwiftUI
+import BrowsemiumEngineKit
 
 /// Hover card for a tab. Shows only figures that can be verified: the tab's
 /// real load state, whether it currently holds a web view, and Browsemium's

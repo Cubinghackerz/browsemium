@@ -4,6 +4,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 import WebKit
+import BrowsemiumEngineKit
 
 @MainActor
 struct AIDockView: View {

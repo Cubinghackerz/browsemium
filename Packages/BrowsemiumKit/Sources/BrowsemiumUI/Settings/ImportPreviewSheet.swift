@@ -1,5 +1,6 @@
 import BrowsemiumData
 import SwiftUI
+import BrowsemiumEngineKit
 
 /// Shows exactly what a browser profile contains before anything is written.
 @MainActor

@@ -2,6 +2,7 @@ import AppKit
 import BrowsemiumCore
 import BrowsemiumData
 import SwiftUI
+import BrowsemiumEngineKit
 
 @MainActor
 struct LibraryView: View {

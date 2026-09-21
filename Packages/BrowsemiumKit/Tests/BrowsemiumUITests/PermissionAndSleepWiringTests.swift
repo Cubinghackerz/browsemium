@@ -3,6 +3,7 @@ import BrowsemiumCore
 import BrowsemiumEngine
 import Foundation
 import Testing
+import BrowsemiumEngineKit
 @testable import BrowsemiumUI
 
 /// The sleep policy is only as good as the signals the window hands it. These

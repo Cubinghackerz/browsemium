@@ -2,7 +2,7 @@ import AppKit
 import BrowsemiumCore
 import Foundation
 import Observation
-import WebKit
+import BrowsemiumEngineKit
 
 /// Host-keyed favicon cache. Icons come from the site itself — the page's
 /// declared icon link is fetched over the same connection the user already
@@ -33,7 +33,10 @@ public final class FaviconStore {
         return images[host]
     }
 
-    public func fetchIcon(for webView: WKWebView, pageURL: URL) {
+    /// Asks the page for its declared icons and fetches the first usable one.
+    /// The script runs through the engine, so this works the same on WebKit and
+    /// on Chromium.
+    public func fetchIcon(engine: any BrowserEngine, tabID: TabID, pageURL: URL) {
         guard let host = pageURL.host?.lowercased(),
               pageURL.scheme == "https" || pageURL.scheme == "http",
               canAttempt(host) else {
@@ -51,7 +54,8 @@ public final class FaviconStore {
         """
 
         Task {
-            if let raw = try? await webView.evaluateJavaScript(script) as? String, !raw.isEmpty {
+            if let raw = try? await engine.evaluateJavaScript(tabID: tabID, script: script) as? String,
+               !raw.isEmpty {
                 for candidate in raw.split(separator: "\n").map(String.init) {
                     if await store(candidate, relativeTo: pageURL, host: host) {
                         return

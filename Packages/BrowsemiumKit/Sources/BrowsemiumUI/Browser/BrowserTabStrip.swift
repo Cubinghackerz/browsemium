@@ -1,6 +1,7 @@
 import AppKit
 import BrowsemiumCore
 import SwiftUI
+import BrowsemiumEngineKit
 
 /// The horizontal tab strip. Pinned tabs collapse to compact squares; regular
 /// tabs share the remaining width evenly until they hit the floor, then the

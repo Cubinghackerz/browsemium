@@ -2,6 +2,7 @@ import BrowsemiumCore
 import BrowsemiumUI
 import Foundation
 import Testing
+import BrowsemiumEngineKit
 
 @Test @MainActor
 func creatingAGroupMovesFocusToItsFirstTab() {

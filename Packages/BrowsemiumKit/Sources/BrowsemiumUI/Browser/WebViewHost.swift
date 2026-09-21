@@ -2,9 +2,10 @@ import BrowsemiumCore
 import BrowsemiumEngine
 import AppKit
 import SwiftUI
+import BrowsemiumEngineKit
 
 struct WebViewHost: NSViewRepresentable {
-    let runtime: BrowserRuntimeController
+    let engine: any BrowserEngine
     let tabID: TabID
     let isPrivate: Bool
 
@@ -16,7 +17,7 @@ struct WebViewHost: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        runtime.attach(tabID: tabID, to: nsView)
+        engine.attach(tabID: tabID, to: nsView)
     }
 
     static func dismantleNSView(_ nsView: NSView, coordinator: ()) {

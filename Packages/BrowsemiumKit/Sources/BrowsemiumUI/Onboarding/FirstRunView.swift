@@ -1,5 +1,6 @@
 import BrowsemiumCore
 import SwiftUI
+import BrowsemiumEngineKit
 
 /// First-run setup. Four short steps — welcome, search, appearance, privacy —
 /// then the assistant opt-in. Every choice writes straight into the same

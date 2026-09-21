@@ -8,6 +8,7 @@ let isHeadless = ProcessInfo.processInfo.environment["BROWSEMIUM_HEADLESS"] == "
 var products: [Product] = [
     .library(name: "BrowsemiumCore", targets: ["BrowsemiumCore"]),
     .library(name: "BrowsemiumData", targets: ["BrowsemiumData"]),
+    .library(name: "BrowsemiumEngineKit", targets: ["BrowsemiumEngineKit"]),
     .library(name: "BrowsemiumEngine", targets: ["BrowsemiumEngine"]),
     .library(name: "BrowsemiumAI", targets: ["BrowsemiumAI"])
 ]
@@ -25,9 +26,17 @@ var targets: [Target] = [
         ],
         swiftSettings: [.swiftLanguageMode(.v6)]
     ),
+    // The engine seam: the protocol a window uses and the vocabulary both
+    // engines speak. Kept free of WebKit and Chromium so either edition can
+    // link it without dragging the other engine in.
+    .target(
+        name: "BrowsemiumEngineKit",
+        dependencies: ["BrowsemiumCore"],
+        swiftSettings: [.swiftLanguageMode(.v6)]
+    ),
     .target(
         name: "BrowsemiumEngine",
-        dependencies: ["BrowsemiumCore"],
+        dependencies: ["BrowsemiumCore", "BrowsemiumEngineKit"],
         resources: [
             .copy("Resources/Readability.js"),
             .copy("Resources/Readability-LICENSE.md"),
@@ -57,6 +66,7 @@ if isHeadless {
                 "BrowsemiumCore",
                 "BrowsemiumData",
                 "BrowsemiumEngine",
+                "BrowsemiumEngineKit",
                 "BrowsemiumAI",
                 .product(name: "GRDB", package: "GRDB.swift")
             ],
@@ -85,6 +95,7 @@ if isHeadless {
                 "BrowsemiumCore",
                 "BrowsemiumData",
                 "BrowsemiumEngine",
+                "BrowsemiumEngineKit",
                 "BrowsemiumAI"
             ],
             resources: [
@@ -113,7 +124,7 @@ if isHeadless {
         ),
         .testTarget(
             name: "BrowsemiumEngineTests",
-            dependencies: ["BrowsemiumCore", "BrowsemiumEngine"],
+            dependencies: ["BrowsemiumCore", "BrowsemiumEngine", "BrowsemiumEngineKit"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
@@ -123,7 +134,7 @@ if isHeadless {
         ),
         .testTarget(
             name: "BrowsemiumUITests",
-            dependencies: ["BrowsemiumCore", "BrowsemiumEngine", "BrowsemiumUI"],
+            dependencies: ["BrowsemiumCore", "BrowsemiumEngine", "BrowsemiumEngineKit", "BrowsemiumUI"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(

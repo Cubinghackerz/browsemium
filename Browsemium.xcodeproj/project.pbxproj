@@ -7,50 +7,124 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		061B484EC442EB791FE042CF /* AppShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64372261E97F025488A37994 /* AppShell.swift */; };
+		089408A98C7FB5C73657BAD5 /* BrowsemiumChromiumApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3BE87A13C23D9DDC634A2B9 /* BrowsemiumChromiumApp.swift */; };
 		1CCC8774B335AFC4CD409793 /* BrowserWindowModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87FF9C65B6C9681BA0AE440E /* BrowserWindowModelTests.swift */; };
 		1D04DBA9570E7B8BF3447F5C /* BrowsemiumEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 50D45BC834890FC945ADF3DD /* BrowsemiumEngine */; };
+		1E8EA93B41F6385A536F17A6 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBF0C9CFF76735ED68FECACD /* main.swift */; };
+		294A46FD5468E9614A8CD112 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = F410BA286B7C99D90ACC6604 /* Sparkle */; };
 		2BB3726FC425007492319E3A /* NavigationResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 092AFEBFCCE5140FAC9EFF7C /* NavigationResolverTests.swift */; };
+		2DEA55C2506EBF06EE41399B /* BrowsemiumCEFBrowser.mm in Sources */ = {isa = PBXBuildFile; fileRef = 0AE769133E1F32592C86F341 /* BrowsemiumCEFBrowser.mm */; };
+		30144EAA886301A764E00FA7 /* BrowsemiumCEFInternal.h in CopyFiles */ = {isa = PBXBuildFile; fileRef = 6D05EA31FE74DCCF949EBFFE /* BrowsemiumCEFInternal.h */; };
 		3A94F1E8F12590971F2797A9 /* ProfileStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2637D77BAD284CF0902651C /* ProfileStoreTests.swift */; };
 		4793A6660735CAC9B6B68AAF /* BrowsemiumApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C3F425E3D016D89BAE9E398 /* BrowsemiumApp.swift */; };
 		49D5315F497BC71C8F8A6D90 /* BrowsemiumCore in Frameworks */ = {isa = PBXBuildFile; productRef = 09ADB7EBA008AAE2B56D065D /* BrowsemiumCore */; };
+		57EE621B44A8BB14D820D48C /* ChromiumDownloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = 441C8A07FC001691F9AA1BD2 /* ChromiumDownloads.swift */; };
+		58931CE2915011A6D1F03154 /* BrowsemiumCEF.h in CopyFiles */ = {isa = PBXBuildFile; fileRef = 577D96312FA41F7C34A1BA12 /* BrowsemiumCEF.h */; };
 		5CDF3E22A43C81BB20E92D2F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F08B8B1A92C60E9FA0044EC7 /* Assets.xcassets */; };
 		6230419FE1562DA9D4AF117C /* BrowsemiumCore in Frameworks */ = {isa = PBXBuildFile; productRef = 06125E57E2D8218D879F58E4 /* BrowsemiumCore */; };
+		63D67908ADEEA67EC1177A08 /* ChromiumTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73C508CC79988C6D9E9B728C /* ChromiumTab.swift */; };
+		679D821BA665324525E64053 /* CEFBrowserClient.mm in Sources */ = {isa = PBXBuildFile; fileRef = 752980B53B0C6B13B10C7E47 /* CEFBrowserClient.mm */; };
+		6A390F219DD29E100390A275 /* AppShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64372261E97F025488A37994 /* AppShell.swift */; };
 		788D6C5A5B3017429686EF45 /* BrowsemiumUI in Frameworks */ = {isa = PBXBuildFile; productRef = 3648102C5D1B41D0206D919C /* BrowsemiumUI */; };
 		7E646D0C7D789EDD072EC025 /* AIDockViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDF00CF17E59A77022CF3539 /* AIDockViewModelTests.swift */; };
 		80E2437BE28C2532E75A04A0 /* BrowserImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3C9246D617D18F8DD99717F /* BrowserImportTests.swift */; };
 		859238E56FED5BF627BBF810 /* UpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D411139AF1254E75BB95D935 /* UpdateController.swift */; };
+		863B4451A0E429F809EDB5C3 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 8CC1D8E1FF0CF30ED055560B /* main.mm */; };
 		8C5AC0D06C71F6636DAA4338 /* BrowsemiumEngine in Frameworks */ = {isa = PBXBuildFile; productRef = A424C1BA7D6F396127FF0C25 /* BrowsemiumEngine */; };
+		8CA3524DEA235578E24FE2D4 /* ChromiumEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2465A153C476833EA2AC540E /* ChromiumEngine.swift */; };
 		97403D9301DC5206D2EEDB37 /* AppDatabaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7206BEC4825DEA806A7B0DE /* AppDatabaseTests.swift */; };
 		A651E4DD7B2E5C5400F77CA1 /* BrowsemiumCore in Frameworks */ = {isa = PBXBuildFile; productRef = F3BB75BC0DCBDD0426DE9EAF /* BrowsemiumCore */; };
+		A652DEDBD23BDA574683892C /* libBrowsemiumCEFBridge.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CBEA843A8AC5B4B0C0DB0DBF /* libBrowsemiumCEFBridge.a */; };
+		A8FD51B16AA49E2773EF8147 /* UpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D411139AF1254E75BB95D935 /* UpdateController.swift */; };
 		AAA074F8764F212E79358B5D /* ConversationRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E9285A7A7C2E1AEB180C5F5 /* ConversationRepositoryTests.swift */; };
 		ACFEC59B41795B06CAC9D6DB /* BrowsemiumCore in Frameworks */ = {isa = PBXBuildFile; productRef = FD1A0372E69607B627DBAE54 /* BrowsemiumCore */; };
+		B050864961F26CFBF597DDC6 /* libBrowsemiumCEFBridge.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CBEA843A8AC5B4B0C0DB0DBF /* libBrowsemiumCEFBridge.a */; };
 		B06E6451CDC1A4209651D063 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = CD982532970BC579981F6AD1 /* Sparkle */; };
 		C3AF1FFCA43B28002086D64A /* ProfileDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FA377ECC8415F876E09E730 /* ProfileDiscoveryTests.swift */; };
 		CC8CD0CD15798A97C322C6F7 /* PermissionAndSleepWiringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 848606A184222F0907904A13 /* PermissionAndSleepWiringTests.swift */; };
 		DA7C13A1F84629261CF28882 /* BrowsemiumUI in Frameworks */ = {isa = PBXBuildFile; productRef = F5CC19F8DCB5061878AA9D89 /* BrowsemiumUI */; };
 		DD706E0D06C743A5DE4785B6 /* TabGroupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19B22CFE5D0235239124921C /* TabGroupTests.swift */; };
+		E336230A0178FD0DFDF7DF4D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F08B8B1A92C60E9FA0044EC7 /* Assets.xcassets */; };
 		E697BAE65A58B25D1E26647D /* IdentifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCE2972DAB23FD93D253FE06 /* IdentifierTests.swift */; };
+		F3E7E8E48C315C1D24941CBE /* CEFRuntime.mm in Sources */ = {isa = PBXBuildFile; fileRef = 42C68B047D56B839525FFE77 /* CEFRuntime.mm */; };
+		F65FFD9622E0872D40E83C0D /* BrowsemiumUI in Frameworks */ = {isa = PBXBuildFile; productRef = D3F68FE23E9B2BAC2E7C3352 /* BrowsemiumUI */; };
 		F89EF8C823A05C99F1301730 /* BrowsemiumData in Frameworks */ = {isa = PBXBuildFile; productRef = C88521F0DE234D9C9C99E5A8 /* BrowsemiumData */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		2A9B357D8F0C929300FCF928 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FFB29339933A86E361204510 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 35D38ABCFC8A8B5CCB7DA4A7;
+			remoteInfo = BrowsemiumCEFBridge;
+		};
+		4D03B6E56C4EA2AF7B1AC0EC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FFB29339933A86E361204510 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 35D38ABCFC8A8B5CCB7DA4A7;
+			remoteInfo = BrowsemiumCEFBridge;
+		};
+		740BBCE4667838C2FCAF77C1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FFB29339933A86E361204510 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8B01A63E6A018AE580D473DA;
+			remoteInfo = BrowsemiumChromiumHelper;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		642DA3117CFFEBA3D4AE837E /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "include/$(PRODUCT_NAME)";
+			dstSubfolderSpec = 16;
+			files = (
+				58931CE2915011A6D1F03154 /* BrowsemiumCEF.h in CopyFiles */,
+				30144EAA886301A764E00FA7 /* BrowsemiumCEFInternal.h in CopyFiles */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		01F37A249E00CE7F12A63FA5 /* BrowsemiumDataTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BrowsemiumDataTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		092AFEBFCCE5140FAC9EFF7C /* NavigationResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationResolverTests.swift; sourceTree = "<group>"; };
+		0AE769133E1F32592C86F341 /* BrowsemiumCEFBrowser.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = BrowsemiumCEFBrowser.mm; sourceTree = "<group>"; };
 		19B22CFE5D0235239124921C /* TabGroupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabGroupTests.swift; sourceTree = "<group>"; };
 		1ACA543214F9C7B3DC48F6E4 /* BrowsemiumApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BrowsemiumApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2465A153C476833EA2AC540E /* ChromiumEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromiumEngine.swift; sourceTree = "<group>"; };
 		24F87990A4F8FA9A366778E6 /* BrowsemiumEngineTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BrowsemiumEngineTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		27372ED7D6DF4FB1BF783F58 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		2FA377ECC8415F876E09E730 /* ProfileDiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileDiscoveryTests.swift; sourceTree = "<group>"; };
+		42C68B047D56B839525FFE77 /* CEFRuntime.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = CEFRuntime.mm; sourceTree = "<group>"; };
+		441C8A07FC001691F9AA1BD2 /* ChromiumDownloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromiumDownloads.swift; sourceTree = "<group>"; };
 		4C3F425E3D016D89BAE9E398 /* BrowsemiumApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsemiumApp.swift; sourceTree = "<group>"; };
 		53143E61AD7BB670D4CB652F /* BrowsemiumKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrowsemiumKit; path = Packages/BrowsemiumKit; sourceTree = SOURCE_ROOT; };
+		577D96312FA41F7C34A1BA12 /* BrowsemiumCEF.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BrowsemiumCEF.h; sourceTree = "<group>"; };
+		59CF2856FAA16BEB20977ADE /* BrowsemiumChromium.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BrowsemiumChromium.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		64372261E97F025488A37994 /* AppShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShell.swift; sourceTree = "<group>"; };
+		6D05EA31FE74DCCF949EBFFE /* BrowsemiumCEFInternal.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BrowsemiumCEFInternal.h; sourceTree = "<group>"; };
+		73C508CC79988C6D9E9B728C /* ChromiumTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromiumTab.swift; sourceTree = "<group>"; };
+		752980B53B0C6B13B10C7E47 /* CEFBrowserClient.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = CEFBrowserClient.mm; sourceTree = "<group>"; };
+		8069EC89291BD9A5B887F4A4 /* BrowsemiumChromium.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BrowsemiumChromium.entitlements; sourceTree = "<group>"; };
 		848606A184222F0907904A13 /* PermissionAndSleepWiringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionAndSleepWiringTests.swift; sourceTree = "<group>"; };
 		87FF9C65B6C9681BA0AE440E /* BrowserWindowModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowModelTests.swift; sourceTree = "<group>"; };
+		8CC1D8E1FF0CF30ED055560B /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
 		8E9285A7A7C2E1AEB180C5F5 /* ConversationRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationRepositoryTests.swift; sourceTree = "<group>"; };
 		92B44FFBF228F83A32A326F5 /* BrowsemiumUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BrowsemiumUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1B398E3D51C1ADFE8A1880C /* BrowsemiumChromiumHelper */ = {isa = PBXFileReference; includeInIndex = 0; path = BrowsemiumChromiumHelper; sourceTree = BUILT_PRODUCTS_DIR; };
 		AAC4411A48E29C66F3EE532C /* BrowsemiumCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BrowsemiumCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B3BE87A13C23D9DDC634A2B9 /* BrowsemiumChromiumApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsemiumChromiumApp.swift; sourceTree = "<group>"; };
 		BDF00CF17E59A77022CF3539 /* AIDockViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIDockViewModelTests.swift; sourceTree = "<group>"; };
 		C3C9246D617D18F8DD99717F /* BrowserImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserImportTests.swift; sourceTree = "<group>"; };
+		CBEA843A8AC5B4B0C0DB0DBF /* libBrowsemiumCEFBridge.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libBrowsemiumCEFBridge.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		D411139AF1254E75BB95D935 /* UpdateController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateController.swift; sourceTree = "<group>"; };
 		D7206BEC4825DEA806A7B0DE /* AppDatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabaseTests.swift; sourceTree = "<group>"; };
+		DBF0C9CFF76735ED68FECACD /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		F08B8B1A92C60E9FA0044EC7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F2637D77BAD284CF0902651C /* ProfileStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileStoreTests.swift; sourceTree = "<group>"; };
 		FCE2972DAB23FD93D253FE06 /* IdentifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentifierTests.swift; sourceTree = "<group>"; };
@@ -102,6 +176,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A9F21FAA52507590D7677516 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A652DEDBD23BDA574683892C /* libBrowsemiumCEFBridge.a in Frameworks */,
+				F65FFD9622E0872D40E83C0D /* BrowsemiumUI in Frameworks */,
+				294A46FD5468E9614A8CD112 /* Sparkle in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B1E5F89535489B67D112593F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B050864961F26CFBF597DDC6 /* libBrowsemiumCEFBridge.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -122,16 +214,52 @@
 			path = Packages/BrowsemiumKit/Tests/BrowsemiumCoreTests;
 			sourceTree = "<group>";
 		};
+		2C3A9BDE4D71CF3C82C67236 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				8069EC89291BD9A5B887F4A4 /* BrowsemiumChromium.entitlements */,
+				27372ED7D6DF4FB1BF783F58 /* Info.plist */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		491FE1E4BD4472B7C80A1CB8 /* Helper */ = {
+			isa = PBXGroup;
+			children = (
+				8CC1D8E1FF0CF30ED055560B /* main.mm */,
+			);
+			name = Helper;
+			path = BrowsemiumCEF/Helper;
+			sourceTree = "<group>";
+		};
+		4CEDC21AE96E08FC16075009 /* BrowsemiumChromiumApp */ = {
+			isa = PBXGroup;
+			children = (
+				B3BE87A13C23D9DDC634A2B9 /* BrowsemiumChromiumApp.swift */,
+				441C8A07FC001691F9AA1BD2 /* ChromiumDownloads.swift */,
+				2465A153C476833EA2AC540E /* ChromiumEngine.swift */,
+				73C508CC79988C6D9E9B728C /* ChromiumTab.swift */,
+				DBF0C9CFF76735ED68FECACD /* main.swift */,
+				2C3A9BDE4D71CF3C82C67236 /* Config */,
+			);
+			path = BrowsemiumChromiumApp;
+			sourceTree = "<group>";
+		};
 		4E81D0FFC260920C492A1615 = {
 			isa = PBXGroup;
 			children = (
 				DB7673329E015BD6A2A0DDB2 /* App */,
+				636F61A0E07ADE2FC82568AD /* AppShell */,
 				C707272AEB6700920AE47A93 /* BrowsemiumApp */,
+				4CEDC21AE96E08FC16075009 /* BrowsemiumChromiumApp */,
 				246DE3D1F6AF75D234E8F801 /* BrowsemiumCoreTests */,
 				E977548EC6E38A99C9C87832 /* BrowsemiumDataTests */,
 				5B68190A7BB41318D48436EF /* BrowsemiumEngineTests */,
 				4F72B61D970E7A977177F2AD /* BrowsemiumUITests */,
+				491FE1E4BD4472B7C80A1CB8 /* Helper */,
+				6D6F75CC4800FD58148729D1 /* include */,
 				1A312FCC9D99182783B2305A /* Packages */,
+				66DEA9582DBF10BC7BA96EF4 /* Sources */,
 				AEEA9B2E6EFC6D6C91967E83 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -157,14 +285,47 @@
 			path = Packages/BrowsemiumKit/Tests/BrowsemiumEngineTests;
 			sourceTree = "<group>";
 		};
+		636F61A0E07ADE2FC82568AD /* AppShell */ = {
+			isa = PBXGroup;
+			children = (
+				64372261E97F025488A37994 /* AppShell.swift */,
+			);
+			name = AppShell;
+			path = Shared/AppShell;
+			sourceTree = "<group>";
+		};
+		66DEA9582DBF10BC7BA96EF4 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				0AE769133E1F32592C86F341 /* BrowsemiumCEFBrowser.mm */,
+				6D05EA31FE74DCCF949EBFFE /* BrowsemiumCEFInternal.h */,
+				752980B53B0C6B13B10C7E47 /* CEFBrowserClient.mm */,
+				42C68B047D56B839525FFE77 /* CEFRuntime.mm */,
+			);
+			name = Sources;
+			path = BrowsemiumCEF/Sources;
+			sourceTree = "<group>";
+		};
+		6D6F75CC4800FD58148729D1 /* include */ = {
+			isa = PBXGroup;
+			children = (
+				577D96312FA41F7C34A1BA12 /* BrowsemiumCEF.h */,
+			);
+			name = include;
+			path = BrowsemiumCEF/include;
+			sourceTree = "<group>";
+		};
 		AEEA9B2E6EFC6D6C91967E83 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				1ACA543214F9C7B3DC48F6E4 /* BrowsemiumApp.app */,
+				59CF2856FAA16BEB20977ADE /* BrowsemiumChromium.app */,
+				A1B398E3D51C1ADFE8A1880C /* BrowsemiumChromiumHelper */,
 				AAC4411A48E29C66F3EE532C /* BrowsemiumCoreTests.xctest */,
 				01F37A249E00CE7F12A63FA5 /* BrowsemiumDataTests.xctest */,
 				24F87990A4F8FA9A366778E6 /* BrowsemiumEngineTests.xctest */,
 				92B44FFBF228F83A32A326F5 /* BrowsemiumUITests.xctest */,
+				CBEA843A8AC5B4B0C0DB0DBF /* libBrowsemiumCEFBridge.a */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -224,6 +385,48 @@
 			productReference = 92B44FFBF228F83A32A326F5 /* BrowsemiumUITests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		2C1499823E5C9516659AA762 /* BrowsemiumChromium */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AF23579907CDFA0AAAA031B5 /* Build configuration list for PBXNativeTarget "BrowsemiumChromium" */;
+			buildPhases = (
+				8739B213872304907547DB70 /* Sources */,
+				43B3F867E8771933CE3E24CC /* Resources */,
+				A9F21FAA52507590D7677516 /* Frameworks */,
+				798D2F0F04D9BB4B3E4AAAC3 /* Assemble Chromium bundle */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				F2C5E2B845550EE0BF5CE8C4 /* PBXTargetDependency */,
+				DF81A08BC89C446561306D8D /* PBXTargetDependency */,
+			);
+			name = BrowsemiumChromium;
+			packageProductDependencies = (
+				D3F68FE23E9B2BAC2E7C3352 /* BrowsemiumUI */,
+				F410BA286B7C99D90ACC6604 /* Sparkle */,
+			);
+			productName = BrowsemiumChromium;
+			productReference = 59CF2856FAA16BEB20977ADE /* BrowsemiumChromium.app */;
+			productType = "com.apple.product-type.application";
+		};
+		35D38ABCFC8A8B5CCB7DA4A7 /* BrowsemiumCEFBridge */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BF4981D88C3AFA4683980444 /* Build configuration list for PBXNativeTarget "BrowsemiumCEFBridge" */;
+			buildPhases = (
+				642DA3117CFFEBA3D4AE837E /* CopyFiles */,
+				7CDF346172CAE93030734A70 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BrowsemiumCEFBridge;
+			packageProductDependencies = (
+			);
+			productName = BrowsemiumCEFBridge;
+			productReference = CBEA843A8AC5B4B0C0DB0DBF /* libBrowsemiumCEFBridge.a */;
+			productType = "com.apple.product-type.library.static";
+		};
 		81094A7C1EDC6E7A3CBE9A2E /* BrowsemiumCoreTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = BA410CEB855C5211BD7F0DDC /* Build configuration list for PBXNativeTarget "BrowsemiumCoreTests" */;
@@ -242,6 +445,25 @@
 			productName = BrowsemiumCoreTests;
 			productReference = AAC4411A48E29C66F3EE532C /* BrowsemiumCoreTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		8B01A63E6A018AE580D473DA /* BrowsemiumChromiumHelper */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = ABC3ECC7551AFAF1819CDA61 /* Build configuration list for PBXNativeTarget "BrowsemiumChromiumHelper" */;
+			buildPhases = (
+				09C33F6B13872BBBF383354A /* Sources */,
+				B1E5F89535489B67D112593F /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				375AF7B91484215A8CF47185 /* PBXTargetDependency */,
+			);
+			name = BrowsemiumChromiumHelper;
+			packageProductDependencies = (
+			);
+			productName = BrowsemiumChromiumHelper;
+			productReference = A1B398E3D51C1ADFE8A1880C /* BrowsemiumChromiumHelper */;
+			productType = "com.apple.product-type.tool";
 		};
 		A38616B00B1E5A95DECAD093 /* BrowsemiumEngineTests */ = {
 			isa = PBXNativeTarget;
@@ -333,6 +555,9 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				35D38ABCFC8A8B5CCB7DA4A7 /* BrowsemiumCEFBridge */,
+				8B01A63E6A018AE580D473DA /* BrowsemiumChromiumHelper */,
+				2C1499823E5C9516659AA762 /* BrowsemiumChromium */,
 				A711404CC35F3196A1FBF416 /* BrowsemiumApp */,
 				81094A7C1EDC6E7A3CBE9A2E /* BrowsemiumCoreTests */,
 				A38616B00B1E5A95DECAD093 /* BrowsemiumEngineTests */,
@@ -351,9 +576,47 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		43B3F867E8771933CE3E24CC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E336230A0178FD0DFDF7DF4D /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		798D2F0F04D9BB4B3E4AAAC3 /* Assemble Chromium bundle */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Assemble Chromium bundle";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\n\"${SRCROOT}/Scripts/assemble-chromium-bundle.sh\" \\\n  \"${TARGET_BUILD_DIR}/${WRAPPER_NAME}\" \\\n  \"${TARGET_BUILD_DIR}/BrowsemiumChromiumHelper\"\n\"${SRCROOT}/Scripts/release/sign-chromium.sh\" \"${TARGET_BUILD_DIR}/${WRAPPER_NAME}\" || {\n  echo \"note: ad-hoc signing failed; the release pipeline signs with a Developer ID\" >&2\n}\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
+		09C33F6B13872BBBF383354A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				863B4451A0E429F809EDB5C3 /* main.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		35BFB940941FEB03F51E8B7C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -381,6 +644,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				061B484EC442EB791FE042CF /* AppShell.swift in Sources */,
 				4793A6660735CAC9B6B68AAF /* BrowsemiumApp.swift in Sources */,
 				859238E56FED5BF627BBF810 /* UpdateController.swift in Sources */,
 			);
@@ -394,6 +658,30 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7CDF346172CAE93030734A70 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2DEA55C2506EBF06EE41399B /* BrowsemiumCEFBrowser.mm in Sources */,
+				679D821BA665324525E64053 /* CEFBrowserClient.mm in Sources */,
+				F3E7E8E48C315C1D24941CBE /* CEFRuntime.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8739B213872304907547DB70 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6A390F219DD29E100390A275 /* AppShell.swift in Sources */,
+				089408A98C7FB5C73657BAD5 /* BrowsemiumChromiumApp.swift in Sources */,
+				57EE621B44A8BB14D820D48C /* ChromiumDownloads.swift in Sources */,
+				8CA3524DEA235578E24FE2D4 /* ChromiumEngine.swift in Sources */,
+				63D67908ADEEA67EC1177A08 /* ChromiumTab.swift in Sources */,
+				A8FD51B16AA49E2773EF8147 /* UpdateController.swift in Sources */,
+				1E8EA93B41F6385A536F17A6 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8F4B390805F6C02B73153828 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -403,6 +691,24 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		375AF7B91484215A8CF47185 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 35D38ABCFC8A8B5CCB7DA4A7 /* BrowsemiumCEFBridge */;
+			targetProxy = 2A9B357D8F0C929300FCF928 /* PBXContainerItemProxy */;
+		};
+		DF81A08BC89C446561306D8D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8B01A63E6A018AE580D473DA /* BrowsemiumChromiumHelper */;
+			targetProxy = 740BBCE4667838C2FCAF77C1 /* PBXContainerItemProxy */;
+		};
+		F2C5E2B845550EE0BF5CE8C4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 35D38ABCFC8A8B5CCB7DA4A7 /* BrowsemiumCEFBridge */;
+			targetProxy = 4D03B6E56C4EA2AF7B1AC0EC /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		0518913AA7403657E032365B /* Release */ = {
@@ -501,6 +807,38 @@
 			};
 			name = Release;
 		};
+		953291E9113CB1222576F89F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_NAME = BrowsemiumChromiumHelper;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		A0628DA09A81245A6B3C108E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
+				CLANG_ENABLE_OBJC_ARC = YES;
+				GCC_ENABLE_CPP_EXCEPTIONS = NO;
+				GCC_ENABLE_CPP_RTTI = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/Vendors/CEF/current",
+					"$(SRCROOT)/Vendors/CEF/current/include",
+				);
+				OTHER_LDFLAGS = (
+					"$(SRCROOT)/Vendors/CEF/current/build/libcef_dll_wrapper.a",
+					"-lc++",
+				);
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
 		BA73C6307E27F3E831D1781A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -519,12 +857,80 @@
 			};
 			name = Release;
 		};
+		BF118148CDA4585E3993233D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
+				CLANG_ENABLE_OBJC_ARC = YES;
+				GCC_ENABLE_CPP_EXCEPTIONS = NO;
+				GCC_ENABLE_CPP_RTTI = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/Vendors/CEF/current",
+					"$(SRCROOT)/Vendors/CEF/current/include",
+				);
+				OTHER_LDFLAGS = (
+					"$(SRCROOT)/Vendors/CEF/current/build/libcef_dll_wrapper.a",
+					"-lc++",
+				);
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		D402C77684D5A02B99574C90 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_ENTITLEMENTS = BrowsemiumChromiumApp/Config/BrowsemiumChromium.entitlements;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BrowsemiumChromiumApp/Config/Info.plist;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.browsemium.browser.chromium;
+				PRODUCT_NAME = "Browsemium Chromium";
+			};
+			name = Debug;
+		};
 		DBB5C75557F36CBED68EC8AF /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				GENERATE_INFOPLIST_FILE = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.browsemium.browser.tests.engine;
 				PRODUCT_NAME = BrowsemiumEngineTests;
+			};
+			name = Release;
+		};
+		E133BFA019CC8FBC2DBA3CA2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_NAME = BrowsemiumChromiumHelper;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		F897D940AAFA96270A22033C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_ENTITLEMENTS = BrowsemiumChromiumApp/Config/BrowsemiumChromium.entitlements;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BrowsemiumChromiumApp/Config/Info.plist;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.browsemium.browser.chromium;
+				PRODUCT_NAME = "Browsemium Chromium";
 			};
 			name = Release;
 		};
@@ -558,11 +964,38 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		ABC3ECC7551AFAF1819CDA61 /* Build configuration list for PBXNativeTarget "BrowsemiumChromiumHelper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				953291E9113CB1222576F89F /* Debug */,
+				E133BFA019CC8FBC2DBA3CA2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		AF23579907CDFA0AAAA031B5 /* Build configuration list for PBXNativeTarget "BrowsemiumChromium" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D402C77684D5A02B99574C90 /* Debug */,
+				F897D940AAFA96270A22033C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		BA410CEB855C5211BD7F0DDC /* Build configuration list for PBXNativeTarget "BrowsemiumCoreTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				284B5AD0AF2A3AB9D1B127CE /* Debug */,
 				4E5D57A9DE178B30AC2230A8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		BF4981D88C3AFA4683980444 /* Build configuration list for PBXNativeTarget "BrowsemiumCEFBridge" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A0628DA09A81245A6B3C108E /* Debug */,
+				BF118148CDA4585E3993233D /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -635,9 +1068,18 @@
 			package = FBEE130A4BA8FA871F50A464 /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
 		};
+		D3F68FE23E9B2BAC2E7C3352 /* BrowsemiumUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BrowsemiumUI;
+		};
 		F3BB75BC0DCBDD0426DE9EAF /* BrowsemiumCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = BrowsemiumCore;
+		};
+		F410BA286B7C99D90ACC6604 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FBEE130A4BA8FA871F50A464 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 		F5CC19F8DCB5061878AA9D89 /* BrowsemiumUI */ = {
 			isa = XCSwiftPackageProductDependency;

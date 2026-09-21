@@ -1,19 +1,10 @@
 import BrowsemiumCore
+import BrowsemiumEngineKit
 import Foundation
 import WebKit
 
 @MainActor
-public final class DownloadCoordinator: NSObject, WKDownloadDelegate {
-    public struct DownloadInfo: Sendable, Identifiable {
-        public let id: UUID
-        public let tabID: TabID?
-        public let suggestedFilename: String
-        public let destinationURL: URL?
-        public let bytesReceived: Int64
-        public let totalBytes: Int64
-        public let isFinished: Bool
-        public let failureMessage: String?
-    }
+public final class DownloadCoordinator: NSObject, WKDownloadDelegate, DownloadReporting {
 
     /// Every window observes downloads. A single callback slot meant the last
     /// window to open saw the progress and the others saw none.

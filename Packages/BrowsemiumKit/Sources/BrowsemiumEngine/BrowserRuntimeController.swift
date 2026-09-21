@@ -1,11 +1,16 @@
 import BrowsemiumCore
+import BrowsemiumEngineKit
 import AppKit
 import Foundation
 import WebKit
 
 @MainActor
-public final class BrowserRuntimeController: BrowserRuntime {
-    public let downloads = DownloadCoordinator()
+public final class BrowserRuntimeController: BrowserRuntime, BrowserEngine {
+    /// The concrete coordinator, which owns the WebKit download delegate.
+    private let downloadCoordinator = DownloadCoordinator()
+    /// What windows observe. Typed as the protocol so the window model never
+    /// names a WebKit type.
+    public var downloads: any DownloadReporting { downloadCoordinator }
     public let captureService: ContentCaptureService
     public let memoryPressure = MemoryPressureCoordinator()
     public let contentRules = ContentRuleListManager()
@@ -101,6 +106,51 @@ public final class BrowserRuntimeController: BrowserRuntime {
         runtimes.values.filter(\.hasLiveWebView).count
     }
 
+    // MARK: - BrowserEngine conformance
+
+    /// Whether the tab currently holds a live web view.
+    public func isLive(tabID: TabID) -> Bool {
+        runtimes[tabID]?.hasLiveWebView ?? false
+    }
+
+    public var liveTabCount: Int {
+        liveWebViewCount
+    }
+
+    public func currentURL(tabID: TabID) -> URL? {
+        runtimes[tabID]?.currentWebView?.url
+    }
+
+    /// Runs a script in the page and returns its value. WebKit needs the page's
+    /// content world, which is what `callAsyncJavaScript` uses here.
+    public func evaluateJavaScript(tabID: TabID, script: String) async throws -> Any? {
+        guard let webView = runtimes[tabID]?.currentWebView else {
+            throw BrowsemiumError.webContentUnavailable
+        }
+        return try await webView.callAsyncJavaScript(
+            script,
+            arguments: [:],
+            in: nil,
+            contentWorld: .page
+        )
+    }
+
+    /// Blocking as the window sees it. WebKit reports rule state but not how
+    /// many requests it stopped, so no count is offered here.
+    public var blocking: BlockingState {
+        switch contentRules.state {
+        case .inactive: .inactive
+        case .compiling: .compiling
+        case .active: .active(ruleCount: contentRules.ruleCount)
+        case .failed(let message): .failed(message)
+        }
+    }
+
+    public var onBlockingActivated: (() -> Void)? {
+        get { contentRules.onActivated }
+        set { contentRules.onActivated = newValue }
+    }
+
     public var activeTabIDs: Set<TabID> {
         Set(activePanes.keys)
     }
@@ -116,7 +166,7 @@ public final class BrowserRuntimeController: BrowserRuntime {
             warmPool: warmPool,
             contentRules: contentRules,
             captureService: captureService,
-            downloadCoordinator: downloads
+            downloadCoordinator: downloadCoordinator
         )
         runtime.permissionPrompter = permissionPrompter
         runtime.onEvent = { [weak self] event in
@@ -174,6 +224,34 @@ public final class BrowserRuntimeController: BrowserRuntime {
         runtime.load(request.url)
     }
 
+    public func goBack(tabID: TabID) {
+        runtimes[tabID]?.goBack()
+    }
+
+    public func goForward(tabID: TabID) {
+        runtimes[tabID]?.goForward()
+    }
+
+    public func reload(tabID: TabID) {
+        runtimes[tabID]?.reload()
+    }
+
+    public func stopLoading(tabID: TabID) {
+        runtimes[tabID]?.stopLoading()
+    }
+
+    public func canGoBack(tabID: TabID) -> Bool {
+        runtimes[tabID]?.canGoBack ?? false
+    }
+
+    public func canGoForward(tabID: TabID) -> Bool {
+        runtimes[tabID]?.canGoForward ?? false
+    }
+
+    public func isLoading(tabID: TabID) -> Bool {
+        runtimes[tabID]?.isLoading ?? false
+    }
+
     public func suspend(tabID: TabID) async {
         runtimes[tabID]?.suspend()
     }
@@ -196,8 +274,10 @@ public final class BrowserRuntimeController: BrowserRuntime {
         return try await captureService.extractArticle(from: webView)
     }
 
-    public func find(tabID: TabID, query: String, backwards: Bool = false) async -> Bool {
-        await runtimes[tabID]?.find(query, backwards: backwards) ?? false
+    public func find(tabID: TabID, query: String, backwards: Bool = false) async -> FindOutcome {
+        let found = await runtimes[tabID]?.find(query, backwards: backwards) ?? false
+        // WebKit reports whether it matched, not how many times.
+        return FindOutcome(found: found, matchCount: nil)
     }
 
     public func setMuted(tabID: TabID, muted: Bool) {

@@ -1,4 +1,5 @@
 import BrowsemiumCore
+import BrowsemiumEngineKit
 import Foundation
 import WebKit
 

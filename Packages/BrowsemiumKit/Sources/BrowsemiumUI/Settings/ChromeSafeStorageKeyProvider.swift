@@ -1,5 +1,6 @@
 import BrowsemiumData
 import Foundation
+import BrowsemiumEngineKit
 
 /// Supplies Chrome's password-encryption key.
 ///

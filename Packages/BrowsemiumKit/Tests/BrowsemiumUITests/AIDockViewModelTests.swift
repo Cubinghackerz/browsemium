@@ -2,6 +2,7 @@
 import BrowsemiumCore
 import Foundation
 import Testing
+import BrowsemiumEngineKit
 
 @Test
 func composerPreparationPreservesItsIdentity() {

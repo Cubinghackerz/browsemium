@@ -6,6 +6,7 @@ import BrowsemiumEngine
 import Foundation
 import Observation
 import UniformTypeIdentifiers
+import BrowsemiumEngineKit
 
 public enum AIDockMode: String, CaseIterable, Identifiable, Sendable {
     case web
@@ -306,7 +307,7 @@ public final class AIDockViewModel {
         let work = beginWork()
         defer { endWork(work) }
         do {
-            let captured = try await environment.runtime.capture(tabID: tabID, request: CaptureRequest(kinds: [kind]))
+            let captured = try await environment.engine.capture(tabID: tabID, request: CaptureRequest(kinds: [kind]))
             guard contextGeneration == generation else { return }
             // Keep one current attachment of each type. Recapturing replaces
             // stale content instead of silently sending multiple page versions.
@@ -571,7 +572,7 @@ public final class AIDockViewModel {
             // only. Screenshots and files remain explicit user attachments,
             // so a normal Send can never trigger an unexpected image upload.
             do {
-                let captured = try await environment.runtime.capture(
+                let captured = try await environment.engine.capture(
                     tabID: tab.id,
                     request: CaptureRequest(kinds: [.readablePage])
                 )
