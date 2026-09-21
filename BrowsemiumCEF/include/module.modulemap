@@ -1,0 +1,4 @@
+module BrowsemiumCEF {
+    header "BrowsemiumCEF.h"
+    export *
+}

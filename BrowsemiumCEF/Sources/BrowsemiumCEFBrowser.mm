@@ -9,6 +9,7 @@
 #include "include/cef_parser.h"
 #include "include/cef_registration.h"
 #include "include/cef_request_context.h"
+#include "include/cef_request_context_handler.h"
 
 namespace {
 
@@ -32,9 +33,7 @@ id BrowsemiumObjectFromCefValue(CefRefPtr<CefValue> value) {
       CefRefPtr<CefListValue> list = value->GetList();
       NSMutableArray* array = [NSMutableArray arrayWithCapacity:list->GetSize()];
       for (size_t index = 0; index < list->GetSize(); index++) {
-        CefRefPtr<CefValue> item = CefValue::Create();
-        item->SetValue(list->GetValue(index));
-        id element = BrowsemiumObjectFromCefValue(item);
+        id element = BrowsemiumObjectFromCefValue(list->GetValue(index));
         [array addObject:element ?: [NSNull null]];
       }
       return array;
@@ -45,10 +44,8 @@ id BrowsemiumObjectFromCefValue(CefRefPtr<CefValue> value) {
       dictionary->GetKeys(keys);
       NSMutableDictionary* result = [NSMutableDictionary dictionaryWithCapacity:keys.size()];
       for (const CefString& key : keys) {
-        CefRefPtr<CefValue> item = CefValue::Create();
-        item->SetValue(dictionary->GetValue(key));
         NSString* name = [NSString stringWithUTF8String:key.ToString().c_str()];
-        result[name] = BrowsemiumObjectFromCefValue(item) ?: [NSNull null];
+        result[name] = BrowsemiumObjectFromCefValue(dictionary->GetValue(key)) ?: [NSNull null];
       }
       return result;
     }
@@ -95,7 +92,8 @@ class BrowsemiumDevToolsBridge : public CefDevToolsMessageObserver {
 
     CefRefPtr<CefValue> value = CefValue::Create();
     value->SetDictionary(request);
-    browser_host_->SendDevToolsMessage(CefWriteJSON(value, JSON_WRITER_DEFAULT));
+    const std::string json = CefWriteJSON(value, JSON_WRITER_DEFAULT).ToString();
+    browser_host_->SendDevToolsMessage(json.data(), json.size());
   }
 
   bool OnDevToolsMessage(CefRefPtr<CefBrowser> browser,
@@ -125,9 +123,7 @@ class BrowsemiumDevToolsBridge : public CefDevToolsMessageObserver {
       return true;
     }
 
-    CefRefPtr<CefValue> result_value = CefValue::Create();
-    result_value->SetValue(response->GetValue("result"));
-    id result = BrowsemiumObjectFromCefValue(result_value);
+    id result = BrowsemiumObjectFromCefValue(response->GetValue("result"));
     if ([result isKindOfClass:[NSDictionary class]]) {
       id remote = ((NSDictionary*)result)[@"result"];
       if ([remote isKindOfClass:[NSDictionary class]]) {
@@ -173,33 +169,6 @@ class BrowsemiumDevToolsBridge : public CefDevToolsMessageObserver {
   int _findIdentifier;
   void (^_findCompletion)(int matchCount, BOOL found);
 }
-
-- (void)cefBrowserDidCreate;
-- (void)cefBrowserDidClose;
-- (void)cefBrowserDidStartLoading;
-- (void)cefBrowserDidFinishLoadingURL:(NSString*)url;
-- (void)cefBrowserDidFailLoadingWithMessage:(NSString*)message;
-- (void)cefBrowserDidChangeProgress:(double)progress;
-- (void)cefBrowserDidChangeTitle:(NSString*)title;
-- (void)cefBrowserDidChangeURL:(NSString*)url;
-- (void)cefBrowserDidChangeNavigationStateCanGoBack:(BOOL)canGoBack
-                                       canGoForward:(BOOL)canGoForward
-                                          isLoading:(BOOL)isLoading;
-- (void)cefBrowserDidChangeAudioStatePlaying:(BOOL)playing capturing:(BOOL)capturing;
-- (void)cefBrowserDidRequestNewWindow:(NSString*)url;
-- (void)cefBrowserDidCrash;
-- (void)cefBrowserDidStartDownload:(NSString*)identifier
-                          filename:(NSString*)filename
-                       destination:(NSString*)destination;
-- (void)cefBrowserDidUpdateDownload:(NSString*)identifier
-                      receivedBytes:(int64_t)receivedBytes
-                         totalBytes:(int64_t)totalBytes
-                           finished:(BOOL)finished
-                            failure:(NSString*)failure;
-- (void)cefBrowserRequestsMediaAccessForKind:(NSString*)kind
-                                      origin:(NSString*)origin
-                                  completion:(void (^)(BOOL granted))completion;
-- (void)cefBrowserDidFindMatches:(int)count;
 @end
 
 @implementation BrowsemiumCEFBrowser
@@ -336,7 +305,9 @@ class BrowsemiumDevToolsBridge : public CefDevToolsMessageObserver {
     return;
   }
   _closed = YES;
-  [_devTools Detach];
+  if (_devTools) {
+    _devTools->Detach();
+  }
   if (_browser) {
     // Closing the host destroys the renderer process, which is what the memory
     // saver relies on.

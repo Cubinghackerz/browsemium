@@ -34,6 +34,7 @@
 		8C5AC0D06C71F6636DAA4338 /* BrowsemiumEngine in Frameworks */ = {isa = PBXBuildFile; productRef = A424C1BA7D6F396127FF0C25 /* BrowsemiumEngine */; };
 		8CA3524DEA235578E24FE2D4 /* ChromiumEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2465A153C476833EA2AC540E /* ChromiumEngine.swift */; };
 		97403D9301DC5206D2EEDB37 /* AppDatabaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7206BEC4825DEA806A7B0DE /* AppDatabaseTests.swift */; };
+		99B9830B31659FDBF778B0A7 /* module.modulemap in CopyFiles */ = {isa = PBXBuildFile; fileRef = 4920314F790D90224CC577B9 /* module.modulemap */; };
 		A651E4DD7B2E5C5400F77CA1 /* BrowsemiumCore in Frameworks */ = {isa = PBXBuildFile; productRef = F3BB75BC0DCBDD0426DE9EAF /* BrowsemiumCore */; };
 		A652DEDBD23BDA574683892C /* libBrowsemiumCEFBridge.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CBEA843A8AC5B4B0C0DB0DBF /* libBrowsemiumCEFBridge.a */; };
 		A8FD51B16AA49E2773EF8147 /* UpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D411139AF1254E75BB95D935 /* UpdateController.swift */; };
@@ -85,6 +86,7 @@
 			files = (
 				58931CE2915011A6D1F03154 /* BrowsemiumCEF.h in CopyFiles */,
 				30144EAA886301A764E00FA7 /* BrowsemiumCEFInternal.h in CopyFiles */,
+				99B9830B31659FDBF778B0A7 /* module.modulemap in CopyFiles */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -102,6 +104,7 @@
 		2FA377ECC8415F876E09E730 /* ProfileDiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileDiscoveryTests.swift; sourceTree = "<group>"; };
 		42C68B047D56B839525FFE77 /* CEFRuntime.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = CEFRuntime.mm; sourceTree = "<group>"; };
 		441C8A07FC001691F9AA1BD2 /* ChromiumDownloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromiumDownloads.swift; sourceTree = "<group>"; };
+		4920314F790D90224CC577B9 /* module.modulemap */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.module-map"; path = module.modulemap; sourceTree = "<group>"; };
 		4C3F425E3D016D89BAE9E398 /* BrowsemiumApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsemiumApp.swift; sourceTree = "<group>"; };
 		53143E61AD7BB670D4CB652F /* BrowsemiumKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrowsemiumKit; path = Packages/BrowsemiumKit; sourceTree = SOURCE_ROOT; };
 		577D96312FA41F7C34A1BA12 /* BrowsemiumCEF.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BrowsemiumCEF.h; sourceTree = "<group>"; };
@@ -310,6 +313,7 @@
 			isa = PBXGroup;
 			children = (
 				577D96312FA41F7C34A1BA12 /* BrowsemiumCEF.h */,
+				4920314F790D90224CC577B9 /* module.modulemap */,
 			);
 			name = include;
 			path = BrowsemiumCEF/include;
@@ -810,9 +814,19 @@
 		953291E9113CB1222576F89F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = arm64;
 				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
+				CLANG_ENABLE_OBJC_ARC = YES;
+				GCC_ENABLE_CPP_EXCEPTIONS = NO;
+				GCC_ENABLE_CPP_RTTI = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/BrowsemiumCEF/include",
+					"$(SRCROOT)/Vendors/CEF/current",
+					"$(SRCROOT)/Vendors/CEF/current/include",
+				);
 				OTHER_LDFLAGS = (
-					"$(inherited)",
+					"$(SRCROOT)/Vendors/CEF/current/build/libcef_dll_wrapper.a",
+					"-lc++",
 					"-ObjC",
 				);
 				PRODUCT_NAME = BrowsemiumChromiumHelper;
@@ -823,6 +837,7 @@
 		A0628DA09A81245A6B3C108E /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = arm64;
 				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
 				CLANG_ENABLE_OBJC_ARC = YES;
 				GCC_ENABLE_CPP_EXCEPTIONS = NO;
@@ -831,10 +846,7 @@
 					"$(SRCROOT)/Vendors/CEF/current",
 					"$(SRCROOT)/Vendors/CEF/current/include",
 				);
-				OTHER_LDFLAGS = (
-					"$(SRCROOT)/Vendors/CEF/current/build/libcef_dll_wrapper.a",
-					"-lc++",
-				);
+				PRODUCT_NAME = BrowsemiumCEFBridge;
 				SKIP_INSTALL = YES;
 			};
 			name = Debug;
@@ -860,6 +872,7 @@
 		BF118148CDA4585E3993233D /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = arm64;
 				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
 				CLANG_ENABLE_OBJC_ARC = YES;
 				GCC_ENABLE_CPP_EXCEPTIONS = NO;
@@ -868,10 +881,7 @@
 					"$(SRCROOT)/Vendors/CEF/current",
 					"$(SRCROOT)/Vendors/CEF/current/include",
 				);
-				OTHER_LDFLAGS = (
-					"$(SRCROOT)/Vendors/CEF/current/build/libcef_dll_wrapper.a",
-					"-lc++",
-				);
+				PRODUCT_NAME = BrowsemiumCEFBridge;
 				SKIP_INSTALL = YES;
 			};
 			name = Release;
@@ -879,6 +889,7 @@
 		D402C77684D5A02B99574C90 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
 				CODE_SIGNING_ALLOWED = NO;
@@ -886,11 +897,16 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BrowsemiumChromiumApp/Config/Info.plist;
 				OTHER_LDFLAGS = (
-					"$(inherited)",
+					"$(SRCROOT)/Vendors/CEF/current/build/libcef_dll_wrapper.a",
+					"-lc++",
 					"-ObjC",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.browsemium.browser.chromium;
 				PRODUCT_NAME = "Browsemium Chromium";
+				SWIFT_INCLUDE_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/BrowsemiumCEF/include",
+				);
 			};
 			name = Debug;
 		};
@@ -906,9 +922,19 @@
 		E133BFA019CC8FBC2DBA3CA2 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = arm64;
 				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
+				CLANG_ENABLE_OBJC_ARC = YES;
+				GCC_ENABLE_CPP_EXCEPTIONS = NO;
+				GCC_ENABLE_CPP_RTTI = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/BrowsemiumCEF/include",
+					"$(SRCROOT)/Vendors/CEF/current",
+					"$(SRCROOT)/Vendors/CEF/current/include",
+				);
 				OTHER_LDFLAGS = (
-					"$(inherited)",
+					"$(SRCROOT)/Vendors/CEF/current/build/libcef_dll_wrapper.a",
+					"-lc++",
 					"-ObjC",
 				);
 				PRODUCT_NAME = BrowsemiumChromiumHelper;
@@ -919,6 +945,7 @@
 		F897D940AAFA96270A22033C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
 				CODE_SIGNING_ALLOWED = NO;
@@ -926,11 +953,16 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BrowsemiumChromiumApp/Config/Info.plist;
 				OTHER_LDFLAGS = (
-					"$(inherited)",
+					"$(SRCROOT)/Vendors/CEF/current/build/libcef_dll_wrapper.a",
+					"-lc++",
 					"-ObjC",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.browsemium.browser.chromium;
 				PRODUCT_NAME = "Browsemium Chromium";
+				SWIFT_INCLUDE_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/BrowsemiumCEF/include",
+				);
 			};
 			name = Release;
 		};

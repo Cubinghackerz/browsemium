@@ -44,19 +44,24 @@ targets:
         CLANG_ENABLE_OBJC_ARC: YES
         GCC_ENABLE_CPP_EXCEPTIONS: NO
         GCC_ENABLE_CPP_RTTI: NO
+        # The pinned CEF distribution is macosarm64 only. A universal build
+        # would produce an Intel slice that cannot load the framework.
+        ARCHS: arm64
         # The pinned CEF distribution, reached through the stable `current`
         # symlink that Scripts/fetch-cef.sh maintains.
         HEADER_SEARCH_PATHS:
           - "$(SRCROOT)/Vendors/CEF/current"
           - "$(SRCROOT)/Vendors/CEF/current/include"
-        OTHER_LDFLAGS:
-          - "$(SRCROOT)/Vendors/CEF/current/build/libcef_dll_wrapper.a"
-          - "-lc++"
-        # CEF ships as a framework that must be loaded at runtime, never linked.
-        # Linking it here would fail at launch instead of loading on demand.
+        # No OTHER_LDFLAGS here: a static archive has no link step, so flags on
+        # this target would never reach a linker. The CEF wrapper library is
+        # linked by the helper and app targets instead.
+        # PRODUCT_NAME is explicit because XcodeGen leaves it empty for
+        # library.static targets, which produces a product literally named
+        # lib.a and a dangling "-l" flag in dependents' link lines.
+        PRODUCT_NAME: BrowsemiumCEFBridge
         SKIP_INSTALL: YES
 
-  # One tiny executable, copied into four helper bundles by
+  # One tiny executable, copied into five helper bundles by
   # Scripts/assemble-chromium-bundle.sh.
   BrowsemiumChromiumHelper:
     type: tool
@@ -68,7 +73,20 @@ targets:
     settings:
       base:
         PRODUCT_NAME: BrowsemiumChromiumHelper
+        ARCHS: arm64
         CLANG_CXX_LANGUAGE_STANDARD: c++20
+        CLANG_ENABLE_OBJC_ARC: YES
+        GCC_ENABLE_CPP_EXCEPTIONS: NO
+        GCC_ENABLE_CPP_RTTI: NO
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/BrowsemiumCEF/include"
+          - "$(SRCROOT)/Vendors/CEF/current"
+          - "$(SRCROOT)/Vendors/CEF/current/include"
+        # The bridge's C++ wrapper objects pull in CEF symbols, so every
+        # process binary links the wrapper archive and libc++.
+        OTHER_LDFLAGS:
+          - "$(SRCROOT)/Vendors/CEF/current/build/libcef_dll_wrapper.a"
+          - "-lc++"
         SKIP_INSTALL: YES
 
   BrowsemiumChromium:
@@ -123,13 +141,23 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.browsemium.browser.chromium
         PRODUCT_NAME: Browsemium Chromium
+        # The pinned CEF distribution is macosarm64 only.
+        ARCHS: arm64
         GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CLANG_CXX_LANGUAGE_STANDARD: c++20
         # The bundle layout is assembled and signed by our own scripts, because
-        # the four helper bundles are not Xcode targets. See
+        # the five helper bundles are not Xcode targets. See
         # Scripts/assemble-chromium-bundle.sh and sign-chromium.sh.
         CODE_SIGNING_ALLOWED: NO
+        # The Objective-C bridge is consumed through module.modulemap inside
+        # BrowsemiumCEF/include, so `import BrowsemiumCEF` works in Swift.
+        SWIFT_INCLUDE_PATHS:
+          - "$(inherited)"
+          - "$(SRCROOT)/BrowsemiumCEF/include"
+        OTHER_LDFLAGS:
+          - "$(SRCROOT)/Vendors/CEF/current/build/libcef_dll_wrapper.a"
+          - "-lc++"
     dependencies:
       - target: BrowsemiumCEFBridge
       - target: BrowsemiumChromiumHelper
@@ -287,5 +315,15 @@ schemes:
         - BrowsemiumEngineTests
         - BrowsemiumDataTests
         - BrowsemiumUITests
+    archive:
+      config: Release
+  BrowsemiumChromium:
+    build:
+      targets:
+        BrowsemiumChromium: all
+        BrowsemiumChromiumHelper: all
+        BrowsemiumCEFBridge: all
+    run:
+      config: Debug
     archive:
       config: Release

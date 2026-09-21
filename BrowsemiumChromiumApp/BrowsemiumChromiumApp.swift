@@ -12,7 +12,7 @@ import SwiftUI
 struct BrowsemiumChromiumApp: App {
     @State private var environment = BrowsemiumChromiumApp.makeEnvironment()
     @State private var updates = UpdateController()
-    @State private var windowRegistry = ChromiumWindowRegistry()
+    @State private var windowRegistry = BrowserWindowRegistry()
     @NSApplicationDelegateAdaptor(BrowsemiumAppDelegate.self) private var appDelegate
 
     init() {
@@ -70,24 +70,10 @@ struct BrowsemiumChromiumApp: App {
     }
 }
 
-/// Gives each window its own model; only the first one owns session
-/// persistence, exactly like the WebKit edition.
-@MainActor
-@Observable
-final class ChromiumWindowRegistry {
-    private var hasPrimary = false
-
-    func claimPrimary() -> Bool {
-        if hasPrimary { return false }
-        hasPrimary = true
-        return true
-    }
-}
-
 @MainActor
 private struct ChromiumWindowRoot: View {
     let environment: BrowserEnvironment?
-    let registry: ChromiumWindowRegistry
+    let registry: BrowserWindowRegistry
     let updates: UpdateController
     let initialURLs: [URL]
 
@@ -148,21 +134,12 @@ enum ChromiumRuntime {
         let cache = rootCache.appendingPathComponent("default", isDirectory: true)
         try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
 
-        var error: NSError?
-        let started = BrowsemiumCEFRuntime.start(
+        try BrowsemiumCEFRuntime.start(
             withRootCachePath: rootCache.path,
             cachePath: cache.path,
             userAgent: nil,
-            logPath: support.appendingPathComponent(logName).path,
-            error: &error
+            logPath: support.appendingPathComponent(logName).path
         )
-        guard started else {
-            throw error ?? NSError(
-                domain: "BrowsemiumChromium",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Chromium did not start."]
-            )
-        }
     }
 
     /// Each profile gets its own request context and therefore its own cookies,

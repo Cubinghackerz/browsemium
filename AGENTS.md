@@ -34,6 +34,45 @@ xcodebuild -project Browsemium.xcodeproj -scheme Browsemium test
 
 Do not edit generated Xcode project files. Update `project.yml` and regenerate instead.
 
+## Chromium edition
+
+A second, power-user edition lives next to the WebKit app. It embeds CEF
+(Chromium) behind the shared `BrowserEngine` protocol, so every view, tab
+model, repository and policy is the same code; only the engine differs.
+
+```sh
+Scripts/fetch-cef.sh            # one-time: download the pinned CEF (~1.5 GB, arm64)
+Scripts/build-cef-wrapper.sh    # one-time: build libcef_dll_wrapper.a (no CMake needed)
+xcodegen generate --spec project.yml
+xcodebuild -project Browsemium.xcodeproj -scheme BrowsemiumChromium \
+    -configuration Debug -destination 'platform=macOS' build
+```
+
+The app target's post-build script assembles the CEF bundle layout (framework +
+five helper apps named `Browsemium Chromium Helper[ (GPU|Plugin|Renderer|Alerts)].app`)
+and `Scripts/release/sign-chromium.sh` signs inside-out — ad-hoc for local
+builds, Developer ID for release.
+
+Things that are true by design, and must stay true:
+
+- **arm64 only.** The pinned CEF is `macosarm64`. Do not add x86_64 to the
+  Chromium targets; the Intel slice could not load the framework anyway.
+- **CEF is loaded, never linked.** `otool -L` on both executables shows no CEF
+  dependency; `CefScopedLibraryLoader` dlopens the framework at runtime.
+- **No App Sandbox entitlement.** CEF cannot run under it; Chromium's own
+  renderer sandbox stays on. The entitlements file only carries JIT/memory and
+  network keys.
+- **Bridge is Objective-C++; Swift sees only `BrowsemiumCEF.h`.** No CEF/C++
+  type crosses the module boundary (`module.modulemap` in
+  `BrowsemiumCEF/include`).
+- **Helpers come from `cef_variables.cmake`'s `CEF_HELPER_APP_SUFFIXES`** — the
+  parenthesized names are load-bearing, do not "simplify" them.
+
+Known gaps that are deliberately honest errors, not stubs: screenshots and
+reader mode (need the DevTools protocol path), credential filling, per-profile
+site-data clearing, request-interception blocking, and Chrome extensions
+(which require Chrome-style windows, still unproven).
+
 ## Benchmarks
 
 ```sh

@@ -7,7 +7,7 @@ import Foundation
 /// One Chromium tab: the CEF browser, its Swift-side lifecycle, and the
 /// translation between CEF's callbacks and the shared event vocabulary.
 @MainActor
-final class ChromiumTab: NSObject, BrowsemiumCEFBrowserDelegate {
+final class ChromiumTab: NSObject {
     let tabID: TabID
     private let cachePath: String
     private let permissionPrompter: (String, SitePermissionKind) async -> SitePermissionDecision
@@ -45,7 +45,7 @@ final class ChromiumTab: NSObject, BrowsemiumCEFBrowserDelegate {
         let browser = self.browser ?? BrowsemiumCEFBrowser(delegate: self, cachePath: cachePath)
         self.browser = browser
         browser.attach(to: host)
-        browser.resizeToBounds(host.bounds)
+        browser.resize(toBounds: host.bounds)
         if let url = pendingURL {
             pendingURL = nil
             browser.loadURLString(url.absoluteString)
@@ -53,7 +53,7 @@ final class ChromiumTab: NSObject, BrowsemiumCEFBrowserDelegate {
     }
 
     func detach() {
-        browser?.resizeToBounds(.zero)
+        browser?.resize(toBounds: .zero)
     }
 
     func load(_ url: URL) {
@@ -116,7 +116,10 @@ final class ChromiumTab: NSObject, BrowsemiumCEFBrowserDelegate {
                 if let error {
                     continuation.resume(throwing: BrowsemiumError.captureFailed(error))
                 } else {
-                    continuation.resume(returning: result)
+                    // The completion runs on CEF's UI thread, which is the main
+                    // thread, so the value never really crosses actors.
+                    struct Box: @unchecked Sendable { let value: Any? }
+                    continuation.resume(returning: Box(value: result).value)
                 }
             }
         }
@@ -141,9 +144,15 @@ final class ChromiumTab: NSObject, BrowsemiumCEFBrowserDelegate {
         lifecycle = value
         onEvent?(.lifecycleChanged(value))
     }
+}
 
-    // MARK: - BrowsemiumCEFBrowserDelegate
+// MARK: - BrowsemiumCEFBrowserDelegate
 
+/// CEF runs these callbacks on the browser UI thread, which is the main thread
+/// because the runtime pumps its own message loop. @preconcurrency lets the
+/// @MainActor class satisfy a delegate protocol that predates concurrency
+/// annotations.
+extension ChromiumTab: @preconcurrency BrowsemiumCEFBrowserDelegate {
     func cefBrowserDidStartLoading(_ browser: BrowsemiumCEFBrowser) {
         setLifecycle(.loading)
         onEvent?(.startedLoading(currentURL))

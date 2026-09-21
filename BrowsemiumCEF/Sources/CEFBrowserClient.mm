@@ -74,6 +74,7 @@ class BrowsemiumClient : public CefClient,
   /// engine's `createWebViewWith` returning nil.
   bool OnBeforePopup(CefRefPtr<CefBrowser> browser,
                      CefRefPtr<CefFrame> frame,
+                     int popup_id,
                      const CefString& target_url,
                      const CefString& target_frame_name,
                      CefLifeSpanHandler::WindowOpenDisposition target_disposition,
@@ -134,7 +135,9 @@ class BrowsemiumClient : public CefClient,
                    ErrorCode errorCode,
                    const CefString& errorText,
                    const CefString& failedUrl) override {
-    if (!frame->IsMain()) {
+    if (!frame->IsMain() || errorCode == ERR_ABORTED) {
+      // Aborted loads are normal navigation flow — the user typed a new URL or
+      // hit stop — so they never reach the delegate as failures.
       return;
     }
     BrowsemiumCEFBrowser* owner = owner_;

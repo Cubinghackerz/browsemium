@@ -217,7 +217,7 @@ class BrowsemiumApp : public CefApp,
   /// CEF asks to be pumped from the application's own run loop. SwiftUI owns
   /// the main thread, so the work is scheduled on the main queue instead of
   /// letting CEF run its own blocking loop.
-  void OnScheduleMessagePumpWork(int64 delay_ms) override;
+  void OnScheduleMessagePumpWork(int64_t delay_ms) override;
 
   void OnContextInitialized() override {}
 
@@ -230,8 +230,8 @@ BrowsemiumApp* g_app = nullptr;
 CefScopedLibraryLoader* g_library_loader = nullptr;
 bool g_initialized = false;
 
-void BrowsemiumApp::OnScheduleMessagePumpWork(int64 delay_ms) {
-  const int64 clamped = delay_ms < 0 ? 0 : delay_ms;
+void BrowsemiumApp::OnScheduleMessagePumpWork(int64_t delay_ms) {
+  const int64_t clamped = delay_ms < 0 ? 0 : delay_ms;
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, clamped * NSEC_PER_MSEC),
                  dispatch_get_main_queue(), ^{
                    if (g_initialized) {
@@ -303,7 +303,6 @@ CefMainArgs MakeMainArgs() {
   settings.no_sandbox = false;
   settings.external_message_pump = true;
   settings.multi_threaded_message_loop = false;
-  settings.pack_loading_disabled = false;
   settings.log_severity = LOGSEVERITY_WARNING;
   settings.background_color = 0xFFFFFFFF;
   CefString(&settings.locale) = "en-US";

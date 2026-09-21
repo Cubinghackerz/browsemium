@@ -50,9 +50,13 @@ if [[ ! -d "${FRAMEWORK}/Versions/A" ]]; then
 fi
 
 echo "Creating helper bundles…"
+# CEF derives helper names from the app executable: "<name> Helper.app" plus the
+# parenthesized variants listed in CEF_HELPER_APP_SUFFIXES (cef_variables.cmake).
+# The bundle id suffixes are the lowercase plist suffixes from the same list.
 create_helper() {
-  local suffix="$1"
-  local name="Browsemium Chromium Helper${suffix}"
+  local name_suffix="$1"   # e.g. " (GPU)" — empty for the base helper
+  local id_suffix="$2"     # e.g. ".gpu"   — empty for the base helper
+  local name="${APP_NAME} Helper${name_suffix}"
   local helper_app="${FRAMEWORKS}/${name}.app"
   rm -rf "$helper_app"
   mkdir -p "${helper_app}/Contents/MacOS"
@@ -70,7 +74,7 @@ create_helper() {
     <key>CFBundleExecutable</key>
     <string>${name}</string>
     <key>CFBundleIdentifier</key>
-    <string>${BUNDLE_ID}.helper${suffix:+.${suffix}}</string>
+    <string>${BUNDLE_ID}.helper${id_suffix}</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
@@ -94,9 +98,10 @@ create_helper() {
 PLIST
 }
 
-create_helper ""
-create_helper "GPU"
-create_helper "Plugin"
-create_helper "Renderer"
+create_helper "" ""
+create_helper " (Alerts)" ".alerts"
+create_helper " (GPU)" ".gpu"
+create_helper " (Plugin)" ".plugin"
+create_helper " (Renderer)" ".renderer"
 
 echo "Bundle assembled at $APP"

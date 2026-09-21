@@ -2,7 +2,7 @@
 #
 # Sign a Browsemium Chromium app bundle inside-out.
 #
-# The bundle contains code Xcode never sees: the CEF framework and four helper
+# The bundle contains code Xcode never sees: the CEF framework and five helper
 # apps created by Scripts/assemble-chromium-bundle.sh. Nested code has to be
 # signed before the code that contains it, and `codesign --deep` is not an
 # acceptable substitute (it re-signs with the wrong entitlements).
