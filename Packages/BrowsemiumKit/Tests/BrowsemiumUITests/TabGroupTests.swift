@@ -112,10 +112,12 @@ func groupsPersistAcrossReloads() async throws {
     model.newTab(url: URL(string: "https://work.example"))
 
     // Session writes are serialized off the main thread; wait for the write.
+    // Poll on the tab itself, not the space count: the group write can satisfy
+    // `spaces == 2` one queue-turn before the tab write lands.
     var restored: BrowserSessionState?
     for _ in 0..<50 {
         restored = try? environment.sessionRepository.load()
-        if restored?.spaces.count == 2 { break }
+        if restored?.tabs.contains(where: { $0.lastCommittedURL?.absoluteString == "https://work.example" }) == true { break }
         try? await Task.sleep(for: .milliseconds(20))
     }
     let session = try #require(restored)
