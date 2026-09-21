@@ -96,6 +96,9 @@ public final class BrowserWindowModel: PermissionPrompting {
         BrowserPaletteCommand(id: "downloads", title: "Open Downloads", shortcut: "⇧⌘J", command: .openDownloads),
         BrowserPaletteCommand(id: "settings", title: "Open Settings", shortcut: "⌘,", command: .openSettings),
         BrowserPaletteCommand(id: "toggle-ai", title: "Toggle Assistant", shortcut: "⇧⌘A", command: .toggleAIDock),
+        BrowserPaletteCommand(id: "ai-summarize", title: "AI: Summarize This Page", shortcut: "", command: .aiQuickAction(.summarizePage)),
+        BrowserPaletteCommand(id: "ai-keypoints", title: "AI: Extract Key Points", shortcut: "", command: .aiQuickAction(.keyPoints)),
+        BrowserPaletteCommand(id: "ai-explain", title: "AI: Explain Selection", shortcut: "", command: .aiQuickAction(.explainSelection)),
         BrowserPaletteCommand(id: "clear-data", title: "Clear Browsing Data", shortcut: "", command: .clearBrowsingData)
     ]
 
@@ -698,6 +701,25 @@ public final class BrowserWindowModel: PermissionPrompting {
         return pendingAIContext
     }
 
+    /// A quick action requested from outside the dock (command palette, menu).
+    /// Same handoff as pendingAIContext: the dock consumes the token and the
+    /// review sheet still gates what is sent.
+    public private(set) var pendingAIQuickAction: AIQuickAction?
+    public private(set) var aiQuickActionToken = 0
+
+    public func consumePendingAIQuickAction() -> AIQuickAction? {
+        defer { pendingAIQuickAction = nil }
+        return pendingAIQuickAction
+    }
+
+    private func requestAIQuickAction(_ action: AIQuickAction) {
+        pendingAIQuickAction = action
+        aiQuickActionToken += 1
+        if !isAIDockVisible {
+            toggleAIDock()
+        }
+    }
+
     private func captureSelectionForAI(tabID: TabID) {
         Task {
             do {
@@ -1017,6 +1039,8 @@ public final class BrowserWindowModel: PermissionPrompting {
             openPanel(.settings)
         case .clearBrowsingData:
             clearBrowsingData()
+        case .aiQuickAction(let action):
+            requestAIQuickAction(action)
         }
     }
 

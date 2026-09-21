@@ -48,3 +48,39 @@ func automaticWebContextDoesNotCaptureUnsupportedPages() {
 
     #expect(kinds.isEmpty)
 }
+
+@Test @MainActor
+func quickActionWithoutAPageFailsVisibly() async {
+    let model = BrowserWindowModel()
+    let ai = AIDockViewModel(environment: model.environment)
+
+    await ai.runQuickAction(.summarizePage, tabID: nil)
+
+    #expect(ai.errorMessage != nil)
+    #expect(!ai.isReviewPresented)
+}
+
+@Test @MainActor
+func quickActionCaptureFailureKeepsTheReviewClosed() async {
+    let model = BrowserWindowModel()
+    let ai = AIDockViewModel(environment: model.environment)
+    // The tab exists but has no live web view, so capture must throw.
+    let tabID = try! #require(model.session.activeTabID)
+
+    await ai.runQuickAction(.summarizePage, tabID: tabID)
+
+    #expect(ai.errorMessage != nil)
+    #expect(!ai.isReviewPresented)
+    // The canned prompt must not leak into the draft on failure.
+    #expect(ai.draft.isEmpty)
+}
+
+@Test @MainActor
+func quickActionRequestsOpenTheDockAndHandOffOnce() {
+    let model = BrowserWindowModel()
+    model.perform(.aiQuickAction(.summarizePage))
+
+    #expect(model.isAIDockVisible)
+    #expect(model.consumePendingAIQuickAction() == .summarizePage)
+    #expect(model.consumePendingAIQuickAction() == nil)
+}

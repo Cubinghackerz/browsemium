@@ -147,6 +147,13 @@ public struct BrowsemiumAppView: View {
             // assistant composer, ready for the user's question.
             ai.adopt(model.consumePendingAIContext())
         }
+        .onChange(of: model.aiQuickActionToken) {
+            // Palette/menu quick actions are consumed here, not in the dock:
+            // the dock view does not exist while hidden, but this handler
+            // does — and requestAIQuickAction opens the dock first.
+            guard let action = model.consumePendingAIQuickAction() else { return }
+            Task { await ai.runQuickAction(action, tabID: model.session.activeTabID) }
+        }
         .onDisappear {
             // A closed window must not keep receiving runtime events or hold
             // an unanswered permission request.

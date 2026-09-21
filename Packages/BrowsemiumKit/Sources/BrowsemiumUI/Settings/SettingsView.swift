@@ -560,6 +560,7 @@ struct SettingsView: View {
             SettingsToggleRow("Show the assistant", isOn: settingBinding(\.isAIDockEnabled))
             SettingsToggleRow("Save conversations on this Mac", isOn: settingBinding(\.persistAIConversations))
             SettingsToggleRow("Include automatic page text + metadata in web AI", isOn: settingBinding(\.includePageMetadataInWebAI))
+            SettingsToggleRow("Attach this page's text to API messages", isOn: settingBinding(\.includePageContextInAPIAI))
 
             ForEach(AIProviderID.allCases, id: \.self) { provider in
                 SettingsRow(ProviderPanelDescriptor.descriptor(for: provider).displayName) {

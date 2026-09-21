@@ -64,6 +64,10 @@ public final class AIDockViewModel {
     private var activeStreamRestoreAllowed = true
     private let attachmentDirectory: URL
     private var providerImageURLsByPreparation: [UUID: [URL]] = [:]
+    /// The send that most recently failed mid-flight. Retrying resends this
+    /// exact payload — the user already reviewed it — without duplicating the
+    /// user message in the transcript or the stored conversation.
+    public private(set) var lastFailedSend: (prompt: String, attachments: [AIContextAttachment])?
     private var workGeneration: UInt64 = 0
     /// Changes whenever the page-specific context is invalidated. Async page
     /// capture must never re-attach content from a tab the user has already
@@ -326,6 +330,24 @@ public final class AIDockViewModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// One-tap workflow: capture the action's context, load its prompt, and
+    /// open the review sheet. The sheet still gates the send — a quick action
+    /// is a shortcut to a review, never a silent transmit.
+    public func runQuickAction(_ action: AIQuickAction, tabID: TabID?) async {
+        guard let tabID else {
+            errorMessage = "Open a page before using assistant actions."
+            return
+        }
+        await attach(action.captureKind, tabID: tabID)
+        guard errorMessage == nil, !attachments.isEmpty else { return }
+        // Respect a draft the user already typed: it stays the instruction for
+        // the captured context. The canned prompt only fills an empty field.
+        if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            draft = action.prompt
+        }
+        beginReview()
     }
 
     public func removeAttachment(at index: Int) {
@@ -772,7 +794,25 @@ public final class AIDockViewModel {
         refreshConversations()
     }
 
-    public func beginReview() {
+    public func beginReview(tabID: TabID? = nil) {
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty || !attachments.isEmpty else { return }
+        // API mode can opt into automatic page context. The capture must land
+        // before the sheet opens so the review lists exactly what will send.
+        if mode == .api,
+           environment.loadSettings().includePageContextInAPIAI,
+           !attachments.contains(where: { $0.isPageText }),
+           let tabID {
+            Task {
+                await attach(.readablePage, tabID: tabID)
+                presentReview()
+            }
+            return
+        }
+        presentReview()
+    }
+
+    private func presentReview() {
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !attachments.isEmpty else { return }
         reviewPrompt = trimmed
@@ -810,6 +850,23 @@ public final class AIDockViewModel {
         case .api:
             await sendViaAPI(prompt: prompt)
         }
+    }
+
+    /// Resends the last failed payload. The review sheet already gated this
+    /// exact prompt and context, so retry goes straight to the provider.
+    public func retryLastSend() {
+        guard let failed = lastFailedSend, !isStreaming else { return }
+        lastFailedSend = nil
+        // The failed send left its user bubble in the transcript; remove it
+        // so the resend does not show the question twice.
+        if let index = messages.lastIndex(where: { $0.role == .user && $0.content == failed.prompt }) {
+            messages.remove(at: index)
+        }
+        if attachments.isEmpty {
+            attachments = failed.attachments
+        }
+        errorMessage = nil
+        Task { await sendViaAPI(prompt: failed.prompt, skipPersistingUser: true) }
     }
 
     public func sendToProviderWebsite(prompt: String) {
@@ -878,7 +935,7 @@ public final class AIDockViewModel {
         NSPasteboard.general.writeObjects(images)
     }
 
-    private func sendViaAPI(prompt: String) async {
+    private func sendViaAPI(prompt: String, skipPersistingUser: Bool = false) async {
         guard !isStreaming else { return }
         guard let model = selectedModel else {
             errorMessage = "Choose a model first."
@@ -896,7 +953,11 @@ public final class AIDockViewModel {
         }
 
         messages.append(AIMessage(role: .user, content: prompt))
-        persistUserMessage(prompt)
+        // A retry reuses the persisted copy of its user message — writing it
+        // again would list the same question twice in the stored conversation.
+        if !skipPersistingUser {
+            persistUserMessage(prompt)
+        }
         let assistantIndex = messages.count
         let assistant = AIMessage(role: .assistant, content: "")
         messages.append(assistant)
@@ -911,6 +972,7 @@ public final class AIDockViewModel {
         let generation = streamGeneration
         isStreaming = true
         errorMessage = nil
+        lastFailedSend = nil
         draft = ""
         attachments.removeAll()
         activeStreamAttachments = sentAttachments
@@ -942,6 +1004,7 @@ public final class AIDockViewModel {
                 _ = self.restoreOrCleanupStreamAttachments(sentAttachments)
                 if !(error is CancellationError) {
                     self.errorMessage = error.localizedDescription
+                    self.lastFailedSend = (prompt: prompt, attachments: sentAttachments)
                 }
                 if self.messages.indices.contains(assistantIndex),
                    !self.messages[assistantIndex].content.isEmpty {

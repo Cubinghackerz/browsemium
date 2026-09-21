@@ -347,17 +347,38 @@ struct HeadlessRunner {
             - second
             """
         let document = SafeMarkdownDocument(source: source)
-        try expect(document.blocks.contains(.heading(level: 1, text: "Title")), "Heading block was not parsed")
+        try expect(document.blocks.contains(.heading(level: 1, text: [.text("Title")])), "Heading block was not parsed")
         try expect(document.blocks.contains { block in
             if case .codeBlock(let language, let code) = block {
                 return language == "swift" && code.contains("let value = 1")
             }
             return false
         }, "Code block was not parsed")
-        try expect(document.blocks.contains(.bulletList(["first", "second"])), "List block was not parsed")
+        try expect(document.blocks.contains(.bulletList([[.text("first")], [.text("second")]])), "List block was not parsed")
         try expect(document.links.count == 1, "Only HTTP(S) links may survive sanitization")
         try expect(document.links.first?.url.absoluteString == "https://example.com/docs", "Sanitized link URL is wrong")
         try expect(document.plainText.contains("Some bold text"), "Plain text rendering lost inline content")
+        try expect(document.blocks.contains { block in
+            guard case .paragraph(let inlines) = block else { return false }
+            return inlines.contains { inline in
+                if case .strong(let inner) = inline { return inner == [.text("bold")] }
+                return false
+            }
+        }, "Bold inline formatting was flattened")
+        try expect(document.blocks.contains { block in
+            guard case .paragraph(let inlines) = block else { return false }
+            return inlines.contains { inline in
+                if case .link(let inner, let url) = inline {
+                    return inner == [.text("a link")] && url.absoluteString == "https://example.com/docs"
+                }
+                return false
+            }
+        }, "A sanitized link must keep its destination inline")
+        // The javascript: link keeps its text but loses the URL entirely.
+        try expect(document.blocks.contains { block in
+            guard case .paragraph(let inlines) = block else { return false }
+            return inlines.contains(.text("a bad link"))
+        }, "An unsafe link must degrade to plain text")
         try expect(SafeMarkdownDocument.sanitizedURL("javascript:alert(1)") == nil, "javascript: URLs must be rejected")
         try expect(SafeMarkdownDocument.sanitizedURL("data:text/html,<b>x</b>") == nil, "data: URLs must be rejected")
     }

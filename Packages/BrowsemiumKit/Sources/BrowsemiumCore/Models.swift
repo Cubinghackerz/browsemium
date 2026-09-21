@@ -249,6 +249,15 @@ public enum AIContextAttachment: Sendable {
     case viewportImage(PageImageContext)
     case fullPageImage(PageImageContext)
     case file(AIFileAttachment)
+
+    /// Text drawn from the page itself — what "include page context"
+    /// settings mean. Images and user-picked files are never automatic.
+    public var isPageText: Bool {
+        switch self {
+        case .selection, .readablePage: true
+        case .viewportImage, .fullPageImage, .file: false
+        }
+    }
 }
 
 public struct CapturedContext: Sendable {
@@ -282,6 +291,44 @@ public enum BrowserCommand: Hashable, Sendable {
     case openDownloads
     case openSettings
     case clearBrowsingData
+    case aiQuickAction(AIQuickAction)
+}
+
+/// One-tap assistant workflows. Each bundles a context capture with a canned
+/// instruction; the send still passes through the review sheet, so nothing
+/// reaches a provider without an explicit confirm.
+public enum AIQuickAction: String, Hashable, Sendable, CaseIterable {
+    case summarizePage
+    case keyPoints
+    case explainSelection
+
+    public var title: String {
+        switch self {
+        case .summarizePage: "Summarize this page"
+        case .keyPoints: "Extract key points"
+        case .explainSelection: "Explain the selection"
+        }
+    }
+
+    /// The prompt sent for the action when the composer is empty.
+    public var prompt: String {
+        switch self {
+        case .summarizePage:
+            "Summarize this page in a few short paragraphs."
+        case .keyPoints:
+            "List the key points of this page as bullets."
+        case .explainSelection:
+            "Explain the selected text."
+        }
+    }
+
+    /// The page context the action captures before the review sheet opens.
+    public var captureKind: CaptureKind {
+        switch self {
+        case .summarizePage, .keyPoints: .readablePage
+        case .explainSelection: .selection
+        }
+    }
 }
 
 public enum BrowserPanel: Hashable, Sendable {

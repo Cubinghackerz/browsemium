@@ -51,7 +51,7 @@ struct AIDockView: View {
                 .padding(.horizontal, 8)
                 .padding(.bottom, 8)
             case .api:
-                AIChatTranscript(ai: ai)
+                AIChatTranscript(ai: ai, model: model)
             }
 
             if ai.mode == .api {
@@ -267,7 +267,7 @@ struct AIDockView: View {
                     } else {
                         Picker("Model", selection: $ai.selectedModelID) {
                             ForEach(ai.models) { model in
-                                Text(model.name).tag(String?.some(model.id))
+                                modelPickerRow(model).tag(String?.some(model.id))
                             }
                         }
                         .labelsHidden()
@@ -289,7 +289,7 @@ struct AIDockView: View {
                             Text("No models loaded").tag(String?.none)
                         }
                         ForEach(ai.models) { model in
-                            Text(model.name).tag(String?.some(model.id))
+                            modelPickerRow(model).tag(String?.some(model.id))
                         }
                     }
                     .labelsHidden()
@@ -324,6 +324,19 @@ struct AIDockView: View {
         }
     }
 
+    /// A vision badge next to models that can view images — the same catalog
+    /// the request builder uses, so the badge predicts real send behavior.
+    private func modelPickerRow(_ model: AIModel) -> some View {
+        HStack(spacing: 4) {
+            Text(model.name)
+            if ModelCapabilityCatalog.bundled.supportsVision(provider: ai.provider, modelID: model.id) {
+                Image(systemName: "eye")
+                    .font(.system(size: 8))
+                    .foregroundStyle(Color.browsemiumTertiary)
+            }
+        }
+    }
+
     private var composer: some View {
         VStack(spacing: 8) {
             CurrentPageBar(model: model)
@@ -347,6 +360,15 @@ struct AIDockView: View {
                 .animation(.easeOut(duration: 0.15), value: ai.attachments.count)
             }
 
+            // One-tap workflows: each captures its context and opens the
+            // review sheet — a shortcut to a review, not a silent send.
+            HStack(spacing: 6) {
+                quickActionChip("Summarize", systemImage: "doc.text.magnifyingglass", action: .summarizePage)
+                quickActionChip("Key points", systemImage: "list.bullet", action: .keyPoints)
+                quickActionChip("Explain", systemImage: "text.bubble", action: .explainSelection)
+                Spacer()
+            }
+
             HStack(alignment: .bottom, spacing: 8) {
                 Button(action: { ai.addFiles() }) {
                     Image(systemName: "paperclip")
@@ -365,7 +387,9 @@ struct AIDockView: View {
                         .textFieldStyle(.plain)
                         .focused($composerFocused)
                         .accessibilityLabel("Assistant prompt")
-                        .onSubmit { if ai.canSend { ai.beginReview() } }
+                        .onSubmit {
+                            if ai.canSend { ai.beginReview(tabID: model.session.activeTabID) }
+                        }
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
@@ -387,7 +411,7 @@ struct AIDockView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Stop generating")
                 } else {
-                    Button(action: { ai.beginReview() }) {
+                    Button(action: { ai.beginReview(tabID: model.session.activeTabID) }) {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.system(size: 20))
                             .foregroundStyle(ai.canSend ? Color.browsemiumAccentFill : Color.browsemiumTertiary)
@@ -412,15 +436,41 @@ struct AIDockView: View {
                     attachContext(.fullPageImage, confirmation: "Full page screenshot attached")
                 }
                 Spacer()
+
+                // Opt-in: attach this page's text to every send. The review
+                // sheet still lists it before anything leaves the Mac.
+                Toggle(
+                    "Auto page",
+                    isOn: Binding(
+                        get: { model.environment.loadSettings().includePageContextInAPIAI },
+                        set: { enabled in
+                            model.updateSettings { $0.includePageContextInAPIAI = enabled }
+                        }
+                    )
+                )
+                .toggleStyle(.checkbox)
+                .font(.system(size: 10.5))
+                .foregroundStyle(Color.browsemiumSecondary)
+                .help("Attach this page's text to every message — the review sheet still shows it first")
+                .accessibilityLabel("Attach page text to every message")
             }
 
             if let error = ai.errorMessage {
-                Text(error)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.browsemiumDestructive)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityAddTraits(.isStaticText)
+                HStack(spacing: 8) {
+                    Text(error)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.browsemiumDestructive)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityAddTraits(.isStaticText)
+                    if ai.lastFailedSend != nil {
+                        Button("Try again") { ai.retryLastSend() }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.browsemiumAccent)
+                            .accessibilityLabel("Retry the failed message")
+                    }
+                }
             }
         }
         .padding(.horizontal, 10)
@@ -439,6 +489,7 @@ struct AIDockView: View {
             }
         }
     }
+
 
     /// Captures become real drag sources: the screenshot chip can be dragged
     /// straight into the provider's composer inside the panel, and text can be
@@ -476,6 +527,30 @@ struct AIDockView: View {
         case .readablePage(let context):
             return NSItemProvider(object: context.text as NSString)
         }
+    }
+
+    private func quickActionChip(_ label: String, systemImage: String, action: AIQuickAction) -> some View {
+        Button {
+            Task { await ai.runQuickAction(action, tabID: model.session.activeTabID) }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 9.5))
+                Text(label)
+                    .font(.system(size: 10.5, weight: .medium))
+            }
+            .foregroundStyle(Color.browsemiumAccent)
+            .padding(.horizontal, 8)
+            .frame(height: 20)
+            .background(
+                Capsule().fill(Color.browsemiumAccent.opacity(0.12))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(ai.isWorking || ai.isStreaming)
+        .help("\(action.title) — opens the review sheet before anything is sent")
+        .accessibilityLabel(action.title)
     }
 
     private func contextButton(systemName: String, label: String, action: @escaping () -> Void) -> some View {
@@ -614,6 +689,7 @@ private struct DraggableAttachment: ViewModifier {
 @MainActor
 private struct AIChatTranscript: View {
     @Bindable var ai: AIDockViewModel
+    let model: BrowserWindowModel
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -650,6 +726,12 @@ private struct AIChatTranscript: View {
                 }
             }
         }
+        // Links in answers — inline markdown links and the link list alike —
+        // open as Browsemium tabs, not in an external browser.
+        .environment(\.openURL, OpenURLAction { url in
+            model.newTab(url: url)
+            return .handled
+        })
     }
 }
 
@@ -711,46 +793,131 @@ private struct MessageBubble: View {
     private func blockView(_ block: SafeMarkdownDocument.Block) -> some View {
         switch block {
         case .heading(_, let text):
-            Text(text)
+            Text(attributed(text))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.browsemiumPrimary)
-        case .paragraph(let text), .quote(let text):
-            Text(text)
+        case .paragraph(let inlines):
+            Text(attributed(inlines))
                 .font(.system(size: 12.5))
                 .foregroundStyle(Color.browsemiumPrimary)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
-        case .codeBlock(_, let code):
-            Text(code)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(Color.browsemiumPrimary)
-                .textSelection(.enabled)
-                .padding(8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.browsemiumCanvas)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+        case .quote(let inlines):
+            HStack(spacing: 8) {
+                Rectangle()
+                    .fill(Color.browsemiumBorderStrong)
+                    .frame(width: 2)
+                Text(attributed(inlines))
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Color.browsemiumSecondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        case .codeBlock(let language, let code):
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text(language ?? "code")
+                        .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Color.browsemiumTertiary)
+                    Spacer()
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(code, forType: .string)
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(Color.browsemiumTertiary)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy code")
+                    .accessibilityLabel("Copy code block")
+                }
+                .padding(.horizontal, 8)
+                .padding(.top, 6)
+                .padding(.bottom, 4)
+
+                Text(code)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Color.browsemiumPrimary)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(Color.browsemiumCanvas)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
         case .bulletList(let items):
             VStack(alignment: .leading, spacing: 3) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    Text("• \(item)")
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(Color.browsemiumPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text("•")
+                            .foregroundStyle(Color.browsemiumTertiary)
+                        Text(attributed(item))
+                            .foregroundStyle(Color.browsemiumPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .font(.system(size: 12.5))
                 }
             }
         case .orderedList(let items):
             VStack(alignment: .leading, spacing: 3) {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                    Text("\(index + 1). \(item)")
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(Color.browsemiumPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text("\(index + 1).")
+                            .foregroundStyle(Color.browsemiumTertiary)
+                        Text(attributed(item))
+                            .foregroundStyle(Color.browsemiumPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .font(.system(size: 12.5))
                 }
             }
         case .rule:
             Rectangle()
                 .fill(Color.browsemiumBorder)
                 .frame(height: 1)
+        }
+    }
+
+    /// Maps semantic inline runs onto an AttributedString. Presentation
+    /// intents carry bold/italic/strikethrough/code; links stay clickable
+    /// through the view's openURL handling.
+    private func attributed(_ inlines: [SafeMarkdownDocument.Inline]) -> AttributedString {
+        var result = AttributedString()
+        for inline in inlines {
+            result.append(inlineText(inline))
+        }
+        return result
+    }
+
+    private func inlineText(_ inline: SafeMarkdownDocument.Inline) -> AttributedString {
+        switch inline {
+        case .text(let string):
+            return AttributedString(string)
+        case .strong(let inner):
+            var string = attributed(inner)
+            string.inlinePresentationIntent = .stronglyEmphasized
+            return string
+        case .emphasis(let inner):
+            var string = attributed(inner)
+            string.inlinePresentationIntent = .emphasized
+            return string
+        case .strikethrough(let inner):
+            var string = attributed(inner)
+            string.inlinePresentationIntent = .strikethrough
+            return string
+        case .code(let code):
+            var string = AttributedString(code)
+            string.inlinePresentationIntent = .code
+            return string
+        case .link(let inner, let url):
+            var string = attributed(inner)
+            string.link = url
+            string.underlineStyle = .single
+            return string
+        case .lineBreak:
+            return AttributedString("\n")
         }
     }
 }
