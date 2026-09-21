@@ -231,6 +231,11 @@ CefScopedLibraryLoader* g_library_loader = nullptr;
 bool g_initialized = false;
 
 void BrowsemiumApp::OnScheduleMessagePumpWork(int64_t delay_ms) {
+  static int pumpCount = 0;
+  pumpCount += 1;
+  if (pumpCount <= 20 || pumpCount % 100 == 0) {
+    NSLog(@"[cef] pump #%d delay=%lld", pumpCount, delay_ms);
+  }
   const int64_t clamped = delay_ms < 0 ? 0 : delay_ms;
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, clamped * NSEC_PER_MSEC),
                  dispatch_get_main_queue(), ^{
@@ -303,7 +308,7 @@ CefMainArgs MakeMainArgs() {
   settings.no_sandbox = false;
   settings.external_message_pump = true;
   settings.multi_threaded_message_loop = false;
-  settings.log_severity = LOGSEVERITY_WARNING;
+  settings.log_severity = getenv("BROWSEMIUM_CEF_VERBOSE") ? LOGSEVERITY_INFO : LOGSEVERITY_WARNING;
   settings.background_color = 0xFFFFFFFF;
   CefString(&settings.locale) = "en-US";
   CefString(&settings.root_cache_path) = rootCachePath.UTF8String;

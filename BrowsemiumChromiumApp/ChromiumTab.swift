@@ -42,6 +42,7 @@ final class ChromiumTab: NSObject {
     var isLoading: Bool { browser?.isLoading ?? false }
 
     func attach(to host: NSView) {
+        NSLog("[cef] ChromiumTab.attach tab=%@ host=%.0fx%.0f window=%@", tabID.rawValue.uuidString, host.bounds.width, host.bounds.height, host.window?.description ?? "nil")
         let browser = self.browser ?? BrowsemiumCEFBrowser(delegate: self, cachePath: cachePath)
         self.browser = browser
         browser.attach(to: host)

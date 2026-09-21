@@ -107,6 +107,10 @@ private struct ChromiumWindowRoot: View {
             updates.checkForUpdatesOnLaunch()
         }
         .onAppear {
+            NSLog("[app] root onAppear model=%@ env=%@ urls=%d",
+                  model == nil ? "nil" : "set",
+                  environment == nil ? "nil" : "set",
+                  initialURLs.count)
             guard model == nil, let environment else { return }
             let created = BrowserWindowModel(environment: environment)
             created.persistsSession = registry.claimPrimary()
@@ -143,13 +147,14 @@ enum ChromiumRuntime {
     }
 
     /// Each profile gets its own request context and therefore its own cookies,
-    /// storage and cache.
+    /// storage and cache. Chrome-runtime CEF requires the path to be a direct
+    /// child of the root cache directory — a nested path fails profile
+    /// creation and silently falls back to an in-memory profile.
     static func profileCachePath(for profile: BrowserProfile) -> String {
         let support = (try? applicationSupportDirectory()) ?? URL(fileURLWithPath: NSTemporaryDirectory())
         let path = support
             .appendingPathComponent("chromium", isDirectory: true)
-            .appendingPathComponent("profiles", isDirectory: true)
-            .appendingPathComponent(profile.id.uuidString, isDirectory: true)
+            .appendingPathComponent("Profile-\(profile.id.uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: path, withIntermediateDirectories: true)
         return path.path
     }

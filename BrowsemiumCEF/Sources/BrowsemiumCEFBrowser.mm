@@ -10,8 +10,37 @@
 #include "include/cef_registration.h"
 #include "include/cef_request_context.h"
 #include "include/cef_request_context_handler.h"
+#include "include/cef_task.h"
+
+/// The context handler below fires this when the request context is ready.
+@interface BrowsemiumCEFBrowser (RequestContextCallback)
+- (void)cefContextInitialized;
+@end
 
 namespace {
+
+/// Per-profile request contexts initialize asynchronously: CreateContext
+/// returns an object whose browser context is not ready yet, and
+/// CreateBrowserSync returns nullptr until it is. This handler delivers
+/// OnRequestContextInitialized so the browser is created once the context —
+/// and its on-disk profile — actually exists.
+class BrowsemiumRequestContextHandler : public CefRequestContextHandler {
+ public:
+  explicit BrowsemiumRequestContextHandler(BrowsemiumCEFBrowser* owner)
+      : owner_(owner) {}
+
+  void OnRequestContextInitialized(
+      CefRefPtr<CefRequestContext> request_context) override {
+    NSLog(@"[cef] request context initialized");
+    if (BrowsemiumCEFBrowser* owner = owner_) {
+      [owner cefContextInitialized];
+    }
+  }
+
+ private:
+  __weak BrowsemiumCEFBrowser* owner_;
+  IMPLEMENT_REFCOUNTING(BrowsemiumRequestContextHandler);
+};
 
 /// Bridges CEF's JSON values to Objective-C so Swift callers get normal types.
 id BrowsemiumObjectFromCefValue(CefRefPtr<CefValue> value) {
@@ -161,14 +190,17 @@ class BrowsemiumDevToolsBridge : public CefDevToolsMessageObserver {
   CefRefPtr<CefClient> _client;
   CefRefPtr<CefBrowser> _browser;
   CefRefPtr<CefRequestContext> _context;
+  CefRefPtr<CefRequestContextHandler> _contextHandler;
   CefRefPtr<BrowsemiumDevToolsBridge> _devTools;
   __weak NSView* _hostView;
   NSString* _title;
   NSString* _pendingURL;
   BOOL _closed;
+  BOOL _browserPending;
   int _findIdentifier;
   void (^_findCompletion)(int matchCount, BOOL found);
 }
+- (void)cefContextInitialized;
 @end
 
 @implementation BrowsemiumCEFBrowser
@@ -182,7 +214,14 @@ class BrowsemiumDevToolsBridge : public CefDevToolsMessageObserver {
     if (cachePath.length > 0) {
       CefRequestContextSettings settings;
       CefString(&settings.cache_path) = cachePath.UTF8String;
-      _context = CefRequestContext::CreateContext(settings, nullptr);
+      _contextHandler = new BrowsemiumRequestContextHandler(self);
+      _context = CefRequestContext::CreateContext(settings, _contextHandler);
+      if (!_context) {
+        // Profile creation can reject the path outright; fall back to the
+        // global context rather than leaving the tab permanently blank.
+        NSLog(@"[cef] CreateContext failed for %@, using global context", cachePath);
+        _context = CefRequestContext::GetGlobalContext();
+      }
     } else {
       _context = CefRequestContext::GetGlobalContext();
     }
@@ -198,9 +237,20 @@ class BrowsemiumDevToolsBridge : public CefDevToolsMessageObserver {
 
 - (void)attachToView:(NSView*)host {
   _hostView = host;
-  if (_browser) {
+  [self createBrowserIfNeeded];
+}
+
+/// CreateBrowserSync returns nullptr while the request context's browser
+/// context is still initializing — which it does asynchronously, so the first
+/// attach almost always lands before it finishes. Failure is not permanent:
+/// `_browserPending` marks the tab, and `cefContextInitialized` retries when
+/// OnRequestContextInitialized fires. Frame-change re-attaches retry too, in
+/// case the callback ran before the host existed.
+- (void)createBrowserIfNeeded {
+  if (_browser || !_hostView || _closed) {
     return;
   }
+  NSView* host = _hostView;
   CefWindowInfo window_info;
   const CefRect rect(0, 0, (int)MAX(host.bounds.size.width, 1), (int)MAX(host.bounds.size.height, 1));
   window_info.SetAsChild((__bridge void*)host, rect);
@@ -208,16 +258,35 @@ class BrowsemiumDevToolsBridge : public CefDevToolsMessageObserver {
   CefBrowserSettings browser_settings;
   browser_settings.background_color = 0xFFFFFFFF;
 
-  _browser = CefBrowserHost::CreateBrowserSync(window_info, _client, "about:blank",
+  static BOOL loggedThread = NO;
+  if (!loggedThread) {
+    loggedThread = YES;
+    NSLog(@"[cef] createBrowser onUIThread=%d", CefCurrentlyOn(TID_UI));
+  }
+  // Load the pending URL as the initial URL: CreateBrowserSync already owns a
+  // navigation slot, and a LoadURL issued in the same runloop turn can be lost
+  // while the browser's renderer is still binding to the native view.
+  NSString* initial = _pendingURL.length > 0 ? _pendingURL : @"about:blank";
+  _pendingURL = nil;
+  _browser = CefBrowserHost::CreateBrowserSync(window_info, _client, initial.UTF8String,
                                                browser_settings, nullptr, _context);
   if (_browser) {
+    NSLog(@"[cef] browser created, host %.0fx%.0f url=%@",
+          host.bounds.size.width, host.bounds.size.height, initial);
+    _browserPending = NO;
     _devTools->Attach(_browser->GetHost());
     _browser->GetHost()->WasResized();
+  } else {
+    NSLog(@"[cef] createBrowser: CreateBrowserSync failed (context not ready yet)");
+    _browserPending = YES;
   }
-  if (_pendingURL.length > 0) {
-    NSString* url = _pendingURL;
-    _pendingURL = nil;
-    [self loadURLString:url];
+}
+
+/// Called on the UI thread when the request context finishes initializing —
+/// the earliest moment CreateBrowserSync can succeed.
+- (void)cefContextInitialized {
+  if (_browserPending) {
+    [self createBrowserIfNeeded];
   }
 }
 
@@ -229,8 +298,10 @@ class BrowsemiumDevToolsBridge : public CefDevToolsMessageObserver {
 
 - (void)loadURLString:(NSString*)urlString {
   if (_browser) {
+    NSLog(@"[cef] LoadURL %@", urlString);
     _browser->GetMainFrame()->LoadURL(urlString.UTF8String);
   } else {
+    NSLog(@"[cef] load deferred (no browser): %@", urlString);
     _pendingURL = [urlString copy];
   }
 }
@@ -346,6 +417,8 @@ class BrowsemiumDevToolsBridge : public CefDevToolsMessageObserver {
 #pragma mark - Client callbacks
 
 - (void)cefBrowserDidCreate {
+  NSLog(@"[cef] didCreate: host bounds=%.0fx%.0f",
+        _hostView.bounds.size.width, _hostView.bounds.size.height);
   [self resizeToBounds:_hostView.bounds];
 }
 

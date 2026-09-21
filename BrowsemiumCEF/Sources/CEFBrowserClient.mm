@@ -54,6 +54,7 @@ class BrowsemiumClient : public CefClient,
 
   void OnAfterCreated(CefRefPtr<CefBrowser> browser) override {
     browser_ = browser;
+    NSLog(@"[cef] OnAfterCreated id=%d", browser->GetIdentifier());
     BrowsemiumCEFBrowser* owner = owner_;
     if (owner != nil) {
       [owner cefBrowserDidCreate];
@@ -112,6 +113,7 @@ class BrowsemiumClient : public CefClient,
     if (!frame->IsMain()) {
       return;
     }
+    NSLog(@"[cef] OnLoadStart %@", ToNSString(frame->GetURL()));
     BrowsemiumCEFBrowser* owner = owner_;
     if (owner != nil) {
       [owner cefBrowserDidStartLoading];
@@ -124,6 +126,7 @@ class BrowsemiumClient : public CefClient,
     if (!frame->IsMain()) {
       return;
     }
+    NSLog(@"[cef] OnLoadEnd %@ status=%d", ToNSString(frame->GetURL()), http_status_code);
     BrowsemiumCEFBrowser* owner = owner_;
     if (owner != nil) {
       [owner cefBrowserDidFinishLoadingURL:ToNSString(frame->GetURL())];
@@ -140,6 +143,7 @@ class BrowsemiumClient : public CefClient,
       // hit stop — so they never reach the delegate as failures.
       return;
     }
+    NSLog(@"[cef] OnLoadError %@ code=%d %@", ToNSString(failedUrl), errorCode, ToNSString(errorText));
     BrowsemiumCEFBrowser* owner = owner_;
     if (owner != nil) {
       [owner cefBrowserDidFailLoadingWithMessage:ToNSString(errorText)];
@@ -168,6 +172,7 @@ class BrowsemiumClient : public CefClient,
     if (!frame->IsMain()) {
       return;
     }
+    NSLog(@"[cef] OnAddressChange %@", ToNSString(url));
     BrowsemiumCEFBrowser* owner = owner_;
     if (owner != nil) {
       [owner cefBrowserDidChangeURL:ToNSString(url)];
@@ -178,6 +183,8 @@ class BrowsemiumClient : public CefClient,
                                  TerminationStatus status,
                                  int error_code,
                                  const CefString& error_string) override {
+    NSLog(@"[cef] OnRenderProcessTerminated status=%d code=%d %@",
+          (int)status, error_code, ToNSString(error_string));
     BrowsemiumCEFBrowser* owner = owner_;
     if (owner != nil) {
       [owner cefBrowserDidCrash];
