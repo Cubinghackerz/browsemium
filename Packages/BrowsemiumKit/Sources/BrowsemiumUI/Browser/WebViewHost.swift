@@ -21,6 +21,17 @@ final class EngineHostView: NSView {
             onFrameChange?()
         }
     }
+
+    // The webview is transparent (drawsBackground is off), so this color shows
+    // through any unpainted page region. It must be the document canvas color,
+    // not a fixed color: hardcoded black made pages with transparent heroes
+    // render dark text on black, and flashed black on rubber-band overscroll
+    // in light mode. CGColor is resolved at set-time, so re-resolve whenever
+    // the effective appearance changes.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+    }
 }
 
 struct WebViewHost: NSViewRepresentable {
@@ -31,7 +42,7 @@ struct WebViewHost: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let container = EngineHostView()
         container.wantsLayer = true
-        container.layer?.backgroundColor = NSColor.black.cgColor
+        container.layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
         return container
     }
 
