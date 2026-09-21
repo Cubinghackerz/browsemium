@@ -89,3 +89,21 @@ func commandFilteringIsCaseInsensitive() {
     #expect(model.filteredCommands(query: "NEW").map(\.title) == ["New Tab"])
     #expect(model.filteredCommands(query: "   ").count == model.paletteCommands.count)
 }
+
+@Test @MainActor
+func deferredStartupPopulatesBookmarksAfterInit() throws {
+    let environment = BrowserEnvironment.inMemory()
+    _ = try environment.bookmarkRepository.add(url: URL(string: "https://seeded.example")!, title: "Seeded")
+
+    let model = BrowserWindowModel(environment: environment)
+    // The launch path stays cheap: init must not synchronously read the
+    // bookmark store; the deferred pass fills the UI after the first frame.
+    #expect(model.bookmarks.isEmpty)
+
+    model.performDeferredStartup()
+    #expect(model.bookmarks.contains { $0.url.absoluteString == "https://seeded.example" })
+
+    // A second call must not re-run the work — the guard makes it idempotent.
+    model.performDeferredStartup()
+    #expect(model.bookmarks.count == 1)
+}

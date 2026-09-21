@@ -78,6 +78,9 @@ public final class BrowserWindowModel: PermissionPrompting {
     /// heavyweight WebViews when the runtime receives memory pressure.
     public var memoryPressureHandler: (@MainActor (MemoryPressureLevel) -> Void)?
 
+    /// Whether post-first-frame startup work already ran for this window.
+    private var didRunDeferredStartup = false
+
     /// Increments whenever the active profile changes. Views use it to
     /// release profile-scoped web content, like AI provider panels.
     public private(set) var profileSwitchToken = 0
@@ -147,11 +150,22 @@ public final class BrowserWindowModel: PermissionPrompting {
         }
         environment.engine.apply(storedSettings)
         applyAppearanceToApp()
+        LaunchMetrics.mark(.modelReady)
+    }
+
+    /// Work that must happen early but not on the path to the first frame:
+    /// database maintenance and the bookmark/credential/permission reads that
+    /// fill the UI. Called from the window's onAppear so launch time is
+    /// measured and the window is not held up by SQLite.
+    public func performDeferredStartup() {
+        guard !didRunDeferredStartup else { return }
+        didRunDeferredStartup = true
         environment.runMaintenance()
         refreshBookmarks()
         refreshSavedCredentials()
         refreshSitePermissions()
         persistSession()
+        LaunchMetrics.mark(.idle)
     }
 
     public var activeTab: BrowserTab? {
@@ -1457,6 +1471,7 @@ public final class BrowserWindowModel: PermissionPrompting {
             recordHistory(url: url, title: title)
             persistSession()
             applySleepPolicy()
+            LaunchMetrics.mark(.firstNavigation)
             // A finished load is the right moment to refill the warm tab.
             environment.engine.prepareWarmTab()
         case .progressChanged(let progress):

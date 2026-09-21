@@ -1,10 +1,16 @@
 import BrowsemiumCore
+import BrowsemiumEngineKit
 import BrowsemiumUI
 import Foundation
 import SwiftUI
 
 @main
 struct BrowsemiumApp: App {
+    /// Property initializers run in declaration order, so this must sit above
+    /// `environment`: it is the earliest Swift-visible point in the process
+    /// (dyld time still precedes it).
+    private let launchClockStart: Void = LaunchMetrics.mark(.processStart)
+
     @State private var environment = BrowsemiumApp.makeEnvironment()
     @State private var updates = UpdateController()
     @State private var windowRegistry = BrowserWindowRegistry()
@@ -30,7 +36,9 @@ struct BrowsemiumApp: App {
     }
 
     private static func makeEnvironment() -> BrowserEnvironment? {
-        try? BrowserEnvironment.live()
+        let environment = try? BrowserEnvironment.live()
+        LaunchMetrics.mark(.environmentReady)
+        return environment
     }
 
     /// Used by the repeatable memory benchmark and by command-line launches

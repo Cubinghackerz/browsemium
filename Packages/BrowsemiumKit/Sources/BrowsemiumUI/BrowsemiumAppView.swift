@@ -123,8 +123,10 @@ public struct BrowsemiumAppView: View {
             }
         }
         .onAppear {
+            LaunchMetrics.mark(.firstFrame)
             model.startObservingRuntime()
             model.ensureLoaded(model.session.activeTabID ?? TabID())
+            model.performDeferredStartup()
         }
         .focusedSceneValue(\.browserModel, model)
         .onOpenURL { url in
