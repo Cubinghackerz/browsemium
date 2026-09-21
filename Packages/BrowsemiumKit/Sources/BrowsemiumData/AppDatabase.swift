@@ -81,6 +81,9 @@ public final class AppDatabase: @unchecked Sendable {
                 arguments: ["3", "schema_version"]
             )
         }
+        migrator.registerMigration("v4-closed-tabs-no-space-fk") { database in
+            try rebuildClosedTabsWithoutSpaceFK(database)
+        }
         return migrator
     }
 
@@ -97,7 +100,33 @@ public final class AppDatabase: @unchecked Sendable {
         migrator.registerMigration("profile-v3-space-color") { database in
             try database.execute(sql: "ALTER TABLE spaces ADD COLUMN color TEXT")
         }
+        migrator.registerMigration("profile-v4-closed-tabs-no-space-fk") { database in
+            try rebuildClosedTabsWithoutSpaceFK(database)
+        }
         return migrator
+    }
+
+    /// closed_tabs used to reference spaces(id). Session writes are async, so
+    /// a tab closed before its space row landed failed the insert and was
+    /// silently dropped from Recently Closed. The id is kept for reference
+    /// only; entries reopen into whatever space is active.
+    private static func rebuildClosedTabsWithoutSpaceFK(_ database: Database) throws {
+        try database.execute(sql: """
+            CREATE TABLE closed_tabs_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tab_id TEXT NOT NULL,
+                space_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                url TEXT,
+                closed_at DATETIME NOT NULL
+            )
+            """)
+        try database.execute(sql: """
+            INSERT INTO closed_tabs_new (id, tab_id, space_id, title, url, closed_at)
+            SELECT id, tab_id, space_id, title, url, closed_at FROM closed_tabs
+            """)
+        try database.execute(sql: "DROP TABLE closed_tabs")
+        try database.execute(sql: "ALTER TABLE closed_tabs_new RENAME TO closed_tabs")
     }
 
     /// The complete per-profile table set. Shared by the legacy root schema
@@ -124,11 +153,13 @@ public final class AppDatabase: @unchecked Sendable {
                 last_accessed_at DATETIME NOT NULL
             )
             """)
+        // No REFERENCES on space_id: the space row may not be persisted yet
+        // when the tab closes, and deleting a space must not erase history.
         try database.execute(sql: """
             CREATE TABLE closed_tabs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 tab_id TEXT NOT NULL,
-                space_id TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+                space_id TEXT NOT NULL,
                 title TEXT NOT NULL,
                 url TEXT,
                 closed_at DATETIME NOT NULL
