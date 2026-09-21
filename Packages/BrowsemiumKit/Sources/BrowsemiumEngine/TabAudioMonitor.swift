@@ -5,18 +5,24 @@ import WebKit
 public struct TabAudioState: Hashable, Sendable {
     public let isPlaying: Bool
     public let isMuted: Bool
+    /// True while the page holds a live microphone, camera, or screen-share
+    /// track. A call can be silent (muted mic) and still be in progress, so
+    /// this is reported separately from `isPlaying`.
+    public let isCapturingMedia: Bool
 
-    public init(isPlaying: Bool, isMuted: Bool) {
+    public init(isPlaying: Bool, isMuted: Bool, isCapturingMedia: Bool = false) {
         self.isPlaying = isPlaying
         self.isMuted = isMuted
+        self.isCapturingMedia = isCapturingMedia
     }
 }
 
 /// WebKit has no public per-tab "is playing audio" API, so this observes the
-/// page instead: media elements and AudioContexts report through a message
-/// handler, and muting is applied by the script. Best-effort by design — a
-/// page that plays audio without `<audio>`/`<video>` or Web Audio is invisible
-/// to it.
+/// page instead: media elements, AudioContexts, and microphone/camera/screen
+/// capture tracks report through a message handler, and muting is applied by
+/// the script. Best-effort by design — a page that plays audio without
+/// `<audio>`/`<video>` or Web Audio, or that obtained a capture track before
+/// the script ran, is invisible to it.
 enum TabAudioMonitor {
     static let messageHandlerName = "browsemiumAudio"
 
@@ -37,6 +43,7 @@ enum TabAudioMonitor {
       window.__browsemiumAudioInstalled = true;
       window.__browsemiumContexts = window.__browsemiumContexts || [];
       window.__browsemiumMuted = window.__browsemiumMuted || false;
+      window.__browsemiumCaptureStreams = window.__browsemiumCaptureStreams || [];
 
       try {
         var Original = window.AudioContext || window.webkitAudioContext;
@@ -53,6 +60,39 @@ enum TabAudioMonitor {
         }
       } catch (error) {}
 
+      // Microphone, camera, and screen-share tracks are tracked so a silent
+      // call still counts as "in use". Wrapping the promise-returning methods
+      // is the only public way to observe this; a page that obtains a track
+      // before this script runs is invisible to it.
+      try {
+        var devices = navigator.mediaDevices;
+        if (devices && !devices.__browsemiumPatched) {
+          var remember = function(promise) {
+            return promise.then(function(stream) {
+              try {
+                window.__browsemiumCaptureStreams.push(stream);
+                var tracks = stream.getTracks ? stream.getTracks() : [];
+                tracks.forEach(function(track) {
+                  track.addEventListener('ended', function() { window.__browsemiumReportAudio(); });
+                });
+                window.__browsemiumReportAudio();
+              } catch (error) {}
+              return stream;
+            });
+          };
+          var wrap = function(name) {
+            var original = devices[name];
+            if (typeof original !== 'function') { return; }
+            devices[name] = function(constraints) {
+              return remember(original.call(devices, constraints));
+            };
+          };
+          wrap('getUserMedia');
+          wrap('getDisplayMedia');
+          devices.__browsemiumPatched = true;
+        }
+      } catch (error) {}
+
       window.__browsemiumReportAudio = function() {
         var playing = false;
         var media = document.querySelectorAll('audio, video');
@@ -65,10 +105,19 @@ enum TabAudioMonitor {
             return ctx.state === 'running';
           });
         }
+        var capturing = false;
+        try {
+          capturing = window.__browsemiumCaptureStreams.some(function(stream) {
+            return (stream.getTracks ? stream.getTracks() : []).some(function(track) {
+              return track.readyState === 'live';
+            });
+          });
+        } catch (error) {}
         try {
           window.webkit.messageHandlers.\(messageHandlerName).postMessage({
             playing: playing,
-            muted: window.__browsemiumMuted
+            muted: window.__browsemiumMuted,
+            capturing: capturing
           });
         } catch (error) {}
       };
@@ -119,7 +168,8 @@ final class TabAudioMessageProxy: NSObject, WKScriptMessageHandler {
             guard let payload = message.body as? [String: Any] else { return }
             let playing = payload["playing"] as? Bool ?? false
             let muted = payload["muted"] as? Bool ?? false
-            runtime?.updateAudioState(isPlaying: playing, isMuted: muted)
+            let capturing = payload["capturing"] as? Bool ?? false
+            runtime?.updateAudioState(isPlaying: playing, isMuted: muted, isCapturingMedia: capturing)
         }
     }
 }

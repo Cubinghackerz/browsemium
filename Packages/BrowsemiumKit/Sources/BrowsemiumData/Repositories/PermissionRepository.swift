@@ -76,4 +76,17 @@ public final class PermissionRepository: @unchecked Sendable {
             throw BrowsemiumError.databaseFailure(error.localizedDescription)
         }
     }
+
+    public func remove(origin: String, kind: SitePermissionKind) throws {
+        do {
+            try database.databaseQueue.write { db in
+                try db.execute(
+                    sql: "DELETE FROM site_permissions WHERE origin = ? AND permission = ?",
+                    arguments: [origin, kind.rawValue]
+                )
+            }
+        } catch {
+            throw BrowsemiumError.databaseFailure(error.localizedDescription)
+        }
+    }
 }

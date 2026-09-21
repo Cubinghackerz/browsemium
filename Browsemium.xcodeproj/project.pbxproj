@@ -8,13 +8,14 @@
 
 /* Begin PBXBuildFile section */
 		1CCC8774B335AFC4CD409793 /* BrowserWindowModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87FF9C65B6C9681BA0AE440E /* BrowserWindowModelTests.swift */; };
-		1D04DBA9570E7B8BF3447F5C /* BrowsemiumUI in Frameworks */ = {isa = PBXBuildFile; productRef = 3648102C5D1B41D0206D919C /* BrowsemiumUI */; };
+		1D04DBA9570E7B8BF3447F5C /* BrowsemiumEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 50D45BC834890FC945ADF3DD /* BrowsemiumEngine */; };
 		2BB3726FC425007492319E3A /* NavigationResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 092AFEBFCCE5140FAC9EFF7C /* NavigationResolverTests.swift */; };
 		3A94F1E8F12590971F2797A9 /* ProfileStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2637D77BAD284CF0902651C /* ProfileStoreTests.swift */; };
 		4793A6660735CAC9B6B68AAF /* BrowsemiumApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C3F425E3D016D89BAE9E398 /* BrowsemiumApp.swift */; };
 		49D5315F497BC71C8F8A6D90 /* BrowsemiumCore in Frameworks */ = {isa = PBXBuildFile; productRef = 09ADB7EBA008AAE2B56D065D /* BrowsemiumCore */; };
 		5CDF3E22A43C81BB20E92D2F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F08B8B1A92C60E9FA0044EC7 /* Assets.xcassets */; };
 		6230419FE1562DA9D4AF117C /* BrowsemiumCore in Frameworks */ = {isa = PBXBuildFile; productRef = 06125E57E2D8218D879F58E4 /* BrowsemiumCore */; };
+		788D6C5A5B3017429686EF45 /* BrowsemiumUI in Frameworks */ = {isa = PBXBuildFile; productRef = 3648102C5D1B41D0206D919C /* BrowsemiumUI */; };
 		7E646D0C7D789EDD072EC025 /* AIDockViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDF00CF17E59A77022CF3539 /* AIDockViewModelTests.swift */; };
 		80E2437BE28C2532E75A04A0 /* BrowserImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3C9246D617D18F8DD99717F /* BrowserImportTests.swift */; };
 		859238E56FED5BF627BBF810 /* UpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D411139AF1254E75BB95D935 /* UpdateController.swift */; };
@@ -25,6 +26,7 @@
 		ACFEC59B41795B06CAC9D6DB /* BrowsemiumCore in Frameworks */ = {isa = PBXBuildFile; productRef = FD1A0372E69607B627DBAE54 /* BrowsemiumCore */; };
 		B06E6451CDC1A4209651D063 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = CD982532970BC579981F6AD1 /* Sparkle */; };
 		C3AF1FFCA43B28002086D64A /* ProfileDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FA377ECC8415F876E09E730 /* ProfileDiscoveryTests.swift */; };
+		CC8CD0CD15798A97C322C6F7 /* PermissionAndSleepWiringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 848606A184222F0907904A13 /* PermissionAndSleepWiringTests.swift */; };
 		DA7C13A1F84629261CF28882 /* BrowsemiumUI in Frameworks */ = {isa = PBXBuildFile; productRef = F5CC19F8DCB5061878AA9D89 /* BrowsemiumUI */; };
 		DD706E0D06C743A5DE4785B6 /* TabGroupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19B22CFE5D0235239124921C /* TabGroupTests.swift */; };
 		E697BAE65A58B25D1E26647D /* IdentifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCE2972DAB23FD93D253FE06 /* IdentifierTests.swift */; };
@@ -40,6 +42,7 @@
 		2FA377ECC8415F876E09E730 /* ProfileDiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileDiscoveryTests.swift; sourceTree = "<group>"; };
 		4C3F425E3D016D89BAE9E398 /* BrowsemiumApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsemiumApp.swift; sourceTree = "<group>"; };
 		53143E61AD7BB670D4CB652F /* BrowsemiumKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrowsemiumKit; path = Packages/BrowsemiumKit; sourceTree = SOURCE_ROOT; };
+		848606A184222F0907904A13 /* PermissionAndSleepWiringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionAndSleepWiringTests.swift; sourceTree = "<group>"; };
 		87FF9C65B6C9681BA0AE440E /* BrowserWindowModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowModelTests.swift; sourceTree = "<group>"; };
 		8E9285A7A7C2E1AEB180C5F5 /* ConversationRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationRepositoryTests.swift; sourceTree = "<group>"; };
 		92B44FFBF228F83A32A326F5 /* BrowsemiumUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BrowsemiumUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -85,7 +88,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				49D5315F497BC71C8F8A6D90 /* BrowsemiumCore in Frameworks */,
-				1D04DBA9570E7B8BF3447F5C /* BrowsemiumUI in Frameworks */,
+				1D04DBA9570E7B8BF3447F5C /* BrowsemiumEngine in Frameworks */,
+				788D6C5A5B3017429686EF45 /* BrowsemiumUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -137,6 +141,7 @@
 			children = (
 				BDF00CF17E59A77022CF3539 /* AIDockViewModelTests.swift */,
 				87FF9C65B6C9681BA0AE440E /* BrowserWindowModelTests.swift */,
+				848606A184222F0907904A13 /* PermissionAndSleepWiringTests.swift */,
 				19B22CFE5D0235239124921C /* TabGroupTests.swift */,
 			);
 			name = BrowsemiumUITests;
@@ -212,6 +217,7 @@
 			name = BrowsemiumUITests;
 			packageProductDependencies = (
 				09ADB7EBA008AAE2B56D065D /* BrowsemiumCore */,
+				50D45BC834890FC945ADF3DD /* BrowsemiumEngine */,
 				3648102C5D1B41D0206D919C /* BrowsemiumUI */,
 			);
 			productName = BrowsemiumUITests;
@@ -366,6 +372,7 @@
 			files = (
 				7E646D0C7D789EDD072EC025 /* AIDockViewModelTests.swift in Sources */,
 				1CCC8774B335AFC4CD409793 /* BrowserWindowModelTests.swift in Sources */,
+				CC8CD0CD15798A97C322C6F7 /* PermissionAndSleepWiringTests.swift in Sources */,
 				DD706E0D06C743A5DE4785B6 /* TabGroupTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -610,6 +617,10 @@
 		3648102C5D1B41D0206D919C /* BrowsemiumUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = BrowsemiumUI;
+		};
+		50D45BC834890FC945ADF3DD /* BrowsemiumEngine */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BrowsemiumEngine;
 		};
 		A424C1BA7D6F396127FF0C25 /* BrowsemiumEngine */ = {
 			isa = XCSwiftPackageProductDependency;

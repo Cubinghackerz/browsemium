@@ -35,7 +35,7 @@ struct TabStatsCard: View {
                 statRow("Browsemium memory", stats.footprint)
             }
 
-            Text("Web pages run in separate WebKit processes, so per-tab memory is not measurable. These figures are real.")
+            Text("Web pages run in separate WebKit processes, so per-tab memory is not measurable. The figure above covers the \(stats.footprintScope). These figures are real.")
                 .font(.system(size: 10))
                 .foregroundStyle(Color.browsemiumTertiary)
                 .fixedSize(horizontal: false, vertical: true)

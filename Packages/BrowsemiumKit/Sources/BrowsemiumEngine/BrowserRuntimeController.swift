@@ -5,12 +5,37 @@ import WebKit
 
 @MainActor
 public final class BrowserRuntimeController: BrowserRuntime {
-    public var onEvent: ((TabID, TabRuntimeEvent) -> Void)?
     public let downloads = DownloadCoordinator()
     public let captureService: ContentCaptureService
     public let memoryPressure = MemoryPressureCoordinator()
     public let contentRules = ContentRuleListManager()
     public var sleepPolicy: TabSleepPolicy
+
+    /// Answers camera and microphone requests. Set by the window that owns the
+    /// prompt; every runtime in this controller asks it.
+    public weak var permissionPrompter: PermissionPrompting? {
+        didSet {
+            for runtime in runtimes.values {
+                runtime.permissionPrompter = permissionPrompter
+            }
+        }
+    }
+
+    /// Window models register here rather than assigning a single callback:
+    /// with two windows open, the last one to register used to receive every
+    /// event and the first went silent.
+    private var eventObservers: [UUID: (TabID, TabRuntimeEvent) -> Void] = [:]
+
+    @discardableResult
+    public func addEventObserver(_ handler: @escaping (TabID, TabRuntimeEvent) -> Void) -> UUID {
+        let token = UUID()
+        eventObservers[token] = handler
+        return token
+    }
+
+    public func removeEventObserver(_ token: UUID) {
+        eventObservers[token] = nil
+    }
 
     private let factory = WebViewFactory()
     private let warmPool: WarmWebViewPool
@@ -93,8 +118,12 @@ public final class BrowserRuntimeController: BrowserRuntime {
             captureService: captureService,
             downloadCoordinator: downloads
         )
+        runtime.permissionPrompter = permissionPrompter
         runtime.onEvent = { [weak self] event in
-            self?.onEvent?(tabID, event)
+            guard let self else { return }
+            for observer in self.eventObservers.values {
+                observer(tabID, event)
+            }
         }
         runtimes[tabID] = runtime
         return runtime
@@ -247,5 +276,74 @@ public final class BrowserRuntimeController: BrowserRuntime {
         handler: @escaping @MainActor (MemoryPressureLevel) -> Void
     ) {
         memoryPressure.start(handler: handler)
+    }
+
+    // MARK: - Site data
+
+    /// Everything a site can leave behind in one profile's data store.
+    public nonisolated static func siteDataTypes(includeCache: Bool) -> Set<String> {
+        var types: Set<String> = [
+            WKWebsiteDataTypeCookies,
+            WKWebsiteDataTypeLocalStorage,
+            WKWebsiteDataTypeSessionStorage,
+            WKWebsiteDataTypeIndexedDBDatabases,
+            WKWebsiteDataTypeWebSQLDatabases,
+            WKWebsiteDataTypeServiceWorkerRegistrations,
+            WKWebsiteDataTypeFileSystem,
+            WKWebsiteDataTypeMediaKeys
+        ]
+        if includeCache {
+            types.formUnion(cacheDataTypes())
+        }
+        return types
+    }
+
+    /// Only the caches. Kept separate so "clear cache" does not sign the user
+    /// out of every site.
+    public nonisolated static func cacheDataTypes() -> Set<String> {
+        [
+            WKWebsiteDataTypeDiskCache,
+            WKWebsiteDataTypeMemoryCache,
+            WKWebsiteDataTypeFetchCache
+        ]
+    }
+
+    /// Removes cookies, site storage, and optionally cache for one profile.
+    /// Addressed by data-store identifier, so it works with no tabs open and
+    /// never touches another profile.
+    public func clearSiteData(
+        dataStoreIdentifier: UUID,
+        includeCache: Bool = true,
+        modifiedSince: Date = .distantPast
+    ) async {
+        await remove(
+            types: Self.siteDataTypes(includeCache: includeCache),
+            from: dataStoreIdentifier,
+            modifiedSince: modifiedSince
+        )
+    }
+
+    /// Removes only cached responses for one profile.
+    public func clearCache(dataStoreIdentifier: UUID) async {
+        await remove(types: Self.cacheDataTypes(), from: dataStoreIdentifier, modifiedSince: .distantPast)
+    }
+
+    /// Removes every kind of data WebKit holds for a profile. Used when a
+    /// profile is deleted, so its logins do not outlive it.
+    public func removeAllData(dataStoreIdentifier: UUID) async {
+        await remove(
+            types: WKWebsiteDataStore.allWebsiteDataTypes(),
+            from: dataStoreIdentifier,
+            modifiedSince: .distantPast
+        )
+    }
+
+    private func remove(types: Set<String>, from dataStoreIdentifier: UUID, modifiedSince: Date) async {
+        let store = WKWebsiteDataStore(forIdentifier: dataStoreIdentifier)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            store.removeData(ofTypes: types, modifiedSince: modifiedSince) {
+                continuation.resume()
+            }
+        }
     }
 }

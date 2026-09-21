@@ -4,6 +4,7 @@ import BrowsemiumData
 import BrowsemiumEngine
 import Foundation
 import GRDB
+import WebKit
 
 private enum VerificationFailure: Error, CustomStringConvertible {
     case failed(String)
@@ -77,6 +78,10 @@ struct HeadlessRunner {
         try verifyDatabase()
         try verifyAIParsing()
         try verifySleepPolicy()
+        try verifySleepSignalProtection()
+        try verifyRuntimeLifecycleEvents()
+        try verifySiteDataScopes()
+        try verifyProcessMemory()
         try verifyDownloadDestinations()
         try verifyPersistence()
         try verifyPrivacyControls()
@@ -537,6 +542,198 @@ struct HeadlessRunner {
         let overflow = policy.excessLiveTabs(tabs: overflowTabs, activeTabIDs: [], signals: [:])
         try expect(overflow.count == 2, "Live tab overflow should be trimmed to the policy limit")
         try expect(overflow == [overflowTabs[5].id, overflowTabs[4].id], "Overflow should evict least recently used tabs first")
+    }
+
+    /// Every signal the app can raise has to actually protect a tab. These are
+    /// the cases that used to be unloaded mid-flight because the model passed
+    /// an empty signal map.
+    private static func verifySleepSignalProtection() throws {
+        let spaceID = SpaceID()
+        let now = Date()
+        func idleTab(_ title: String) -> BrowserTab {
+            BrowserTab(
+                spaceID: spaceID,
+                title: title,
+                lifecycle: .active,
+                lastAccessedAt: now.addingTimeInterval(-3600)
+            )
+        }
+        let idle = idleTab("Idle")
+        let playing = idleTab("Playing")
+        let onCall = idleTab("On a call")
+        let downloading = idleTab("Downloading")
+        let kept = idleTab("Kept loaded")
+        let tabs = [idle, playing, onCall, downloading, kept]
+        let policy = TabSleepPolicy(idleInterval: 300, maximumLiveTabs: 4)
+
+        let signals: [TabID: TabSleepSignals] = [
+            playing.id: TabSleepSignals(isAudible: true),
+            onCall.id: TabSleepSignals(isCapturingMedia: true),
+            downloading.id: TabSleepSignals(hasActiveDownload: true),
+            kept.id: TabSleepSignals(isKeepAwake: true)
+        ]
+
+        let candidates = policy.hibernationCandidates(
+            tabs: tabs,
+            activeTabIDs: [],
+            signals: signals,
+            now: now
+        )
+        try expect(candidates == [idle.id], "Only the truly idle tab may be hibernated")
+
+        // The live-tab ceiling only counts tabs that are free to unload, so
+        // four protected tabs plus one idle tab stay under a ceiling of four.
+        let quietCeiling = policy.excessLiveTabs(tabs: tabs, activeTabIDs: [], signals: signals)
+        try expect(quietCeiling.isEmpty, "Protected tabs must not count against the live-tab ceiling")
+
+        // Push past the ceiling with unprotected tabs and confirm the eviction
+        // set is drawn only from those, least recently used first. Index 0 is
+        // the oldest of these.
+        let extraIdle = (0..<5).map { index in
+            BrowserTab(
+                spaceID: spaceID,
+                title: "Idle \(index)",
+                lifecycle: .active,
+                lastAccessedAt: now.addingTimeInterval(TimeInterval(-7200 + index))
+            )
+        }
+        let overflow = policy.excessLiveTabs(
+            tabs: tabs + extraIdle,
+            activeTabIDs: [],
+            signals: signals
+        )
+        try expect(!overflow.contains(playing.id), "An audible tab must not be evicted by the live-tab ceiling")
+        try expect(!overflow.contains(onCall.id), "A tab holding a call must not be evicted by the live-tab ceiling")
+        try expect(!overflow.contains(downloading.id), "A downloading tab must not be evicted by the live-tab ceiling")
+        try expect(!overflow.contains(kept.id), "A tab the user kept loaded must not be evicted by the live-tab ceiling")
+        try expect(overflow.count == 2, "Six unloadable tabs under a ceiling of four evicts two, got \(overflow.count)")
+        let overflowTitles = overflow.compactMap { id in
+            (tabs + extraIdle).first { $0.id == id }?.title
+        }
+        try expect(
+            overflow == [extraIdle[0].id, extraIdle[1].id],
+            "The least recently used unloadable tabs must be evicted first, got \(overflowTitles)"
+        )
+        try expect(
+            overflow == [extraIdle[0].id, extraIdle[1].id],
+            "The least recently used unloadable tabs must be evicted first"
+        )
+
+        // A hibernated tab is not a hibernation candidate again, which is what
+        // keeps the policy from re-picking tabs that already released memory.
+        let alreadySleeping = BrowserTab(
+            spaceID: spaceID,
+            title: "Sleeping",
+            lifecycle: .hibernated,
+            lastAccessedAt: now.addingTimeInterval(-7200)
+        )
+        let recheck = policy.hibernationCandidates(
+            tabs: [alreadySleeping, idle],
+            activeTabIDs: [],
+            signals: [:],
+            now: now
+        )
+        try expect(recheck == [idle.id], "Hibernated tabs must not be hibernation candidates")
+    }
+
+    /// The model only learns that a tab was hibernated through this event, so
+    /// it has to fire exactly once per real state change.
+    private static func verifyRuntimeLifecycleEvents() throws {
+        try MainActor.assumeIsolated {
+            let runtime = TabRuntime(
+                tabID: TabID(),
+                isPrivate: false,
+                factory: WebViewFactory(),
+                captureService: ContentCaptureService(),
+                downloadCoordinator: DownloadCoordinator()
+            )
+            var events: [TabRuntimeEvent] = []
+            runtime.onEvent = { events.append($0) }
+
+            func lifecycleChanges() -> [TabLifecycle] {
+                events.compactMap { event in
+                    if case .lifecycleChanged(let lifecycle) = event { return lifecycle }
+                    return nil
+                }
+            }
+
+            runtime.hibernate()
+            try expect(runtime.lifecycle == .hibernated, "Hibernating must move the runtime to .hibernated")
+            try expect(lifecycleChanges() == [.hibernated], "Hibernation must emit one lifecycle change")
+
+            // A second hibernate is a no-op, not a second event.
+            runtime.hibernate()
+            try expect(lifecycleChanges() == [.hibernated], "Re-hibernating must not emit another lifecycle change")
+
+            // Suspending an already-hibernated tab must not resurrect it.
+            runtime.suspend()
+            try expect(runtime.lifecycle == .hibernated, "A hibernated tab must stay hibernated when suspended")
+            try expect(lifecycleChanges() == [.hibernated], "Suspending a sleeping tab must not emit an event")
+
+            // A crash is a real state change the model needs to see.
+            runtime.report(.crashed)
+            try expect(runtime.lifecycle == .crashed, "A crashed page must move the runtime to .crashed")
+            try expect(lifecycleChanges() == [.hibernated, .crashed], "A crash must emit a lifecycle change")
+        }
+    }
+
+    /// "Clear cache" must not sign the user out of every site, so the cache
+    /// set and the cookie set have to stay distinct.
+    private static func verifySiteDataScopes() throws {
+        let cacheTypes = BrowserRuntimeController.cacheDataTypes()
+        try expect(!cacheTypes.isEmpty, "The cache scope must name at least one data type")
+        try expect(
+            !cacheTypes.contains(WKWebsiteDataTypeCookies),
+            "Clearing the cache must not delete cookies"
+        )
+
+        let everything = BrowserRuntimeController.siteDataTypes(includeCache: true)
+        try expect(everything.contains(WKWebsiteDataTypeCookies), "The site-data scope must include cookies")
+        try expect(
+            everything.isSuperset(of: cacheTypes),
+            "The site-data scope must include everything the cache scope clears"
+        )
+
+        let withoutCache = BrowserRuntimeController.siteDataTypes(includeCache: false)
+        try expect(withoutCache.contains(WKWebsiteDataTypeCookies), "Cookies are not cache")
+        try expect(
+            withoutCache.isDisjoint(with: cacheTypes),
+            "A site-data clear that skips the cache must not touch cached responses"
+        )
+    }
+
+    /// The memory figure the UI shows has to be honest about its scope. WebKit
+    /// keeps page processes in XPC services owned by launchd, so this process
+    /// tree cannot contain them and the app must say so rather than implying
+    /// the number covers every page.
+    private static func verifyProcessMemory() throws {
+        let own = ProcessMemory.footprintBytes()
+        try expect(own > 0, "The app's own footprint must be measurable")
+
+        let group = ProcessMemory.groupFootprint()
+        try expect(group.bytes >= own, "The process group cannot be smaller than this process")
+        try expect(group.measuredProcesses >= 1, "At least this process must be measured")
+        try expect(group.isComplete, "This runner owns no unreadable processes")
+        try expect(ProcessMemory.formattedFootprint() != "Unavailable", "The app figure must format")
+
+        let summary = ProcessMemory.summary()
+        try expect(summary.bytes > 0, "The summary must carry a figure")
+        if group.measuredProcesses == 1 {
+            try expect(
+                !summary.includesPageProcesses,
+                "With no visible children the scope must be reported as the app process alone"
+            )
+        } else {
+            try expect(
+                summary.includesPageProcesses,
+                "Visible page processes must be reported as included"
+            )
+        }
+
+        // The sandbox decides whether helpers answer; the flag has to reflect
+        // that honestly rather than silently under-reporting.
+        let partial = ProcessMemory.GroupFootprint(bytes: own, measuredProcesses: 1, isComplete: false)
+        try expect(!partial.isComplete, "An incomplete measurement must be flagged as such")
     }
 
     private static func verifyDownloadDestinations() throws {

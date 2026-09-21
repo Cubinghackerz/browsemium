@@ -22,7 +22,7 @@ public struct BrowserPaletteCommand: Identifiable, Hashable, Sendable {
 
 @MainActor
 @Observable
-public final class BrowserWindowModel {
+public final class BrowserWindowModel: PermissionPrompting {
     public let environment: BrowserEnvironment
     public let paneID = PaneID()
     public let favicons = FaviconStore()
@@ -53,6 +53,9 @@ public final class BrowserWindowModel {
     /// Tabs that are currently playing audio or have been muted. WebKit does
     /// not expose this, so it comes from the injected page monitor.
     public private(set) var tabAudio: [TabID: TabAudioState] = [:]
+    /// Tabs the user marked "keep loaded" from the tab menu. The memory saver
+    /// leaves these alone until they are closed or the mark is removed.
+    public private(set) var keepAwakeTabIDs: Set<TabID> = []
     public private(set) var bookmarks: [Bookmark] = []
     public private(set) var savedCredentials: [SavedCredential] = []
     public private(set) var downloads: [DownloadProgress] = []
@@ -62,6 +65,13 @@ public final class BrowserWindowModel {
     /// Extra windows are ephemeral: only the first window writes the session,
     /// so two windows cannot clobber each other's saved tabs.
     public var persistsSession = true
+
+    /// Registrations handed back by the runtime. Every window registers its
+    /// own, so one window closing cannot silence another.
+    private var runtimeObserverTokens: [UUID] = []
+    private var downloadObserverToken: UUID?
+    private var permissionQueue: [PermissionRequest] = []
+    private var permissionContinuations: [UUID: CheckedContinuation<SitePermissionDecision, Never>] = [:]
 
     /// Window-scoped consumers, such as the AI dock, can release their own
     /// heavyweight WebViews when the runtime receives memory pressure.
@@ -122,12 +132,7 @@ public final class BrowserWindowModel {
         })
         isBookmarksBarVisible = UserDefaults.standard.object(forKey: "browsemium.bookmarksBarVisible") as? Bool ?? true
 
-        environment.runtime.onEvent = { [weak self] tabID, event in
-            self?.handle(event, for: tabID)
-        }
-        environment.runtime.downloads.onUpdate = { [weak self] info in
-            self?.handleDownload(info)
-        }
+        startObservingRuntime()
         environment.runtime.beginMemoryPressureMonitoring { [weak self] level in
             guard let self else { return }
             self.memoryPressureHandler?(level)
@@ -144,6 +149,7 @@ public final class BrowserWindowModel {
         environment.runMaintenance()
         refreshBookmarks()
         refreshSavedCredentials()
+        refreshSitePermissions()
         persistSession()
     }
 
@@ -307,15 +313,16 @@ public final class BrowserWindowModel {
         session.tabs.filter { $0.lifecycle == .hibernated || $0.lifecycle == .suspended }.count
     }
 
-    /// Only reports figures WebKit actually exposes: whether this tab holds a
-    /// live web view, and the browser's own measured footprint.
+    /// Only reports figures that can be verified: whether this tab holds a
+    /// live web view, and the app's measured footprint with its scope stated.
     public func tabStats(for tab: BrowserTab) -> TabStats {
         TabStats(
             isLive: environment.runtime.webView(for: tab.id) != nil,
             lifecycle: tab.lifecycle,
             liveTabs: liveWebViewCount,
             sleepingTabs: sleepingTabCount,
-            footprint: ProcessMemory.formattedFootprint()
+            footprint: memorySummary.formatted,
+            footprintScope: memoryScopeDescription
         )
     }
 
@@ -363,6 +370,7 @@ public final class BrowserWindowModel {
         public let liveTabs: Int
         public let sleepingTabs: Int
         public let footprint: String
+        public let footprintScope: String
     }
 
     @discardableResult
@@ -400,6 +408,8 @@ public final class BrowserWindowModel {
         }
         environment.runtime.discard(tabID: targetID)
         tabURLs[targetID] = nil
+        tabAudio[targetID] = nil
+        keepAwakeTabIDs.remove(targetID)
 
         let closedIndex = session.tabs.filter { $0.spaceID == tab.spaceID }.firstIndex { $0.id == targetID } ?? 0
         var tabs = session.tabs.filter { $0.id != targetID }
@@ -849,22 +859,41 @@ public final class BrowserWindowModel {
         }
     }
 
-    /// Unloads every background tab and drops the warm spare, then reports the
-    /// measured change. Only real numbers.
+    /// Unloads every background tab and drops the warm spare, then reports what
+    /// changed in the app's own footprint. WebKit frees its page processes on
+    /// its own schedule and they are not children of this app, so a number is
+    /// only reported when the app process itself measurably shrank.
     public func freeMemoryNow() {
         let before = ProcessMemory.footprintBytes()
         environment.runtime.hibernateInactiveTabs()
-        let after = ProcessMemory.footprintBytes()
-        let freed = before > after ? before - after : 0
-        if freed > 0 {
-            statusMessage = "Unloaded background tabs — freed \(ByteCountFormatter.string(fromByteCount: Int64(freed), countStyle: .memory))"
-        } else {
-            statusMessage = "Background tabs unloaded. Memory is released as WebKit shuts the pages down."
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(700))
+            let after = ProcessMemory.footprintBytes()
+            guard let self else { return }
+            let freed = before > after ? before - after : 0
+            if freed > 0 {
+                self.statusMessage = "Unloaded background tabs — freed \(ByteCountFormatter.string(fromByteCount: Int64(freed), countStyle: .memory))"
+            } else {
+                self.statusMessage = "Background tabs unloaded. WebKit releases their page processes on its own schedule."
+            }
         }
     }
 
+    /// The app's measured memory and what the figure covers. WebKit keeps page
+    /// processes in separate XPC services, so the scope is stated rather than
+    /// implied.
+    public var memorySummary: ProcessMemory.Summary {
+        ProcessMemory.summary()
+    }
+
     public var currentMemoryFootprint: String {
-        ProcessMemory.formattedFootprint()
+        memorySummary.formatted
+    }
+
+    public var memoryScopeDescription: String {
+        memorySummary.includesPageProcesses
+            ? "app and page processes"
+            : "app process; WebKit manages the page processes"
     }
 
     public var contentRuleState: ContentRuleListManager.State {
@@ -1157,18 +1186,193 @@ public final class BrowserWindowModel {
     public func clearBrowsingData() {
         do {
             try environment.privacyDataManager.clear(.everything)
+            refreshSitePermissions()
             statusMessage = "Browsing data cleared"
         } catch {
             statusMessage = error.localizedDescription
         }
     }
 
+    /// Removes cookies, site storage, and cache for the active profile. This
+    /// is the part of "clear browsing data" that lives in the engine rather
+    /// than the database, and it was missing entirely: signing out of a site
+    /// was the only way to drop its cookies.
+    public func clearCookiesAndSiteData() {
+        let storeIdentifier = environment.activeProfile.dataStoreUUID
+        Task { [weak self] in
+            guard let self else { return }
+            await self.environment.runtime.clearSiteData(dataStoreIdentifier: storeIdentifier)
+            self.statusMessage = "Cookies, site data, and cache cleared for this profile"
+        }
+    }
+
+    public func clearCache() {
+        let storeIdentifier = environment.activeProfile.dataStoreUUID
+        Task { [weak self] in
+            guard let self else { return }
+            await self.environment.runtime.clearCache(dataStoreIdentifier: storeIdentifier)
+            self.statusMessage = "Cache cleared for this profile"
+        }
+    }
+
     public func applySleepPolicy() {
         let tabs = session.tabs
+        let signals = sleepSignals(for: tabs)
         let runtime = environment.runtime
         Task {
-            await runtime.applySleepPolicy(tabs: tabs, signals: [:])
+            await runtime.applySleepPolicy(tabs: tabs, signals: signals)
         }
+    }
+
+    /// What each tab is doing right now. The policy refuses to unload a tab
+    /// that is audible, holding a microphone/camera/screen track, downloading,
+    /// or explicitly kept loaded by the user — unloading one of those
+    /// mid-flight is how a background call or a download used to disappear.
+    func sleepSignals(for tabs: [BrowserTab]) -> [TabID: TabSleepSignals] {
+        let busyDownloads = Set(
+            environment.runtime.downloads.allDownloads()
+                .filter { !$0.isFinished && $0.failureMessage == nil }
+                .compactMap(\.tabID)
+        )
+        return Self.makeSignals(
+            tabs: tabs,
+            audio: tabAudio,
+            activeDownloads: busyDownloads,
+            keepAwake: keepAwakeTabIDs
+        )
+    }
+
+    /// Pure mapping from live state to policy input, so the wiring can be
+    /// tested without a window.
+    static func makeSignals(
+        tabs: [BrowserTab],
+        audio: [TabID: TabAudioState],
+        activeDownloads: Set<TabID>,
+        keepAwake: Set<TabID>
+    ) -> [TabID: TabSleepSignals] {
+        var signals: [TabID: TabSleepSignals] = [:]
+        for tab in tabs {
+            let state = audio[tab.id]
+            signals[tab.id] = TabSleepSignals(
+                isAudible: state?.isPlaying == true,
+                isCapturingMedia: state?.isCapturingMedia == true,
+                hasActiveDownload: activeDownloads.contains(tab.id),
+                isKeepAwake: keepAwake.contains(tab.id)
+            )
+        }
+        return signals
+    }
+
+    public func isKeptAwake(_ tabID: TabID) -> Bool {
+        keepAwakeTabIDs.contains(tabID)
+    }
+
+    /// Marks a tab as one the memory saver must never unload. In-memory on
+    /// purpose: the sleep policy's own state is per-session too.
+    public func toggleKeepAwake(_ tabID: TabID) {
+        if keepAwakeTabIDs.remove(tabID) != nil {
+            statusMessage = "This tab can be unloaded when idle again"
+        } else {
+            keepAwakeTabIDs.insert(tabID)
+            statusMessage = "This tab stays loaded until you close it"
+        }
+        applySleepPolicy()
+    }
+
+    // MARK: - Site permissions
+
+    /// One camera/microphone request waiting for the user. Pages can ask from
+    /// two tabs at once, so they queue instead of overwriting each other.
+    public struct PermissionRequest: Identifiable, Sendable {
+        public let id: UUID
+        public let origin: String
+        public let kind: SitePermissionKind
+    }
+
+    public var pendingPermissionRequest: PermissionRequest? {
+        permissionQueue.first
+    }
+
+    /// How many requests are waiting, including the one on screen. A page can
+    /// ask for the camera and the microphone, or two tabs can ask at once.
+    public var pendingPermissionCount: Int {
+        permissionQueue.count
+    }
+
+    public private(set) var sitePermissions: [SitePermissionRecord] = []
+
+    /// The engine calls this from `WKUIDelegate`. A remembered answer is
+    /// returned immediately; anything else becomes a prompt.
+    public func permissionDecision(origin: String, kind: SitePermissionKind) async -> SitePermissionDecision {
+        if let stored = try? environment.permissionRepository.decision(origin: origin, kind: kind),
+           stored != .ask {
+            return stored
+        }
+        return await withCheckedContinuation { continuation in
+            let request = PermissionRequest(id: UUID(), origin: origin, kind: kind)
+            permissionQueue.append(request)
+            permissionContinuations[request.id] = continuation
+            // A prompt nobody answers must not hold the page forever.
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(120))
+                self?.abandonPermissionRequest(request.id)
+            }
+        }
+    }
+
+    public func answerPermissionRequest(_ answer: SitePermissionAnswer) {
+        guard let request = permissionQueue.first else { return }
+        permissionQueue.removeFirst()
+        let decision: SitePermissionDecision = answer == .block ? .deny : .allow
+        if answer != .allowOnce {
+            try? environment.permissionRepository.set(origin: request.origin, kind: request.kind, decision: decision)
+            refreshSitePermissions()
+        }
+        permissionContinuations.removeValue(forKey: request.id)?.resume(returning: decision)
+    }
+
+    private func abandonPermissionRequest(_ id: UUID) {
+        guard let index = permissionQueue.firstIndex(where: { $0.id == id }) else { return }
+        let request = permissionQueue.remove(at: index)
+        permissionContinuations.removeValue(forKey: request.id)?.resume(returning: .deny)
+    }
+
+    public func refreshSitePermissions() {
+        sitePermissions = (try? environment.permissionRepository.all()) ?? []
+    }
+
+    public func removeSitePermission(_ record: SitePermissionRecord) {
+        try? environment.permissionRepository.remove(origin: record.origin, kind: record.kind)
+        refreshSitePermissions()
+    }
+
+    /// Registers this window with the shared runtime. Safe to call again: a
+    /// window that is hidden and shown again must not end up with two
+    /// registrations or none.
+    public func startObservingRuntime() {
+        guard runtimeObserverTokens.isEmpty else { return }
+        runtimeObserverTokens = [
+            environment.runtime.addEventObserver { [weak self] tabID, event in
+                self?.handle(event, for: tabID)
+            }
+        ]
+        downloadObserverToken = environment.runtime.downloads.addObserver { [weak self] info in
+            self?.handleDownload(info)
+        }
+        environment.runtime.permissionPrompter = self
+    }
+
+    /// Stops observing the shared runtime. Called when a window closes so a
+    /// closed window is not kept alive by its own registrations.
+    public func stopObservingRuntime() {
+        for token in runtimeObserverTokens {
+            environment.runtime.removeEventObserver(token)
+        }
+        runtimeObserverTokens = []
+        if let downloadObserverToken {
+            environment.runtime.downloads.removeObserver(downloadObserverToken)
+        }
+        downloadObserverToken = nil
     }
 
     private func handle(_ event: TabRuntimeEvent, for tabID: TabID) {
@@ -1280,6 +1484,23 @@ public final class BrowserWindowModel {
             if session.activeTabID == tabID {
                 isLoading = false
                 statusMessage = "This page stopped responding. Reload to try again."
+            }
+        case .lifecycleChanged(let lifecycle):
+            // Suspension and hibernation happen without a navigation event, so
+            // this is what keeps the tab strip, the stats card, the settings
+            // counters, and the sleep policy agreeing about what is loaded.
+            updateTab(tabID) { tab in
+                BrowserTab(
+                    id: tab.id,
+                    spaceID: tab.spaceID,
+                    title: tab.title,
+                    lastCommittedURL: tab.lastCommittedURL,
+                    position: tab.position,
+                    isPinned: tab.isPinned,
+                    lifecycle: lifecycle,
+                    createdAt: tab.createdAt,
+                    lastAccessedAt: tab.lastAccessedAt
+                )
             }
         case .requestedNewWindow(let url):
             _ = newTab(url: url)
@@ -1435,10 +1656,10 @@ public final class BrowserWindowModel {
             statusMessage = "Could not delete the profile: \(error.localizedDescription)"
             return
         }
-        WKWebsiteDataStore(forIdentifier: profile.dataStoreUUID).removeData(
-            ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
-            modifiedSince: .distantPast
-        ) {}
+        // The profile's own web views must never be reused, and its cookies and
+        // logins must not outlive it.
+        let storeIdentifier = profile.dataStoreUUID
+        Task { await environment.runtime.removeAllData(dataStoreIdentifier: storeIdentifier) }
 
         if wasActive {
             environment.runtime.teardownForProfileSwitch()
@@ -1485,6 +1706,7 @@ public final class BrowserWindowModel {
         downloads = []
         refreshBookmarks()
         refreshSavedCredentials()
+        refreshSitePermissions()
         refreshNavigationState()
         environment.runMaintenance()
         profileSwitchToken += 1

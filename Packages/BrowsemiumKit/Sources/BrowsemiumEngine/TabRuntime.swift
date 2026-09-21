@@ -16,6 +16,10 @@ public enum TabRuntimeEvent: Sendable {
     case downloadFinished(UUID)
     case downloadFailed(UUID, String)
     case audioStateChanged(TabAudioState)
+    /// The tab moved between load states without a navigation event, for
+    /// example when it was suspended or hibernated. The model mirrors this so
+    /// the UI and the sleep policy agree about what is actually loaded.
+    case lifecycleChanged(TabLifecycle)
     /// The user chose "Ask Browsemium AI" from the page context menu.
     case requestedAISelection
 }
@@ -42,6 +46,10 @@ public final class TabRuntime {
     public private(set) var audioState = TabAudioState(isPlaying: false, isMuted: false)
 
     public var onEvent: ((TabRuntimeEvent) -> Void)?
+
+    /// Asked before a page is granted the camera or the microphone. Weak so a
+    /// closed window never keeps a prompt alive.
+    public weak var permissionPrompter: PermissionPrompting?
 
     public init(
         tabID: TabID,
@@ -116,24 +124,39 @@ public final class TabRuntime {
     /// Applies the tab's mute state to the page. Called on user action and
     /// again after each navigation, since a fresh document starts unmuted.
     public func setMuted(_ muted: Bool) {
-        audioState = TabAudioState(isPlaying: muted ? false : audioState.isPlaying, isMuted: muted)
+        audioState = TabAudioState(
+            isPlaying: muted ? false : audioState.isPlaying,
+            isMuted: muted,
+            isCapturingMedia: audioState.isCapturingMedia
+        )
         report(.audioStateChanged(audioState))
         guard let webView else { return }
         webView.evaluateJavaScript("window.__browsemiumSetMuted && window.__browsemiumSetMuted(\(muted ? "true" : "false"))")
     }
 
-    func updateAudioState(isPlaying: Bool, isMuted: Bool) {
-        let state = TabAudioState(isPlaying: isMuted ? false : isPlaying, isMuted: isMuted)
+    func updateAudioState(isPlaying: Bool, isMuted: Bool, isCapturingMedia: Bool = false) {
+        let state = TabAudioState(
+            isPlaying: isMuted ? false : isPlaying,
+            isMuted: isMuted,
+            isCapturingMedia: isCapturingMedia
+        )
         guard state != audioState else { return }
         audioState = state
         report(.audioStateChanged(state))
+    }
+
+    /// Resolves a media-capture request for one kind. Denies when no window is
+    /// available to ask, which is the safe default.
+    func mediaCaptureDecision(origin: String, kind: SitePermissionKind) async -> SitePermissionDecision {
+        guard let permissionPrompter else { return .deny }
+        return await permissionPrompter.permissionDecision(origin: origin, kind: kind)
     }
 
     @discardableResult
     public func load(_ url: URL) -> WKNavigation? {
         let view = ensureWebView()
         lastRequestedURL = url
-        lifecycle = .loading
+        setLifecycle(.loading)
         return view.load(URLRequest(url: url))
     }
 
@@ -152,14 +175,14 @@ public final class TabRuntime {
     public func stopLoading() {
         webView?.stopLoading()
         if lifecycle == .loading {
-            lifecycle = lastCommittedURL == nil ? .metadataOnly : .suspended
+            setLifecycle(lastCommittedURL == nil ? .metadataOnly : .suspended)
         }
     }
 
     public func suspend() {
         webView?.removeFromSuperview()
         if lifecycle != .metadataOnly && lifecycle != .hibernated {
-            lifecycle = .suspended
+            setLifecycle(.suspended)
         }
     }
 
@@ -169,7 +192,7 @@ public final class TabRuntime {
         webView?.stopLoading()
         webView?.removeFromSuperview()
         webView = nil
-        lifecycle = .hibernated
+        setLifecycle(.hibernated)
     }
 
     public func find(_ query: String, backwards: Bool = false) async -> Bool {
@@ -255,10 +278,12 @@ public final class TabRuntime {
         return result as? Bool ?? false
     }
 
-    func report(_ event: TabRuntimeEvent) {
+    /// Entry point for runtime state changes. Navigation and UI delegates call
+    /// it; it is also public so a host can report state it observed itself.
+    public func report(_ event: TabRuntimeEvent) {
         switch event {
         case .startedLoading:
-            lifecycle = .loading
+            setLifecycle(.loading)
         case .committed(let url):
             if let url {
                 lastCommittedURL = url
@@ -267,15 +292,25 @@ public final class TabRuntime {
             if let url {
                 lastCommittedURL = url
             }
-            lifecycle = .active
+            setLifecycle(.active)
         case .failed:
-            lifecycle = lastCommittedURL == nil ? .metadataOnly : .crashed
+            setLifecycle(lastCommittedURL == nil ? .metadataOnly : .crashed)
         case .crashed:
-            lifecycle = .crashed
-        case .progressChanged, .requestedNewWindow, .requestedExternalScheme, .downloadStarted, .downloadFinished, .downloadFailed, .audioStateChanged, .requestedAISelection:
+            setLifecycle(.crashed)
+        case .progressChanged, .requestedNewWindow, .requestedExternalScheme, .downloadStarted, .downloadFinished, .downloadFailed, .audioStateChanged, .requestedAISelection, .lifecycleChanged:
             break
         }
         onEvent?(event)
+    }
+
+    /// The only place `lifecycle` is assigned, so every change reaches the
+    /// model. Hibernation happens on a timer rather than a navigation, and
+    /// without this the tab strip, the stats card, and the sleep policy all
+    /// kept believing the tab was still loaded.
+    private func setLifecycle(_ value: TabLifecycle) {
+        guard lifecycle != value else { return }
+        lifecycle = value
+        onEvent?(.lifecycleChanged(value))
     }
 
     func handleDidFinish(_ webView: WKWebView) {

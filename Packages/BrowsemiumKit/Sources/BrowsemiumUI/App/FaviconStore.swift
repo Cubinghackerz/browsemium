@@ -11,8 +11,20 @@ import WebKit
 @MainActor
 @Observable
 public final class FaviconStore {
+    /// Bounded so a long session with many hosts cannot grow without limit.
+    private static let maximumIcons = 256
+    private static let maximumTrackedHosts = 512
+    /// A site whose icon is not ready on the first try gets one more chance on
+    /// a later page load; beyond that the monogram is final for the session.
+    private static let maximumAttemptsPerHost = 2
+
     public private(set) var images: [String: NSImage] = [:]
-    private var attempted: Set<String> = []
+    /// Insertion order for the icon cache, so eviction drops the oldest host
+    /// rather than an arbitrary one.
+    private var imageOrder: [String] = []
+    /// Attempts per host, so a failed fetch can be retried instead of being
+    /// remembered as permanently hopeless.
+    private var attempts: [(host: String, count: Int)] = []
 
     public init() {}
 
@@ -24,10 +36,10 @@ public final class FaviconStore {
     public func fetchIcon(for webView: WKWebView, pageURL: URL) {
         guard let host = pageURL.host?.lowercased(),
               pageURL.scheme == "https" || pageURL.scheme == "http",
-              !attempted.contains(host) else {
+              canAttempt(host) else {
             return
         }
-        attempted.insert(host)
+        recordAttempt(host)
 
         let script = """
         (() => {
@@ -61,7 +73,7 @@ public final class FaviconStore {
         _ = await download(iconURL, host: host)
     }
 
-    private func store(_ href: String, relativeTo pageURL: URL, host: String) async -> Bool {
+    func store(_ href: String, relativeTo pageURL: URL, host: String) async -> Bool {
         if href.hasPrefix("data:") {
             return decodeDataURI(href, host: host)
         }
@@ -103,10 +115,29 @@ public final class FaviconStore {
         return true
     }
 
-    private func store(_ image: NSImage, for host: String) {
-        if images.count >= 256, let oldestKey = images.keys.first {
-            images[oldestKey] = nil
+    func store(_ image: NSImage, for host: String) {
+        if images[host] == nil {
+            imageOrder.append(host)
         }
         images[host] = image
+        while imageOrder.count > Self.maximumIcons {
+            let evicted = imageOrder.removeFirst()
+            images[evicted] = nil
+        }
+    }
+
+    func canAttempt(_ host: String) -> Bool {
+        (attempts.first { $0.host == host }?.count ?? 0) < Self.maximumAttemptsPerHost
+    }
+
+    func recordAttempt(_ host: String) {
+        if let index = attempts.firstIndex(where: { $0.host == host }) {
+            attempts[index].count += 1
+            return
+        }
+        attempts.append((host, 1))
+        if attempts.count > Self.maximumTrackedHosts {
+            attempts.removeFirst(attempts.count - Self.maximumTrackedHosts)
+        }
     }
 }

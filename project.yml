@@ -140,6 +140,8 @@ targets:
       - package: BrowsemiumKit
         product: BrowsemiumCore
       - package: BrowsemiumKit
+        product: BrowsemiumEngine
+      - package: BrowsemiumKit
         product: BrowsemiumUI
 schemes:
   Browsemium:

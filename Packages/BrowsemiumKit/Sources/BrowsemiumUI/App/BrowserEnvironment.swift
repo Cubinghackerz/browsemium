@@ -164,6 +164,14 @@ public final class BrowserEnvironment {
         _ = try? maintenance.run(settings: settings)
     }
 
+    /// Work that has to happen while the app is still alive. "Clear history
+    /// when Browsemium quits" was stored and shown in Settings and onboarding
+    /// but nothing ever read it, so the promise went unkept.
+    public func runTerminationTasks() {
+        guard loadSettings().clearOnQuit else { return }
+        try? privacyDataManager.clear([.history, .closedTabs])
+    }
+
     private static func applicationSupportDirectory() throws -> URL {
         if let argument = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--profile-dir=") }) {
             let path = String(argument.dropFirst("--profile-dir=".count))

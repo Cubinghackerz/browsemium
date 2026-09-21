@@ -4,9 +4,14 @@ import Foundation
 /// Registers Browsemium as a candidate for http/https links and reports
 /// whether it currently is the system default.
 enum DefaultBrowser {
-    static let bundleIdentifier = "com.browsemium.browser"
+    /// The running bundle's identifier. Hardcoding it meant a second edition —
+    /// or any renamed build — could never register or recognise itself.
+    static var bundleIdentifier: String? {
+        Bundle.main.bundleIdentifier
+    }
 
     static var isDefault: Bool {
+        guard let bundleIdentifier else { return false }
         for scheme in ["http", "https"] {
             guard let handler = LSCopyDefaultHandlerForURLScheme(scheme as CFString)?
                 .takeRetainedValue() as String?,
@@ -22,6 +27,7 @@ enum DefaultBrowser {
     /// send the user to System Settings.
     @discardableResult
     static func requestDefault() -> Bool {
+        guard let bundleIdentifier else { return false }
         var succeeded = true
         for scheme in ["http", "https"] {
             let status = LSSetDefaultHandlerForURLScheme(scheme as CFString, bundleIdentifier as CFString)

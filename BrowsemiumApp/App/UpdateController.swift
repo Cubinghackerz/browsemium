@@ -166,8 +166,10 @@ final class UpdateController: NSObject, SPUUpdaterDelegate {
     }
 
     func updateNotFound(error: Error, acknowledgement: @escaping () -> Void) {
-        phase = .idle
-        downloadProgress = nil
+        // A check that finds nothing must also lift the mandatory gate:
+        // otherwise the overlay sat on screen with a spinner, no status text,
+        // and no way to retry.
+        clearPendingUpdate()
         if manualCheckInProgress {
             manualCheckInProgress = false
             presentAlert(
@@ -176,6 +178,14 @@ final class UpdateController: NSObject, SPUUpdaterDelegate {
             )
         }
         acknowledgement()
+    }
+
+    private func clearPendingUpdate() {
+        phase = .idle
+        downloadProgress = nil
+        pendingVersion = nil
+        pendingTitle = nil
+        pendingInstallReply = nil
     }
 
     func updateError(_ error: Error, acknowledgement: @escaping () -> Void) {
@@ -267,13 +277,22 @@ final class UpdateController: NSObject, SPUUpdaterDelegate {
     // MARK: SPUUpdaterDelegate
 
     func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: Error) {
-        guard pendingVersion == nil else { return }
-        phase = .idle
+        // Nothing to install, so there is nothing to gate: a pending update
+        // that the feed no longer offers must release the overlay instead of
+        // leaving it spinning with no status text and no retry.
+        if pendingVersion != nil {
+            clearPendingUpdate()
+        } else {
+            phase = .idle
+        }
     }
 
     func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
-        guard pendingVersion == nil else { return }
-        phase = .idle
+        if pendingVersion != nil {
+            clearPendingUpdate()
+        } else {
+            phase = .idle
+        }
     }
 }
 

@@ -10,12 +10,18 @@ import Security
 /// signature on every rebuild, so macOS treats each build as a stranger and
 /// asks again, and "Always Allow" cannot help.
 ///
-/// For ad-hoc builds only, the app therefore replaces the item with one it owns
-/// itself. WebKit then finds an item whose access control matches, and never
-/// prompts. Signed builds are left completely alone, so released apps keep
-/// their WebCrypto keys across launches.
+/// Replacing the item belongs to the user's keychain, and the replacement key
+/// makes every WebCrypto key a site already stored in IndexedDB undecryptable,
+/// so this is **off by default**. Developers who would rather not see the
+/// prompt can opt in for one run:
+///
+///     BROWSEMIUM_CLAIM_WEBCRYPTO_KEY=1 open -a Browsemium
+///
+/// Signed builds are never touched, so released apps keep their WebCrypto keys
+/// across launches.
 public enum WebCryptoKeychainItem {
     public static let accountPrefix = "com.apple.WebKit.WebCrypto.master+"
+    public static let optInVariable = "BROWSEMIUM_CLAIM_WEBCRYPTO_KEY"
 
     /// The service name WebKit uses: the application name plus this suffix.
     public static func serviceName(appName: String) -> String {
@@ -59,10 +65,20 @@ public enum WebCryptoKeychainItem {
         return true
     }
 
-    /// Replaces the item so it belongs to this build. No-op for signed builds.
+    /// True when the developer asked for the replacement to happen. The item
+    /// is the user's, so this is never automatic.
+    public static func isOptedIn(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
+        let value = environment[optInVariable]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return value == "1" || value == "true" || value == "yes"
+    }
+
+    /// Replaces the item so it belongs to this build. Only for ad-hoc builds
+    /// that explicitly opted in; signed builds and every default run are
+    /// no-ops.
     @discardableResult
     public static func claimForAdHocBuilds() -> Bool {
-        guard isAdHocSigned,
+        guard isOptedIn(),
+              isAdHocSigned,
               let service = currentServiceName,
               let bundleID = Bundle.main.bundleIdentifier else {
             return false

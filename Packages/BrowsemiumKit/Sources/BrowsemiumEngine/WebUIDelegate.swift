@@ -7,6 +7,36 @@ import WebKit
 final class WebUIDelegate: NSObject, WKUIDelegate {
     weak var runtime: TabRuntime?
 
+    /// Answers a camera/microphone request from a page. WebKit denies these
+    /// outright when the delegate does not implement this method, so a site
+    /// that needs the microphone — a voice session with an AI provider, a
+    /// video call — used to fail without ever asking. The runtime owns the
+    /// policy; this only translates the request.
+    func webView(
+        _ webView: WKWebView,
+        decideMediaCapturePermissionsFor origin: WKSecurityOrigin,
+        initiatedBy frame: WKFrameInfo,
+        type: WKMediaCaptureType
+    ) async -> WKPermissionDecision {
+        guard let runtime, let originKey = origin.browsemiumOrigin else {
+            return .deny
+        }
+
+        let kinds: [SitePermissionKind]
+        switch type {
+        case .camera: kinds = [.camera]
+        case .microphone: kinds = [.microphone]
+        case .cameraAndMicrophone: kinds = [.camera, .microphone]
+        @unknown default: kinds = [.camera, .microphone]
+        }
+
+        for kind in kinds {
+            let decision = await runtime.mediaCaptureDecision(origin: originKey, kind: kind)
+            guard decision == .allow else { return .deny }
+        }
+        return .grant
+    }
+
     func webView(
         _ webView: WKWebView,
         createWebViewWith configuration: WKWebViewConfiguration,
@@ -107,5 +137,19 @@ final class WebUIDelegate: NSObject, WKUIDelegate {
         panel.canChooseDirectories = parameters.allowsDirectories
         panel.allowsMultipleSelection = parameters.allowsMultipleSelection
         completionHandler(panel.runModal() == .OK ? panel.urls : nil)
+    }
+}
+
+extension WKSecurityOrigin {
+    /// The same `scheme://host[:port]` key `OriginNormalizer` produces for a
+    /// URL, so a decision made on one page is found again on the next visit.
+    /// Default ports are omitted so `https://example.com` is one origin
+    /// whether or not WebKit reports the port.
+    var browsemiumOrigin: String? {
+        let scheme = `protocol`.lowercased()
+        guard scheme == "http" || scheme == "https", !host.isEmpty else { return nil }
+        let loweredHost = host.lowercased()
+        let isDefaultPort = (scheme == "https" && port == 443) || (scheme == "http" && port == 80)
+        return isDefaultPort ? "\(scheme)://\(loweredHost)" : "\(scheme)://\(loweredHost):\(port)"
     }
 }

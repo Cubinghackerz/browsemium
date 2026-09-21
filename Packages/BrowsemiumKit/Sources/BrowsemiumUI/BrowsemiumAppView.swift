@@ -75,6 +75,15 @@ public struct BrowsemiumAppView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
 
+            if let request = model.pendingPermissionRequest {
+                Color.black.opacity(0.24)
+                    .ignoresSafeArea()
+                PermissionPromptCard(request: request) { answer in
+                    model.answerPermissionRequest(answer)
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            }
+
             if let status = model.statusMessage, model.activePanel == .none {
                 VStack {
                     Spacer()
@@ -113,6 +122,7 @@ public struct BrowsemiumAppView: View {
             }
         }
         .onAppear {
+            model.startObservingRuntime()
             model.ensureLoaded(model.session.activeTabID ?? TabID())
         }
         .focusedSceneValue(\.browserModel, model)
@@ -133,6 +143,11 @@ public struct BrowsemiumAppView: View {
             // Context captured from the page's context menu lands in the
             // assistant composer, ready for the user's question.
             ai.adopt(model.consumePendingAIContext())
+        }
+        .onDisappear {
+            // A closed window must not keep receiving runtime events or hold
+            // an unanswered permission request.
+            model.stopObservingRuntime()
         }
     }
 

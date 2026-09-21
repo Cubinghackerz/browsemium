@@ -259,6 +259,9 @@ private struct TabItem: View {
         }
         .contextMenu {
             Button(tab.isPinned ? "Unpin Tab" : "Pin Tab") { model.togglePin(tab.id) }
+            Button(model.isKeptAwake(tab.id) ? "Allow This Tab to Sleep" : "Keep This Tab Loaded") {
+                model.toggleKeepAwake(tab.id)
+            }
             Divider()
             Button("Close Tab") { model.closeTab(tab.id) }
         }

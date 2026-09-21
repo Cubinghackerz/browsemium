@@ -44,6 +44,16 @@ public struct SitePermissionRecord: Hashable, Codable, Sendable, Identifiable {
     }
 }
 
+/// What the user chose in a permission prompt.
+public enum SitePermissionAnswer: Sendable, Equatable {
+    /// Allowed for this page load only; nothing is written down.
+    case allowOnce
+    /// Allowed and remembered for the origin.
+    case allowAlways
+    /// Denied and remembered for the origin.
+    case block
+}
+
 public struct SearchEnginePreset: Hashable, Codable, Sendable, Identifiable {
     public var id: String { name }
     public let name: String

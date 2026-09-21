@@ -58,6 +58,7 @@ struct SettingsView: View {
                     performanceSection
                     importSection
                     privacySection
+                    sitePermissionsSection
                     passwordsSection
                     assistantSection
                     aboutSection
@@ -113,9 +114,17 @@ struct SettingsView: View {
                 model.clearBrowsingData()
                 statusMessage = "Browsing data cleared."
             }
+            Button("Clear cookies, site data, and cache", role: .destructive) {
+                model.clearCookiesAndSiteData()
+                statusMessage = "Cookies, site data, and cache cleared for this profile."
+            }
+            Button("Clear cache only", role: .destructive) {
+                model.clearCache()
+                statusMessage = "Cache cleared for this profile."
+            }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Bookmarks, settings, and saved API keys are kept.")
+            Text("Bookmarks, settings, and saved API keys are kept. Site data belongs to the active profile only.")
         }
         .alert(
             "\(keyPromptProvider.map { ProviderPanelDescriptor.descriptor(for: $0).displayName } ?? "") API key",
@@ -376,7 +385,7 @@ struct SettingsView: View {
                     .foregroundStyle(Color.browsemiumSecondary)
             }
 
-            SettingsNote("Browsemium unloads background tabs instead of keeping every page in memory. That is the real reason it can use less memory than Chrome — pages reload when you return to them. Web pages run in separate WebKit processes, so the figure above is Browsemium's own footprint.")
+            SettingsNote("Browsemium unloads background tabs instead of keeping every page in memory, so a tab may reload when you return to it. The figure above covers the \(model.memoryScopeDescription); WebKit does not expose per-tab memory.")
         }
     }
 
@@ -472,14 +481,49 @@ struct SettingsView: View {
             SettingsRow("Browsing data") {
                 HStack(spacing: 14) {
                     BrowsemiumTextButton("Clear browsing data…") { isConfirmingClear = true }
-                    BrowsemiumTextButton("Remove site permissions", role: .destructive) {
-                        try? model.environment.permissionRepository.removeAll()
-                        statusMessage = "Site permissions removed."
+                    BrowsemiumTextButton("Clear cookies and site data", role: .destructive) {
+                        model.clearCookiesAndSiteData()
+                        statusMessage = "Cookies and site data cleared for this profile."
                     }
                 }
             }
 
             SettingsNote("Browsemium relies on WebKit tracking prevention and never reports a blocked-item count it cannot verify. Browsing data stays on this Mac.")
+        }
+    }
+
+    private var sitePermissionsSection: some View {
+        SettingsCard("Site permissions", systemImage: "checkmark.shield") {
+            if model.sitePermissions.isEmpty {
+                SettingsRow("Nothing allowed yet") {
+                    Text("Sites that ask for your camera or microphone appear here.")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Color.browsemiumSecondary)
+                }
+            } else {
+                ForEach(model.sitePermissions) { record in
+                    SettingsRow(record.origin) {
+                        HStack(spacing: 12) {
+                            Text("\(record.kind.displayName) · \(record.decision == .allow ? "Allowed" : "Blocked")")
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(record.decision == .allow ? Color.browsemiumSecondary : Color.browsemiumWarning)
+                            BrowsemiumTextButton("Remove", role: .destructive) {
+                                model.removeSitePermission(record)
+                                statusMessage = "Permission removed."
+                            }
+                        }
+                    }
+                }
+                SettingsRow("All sites") {
+                    BrowsemiumTextButton("Remove every permission", role: .destructive) {
+                        try? model.environment.permissionRepository.removeAll()
+                        model.refreshSitePermissions()
+                        statusMessage = "Site permissions removed."
+                    }
+                }
+            }
+
+            SettingsNote("A site is asked once per profile. Allow answers apply to that page load only; Always allow and Block are remembered until you remove them.")
         }
     }
 

@@ -15,14 +15,35 @@ public final class DownloadCoordinator: NSObject, WKDownloadDelegate {
         public let failureMessage: String?
     }
 
-    public var onUpdate: ((DownloadInfo) -> Void)?
+    /// Every window observes downloads. A single callback slot meant the last
+    /// window to open saw the progress and the others saw none.
+    private var observers: [UUID: (DownloadInfo) -> Void] = [:]
+
+    @discardableResult
+    public func addObserver(_ handler: @escaping (DownloadInfo) -> Void) -> UUID {
+        let token = UUID()
+        observers[token] = handler
+        return token
+    }
+
+    public func removeObserver(_ token: UUID) {
+        observers[token] = nil
+    }
+
+    private func publish(_ info: DownloadInfo) {
+        for observer in observers.values {
+            observer(info)
+        }
+    }
 
     private var infos: [ObjectIdentifier: DownloadInfo] = [:]
+    /// Adoption order, so the list reads oldest first instead of alphabetically.
+    private var order: [ObjectIdentifier] = []
     private var pollers: [ObjectIdentifier: Task<Void, Never>] = [:]
     private let destinationPolicy = DownloadDestinationPolicy()
 
     public func allDownloads() -> [DownloadInfo] {
-        infos.values.sorted { $0.suggestedFilename < $1.suggestedFilename }
+        order.compactMap { infos[$0] }
     }
 
     func adopt(_ download: WKDownload, tabID: TabID?, eventHandler: @escaping (TabRuntimeEvent) -> Void) {
@@ -40,6 +61,9 @@ public final class DownloadCoordinator: NSObject, WKDownloadDelegate {
             failureMessage: nil
         )
         infos[key] = initial
+        if !order.contains(key) {
+            order.append(key)
+        }
         eventHandler(.downloadStarted(id))
         pollProgress(for: download, key: key, eventHandler: eventHandler)
     }
@@ -65,7 +89,7 @@ public final class DownloadCoordinator: NSObject, WKDownloadDelegate {
                     failureMessage: info.failureMessage
                 )
                 self.infos[key] = info
-                self.onUpdate?(info)
+                self.publish(info)
                 if progress.isFinished || progress.isCancelled {
                     return
                 }
@@ -82,7 +106,7 @@ public final class DownloadCoordinator: NSObject, WKDownloadDelegate {
         guard let info = infos[key] else { return }
         let updated = transform(info)
         infos[key] = updated
-        onUpdate?(updated)
+        publish(updated)
     }
 
     public func download(
@@ -139,7 +163,7 @@ public final class DownloadCoordinator: NSObject, WKDownloadDelegate {
             failureMessage: nil
         )
         infos[key] = finished
-        onUpdate?(finished)
+        publish(finished)
     }
 
     public func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
@@ -158,6 +182,6 @@ public final class DownloadCoordinator: NSObject, WKDownloadDelegate {
             failureMessage: error.localizedDescription
         )
         infos[key] = failed
-        onUpdate?(failed)
+        publish(failed)
     }
 }

@@ -3,20 +3,36 @@ import BrowsemiumUI
 import Foundation
 import SwiftUI
 
+/// App-lifetime work. The only thing here is the promise the settings screen
+/// makes: "Clear history when Browsemium quits".
+@MainActor
+final class BrowsemiumAppDelegate: NSObject, NSApplicationDelegate {
+    /// Set once the environment exists. Weak: the app owns it.
+    weak var environment: BrowserEnvironment?
+
+    func applicationWillTerminate(_ notification: Notification) {
+        environment?.runTerminationTasks()
+    }
+}
+
 @main
 struct BrowsemiumApp: App {
     @State private var environment = BrowsemiumApp.makeEnvironment()
     @State private var updates = UpdateController()
     @State private var windowRegistry = WindowRegistry()
+    @NSApplicationDelegateAdaptor(BrowsemiumAppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "main") {
             BrowsemiumWindowRoot(
                 environment: environment,
                 registry: windowRegistry,
                 updates: updates,
                 initialURLs: Self.commandLineURLs
             )
+            .onAppear {
+                appDelegate.environment = environment
+            }
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
