@@ -46,6 +46,36 @@ Benchmarks/benchmark-memory.sh --browsemium /Applications/Browsemium.app \
 The 20% lower-memory target is a release gate. If the gate fails, do not publish a
 comparative claim and do not change the measurement method to make it pass.
 
+What the harness measures, and why:
+
+- **Process tree, not name matching.** Memory is summed for the launched pid and
+  every descendant. Matching by name counted a second copy of the browser the
+  user already had open, and missed WebKit's page processes entirely.
+- **WebKit page processes are attributed by difference.** WebKit spawns
+  `com.apple.WebKit.*` XPC services through launchd, so they are not children of
+  the app that asked for them and no public API attributes them. The harness
+  sums them before launch and after settling, and attributes the difference to
+  the run. It refuses to measure while another WebKit app is active, because
+  that app's page processes would otherwise be counted as Browsemium's.
+- **The profile directory must be inside the app container.** Browsemium is
+  sandboxed: `--profile-dir=/tmp/...` is denied and the app silently falls back
+  to an in-memory database, which measures something other than the shipped
+  browser. The harness uses
+  `~/Library/Containers/com.browsemium.browser/Data/tmp/browsemium-bench-N`.
+- **Both browsers are measured the same way**, in the same run, with the same
+  ten fixture pages and the same settle period.
+
+Chrome parents its own helpers, so its tree is complete on its own; Browsemium's
+number is the app plus the page processes that appeared. Report both the total
+and the app-only figure, and never a number from a run where the pre-flight
+check failed.
+
+The harness refuses to report a gate verdict when a Browsemium trial shows no
+WebKit page processes, because that means the ten pages never loaded and the run
+measured an empty browser. Raise `--settle` until every trial reports page
+processes (cold start plus WebKit warm-up can take longer than a short settle),
+then rerun.
+
 ## Content rules
 
 ```sh
@@ -112,12 +142,15 @@ password to authorize the key the first time; without that password the build
 fails with `errSecInternalComponent`, so ad-hoc signing is the safe default.
 
 If the prompt is in the way during development, either click **Always Allow**
-(if the keychain password is known) or delete the stale item once so WebKit
-recreates it under the current build:
+(if the keychain password is known) or let the app replace the item for one run:
 
 ```sh
-security delete-generic-password -s "Browsemium WebCrypto Master Key"
+BROWSEMIUM_CLAIM_WEBCRYPTO_KEY=1 open -a Browsemium
 ```
+
+That opt-in makes the app delete WebKit's item and create its own, which also
+makes every WebCrypto key a site already stored in IndexedDB undecryptable, so it
+never happens automatically. Signed builds are never affected.
 
 ## Release
 
