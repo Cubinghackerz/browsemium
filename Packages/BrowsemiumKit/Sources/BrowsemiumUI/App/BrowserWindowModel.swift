@@ -51,6 +51,9 @@ public final class BrowserWindowModel: PermissionPrompting {
     public var focusAddressToken: Int
     public var appearance: AppearancePreference
     public private(set) var tabURLs: [TabID: URL]
+    /// The link the pointer is over in the active tab, shown in the status
+    /// bar. Reported by the page's injected hover monitor.
+    public private(set) var hoveredLinkURL: URL?
     /// Tabs that are currently playing audio or have been muted. WebKit does
     /// not expose this, so it comes from the injected page monitor.
     public private(set) var tabAudio: [TabID: TabAudioState] = [:]
@@ -99,6 +102,12 @@ public final class BrowserWindowModel: PermissionPrompting {
         BrowserPaletteCommand(id: "ai-summarize", title: "AI: Summarize This Page", shortcut: "", command: .aiQuickAction(.summarizePage)),
         BrowserPaletteCommand(id: "ai-keypoints", title: "AI: Extract Key Points", shortcut: "", command: .aiQuickAction(.keyPoints)),
         BrowserPaletteCommand(id: "ai-explain", title: "AI: Explain Selection", shortcut: "", command: .aiQuickAction(.explainSelection)),
+        BrowserPaletteCommand(id: "zoom-in", title: "Zoom In", shortcut: "⌘+", command: .zoomIn),
+        BrowserPaletteCommand(id: "zoom-out", title: "Zoom Out", shortcut: "⌘-", command: .zoomOut),
+        BrowserPaletteCommand(id: "zoom-reset", title: "Reset Zoom", shortcut: "⌘0", command: .resetZoom),
+        BrowserPaletteCommand(id: "save-pdf", title: "Save Page as PDF", shortcut: "", command: .savePageAsPDF),
+        BrowserPaletteCommand(id: "save-screenshot", title: "Save Page Screenshot", shortcut: "", command: .savePageScreenshot),
+        BrowserPaletteCommand(id: "pip", title: "Picture in Picture", shortcut: "", command: .togglePictureInPicture),
         BrowserPaletteCommand(id: "clear-data", title: "Clear Browsing Data", shortcut: "", command: .clearBrowsingData)
     ]
 
@@ -478,10 +487,34 @@ public final class BrowserWindowModel: PermissionPrompting {
         )
         activePanel = .none
         readerArticle = nil
+        hoveredLinkURL = nil
         addressText = tabURLs[tabID]?.absoluteString ?? activeTab?.lastCommittedURL?.absoluteString ?? ""
         refreshNavigationState()
         persistSession()
         Task { await environment.engine.activate(tabID: tabID, in: paneID) }
+    }
+
+    /// A tab in the current space already pointing at this URL, compared
+    /// loosely so a trailing slash or scheme case does not defeat the match.
+    private func duplicateTab(of url: URL, excluding tabID: TabID) -> TabID? {
+        let target = Self.normalizedForDuplicateCheck(url)
+        return session.tabs.first { tab in
+            tab.id != tabID
+                && tab.spaceID == session.activeSpaceID
+                && (tabURLs[tab.id] ?? tab.lastCommittedURL).map(Self.normalizedForDuplicateCheck) == target
+        }?.id
+    }
+
+    private static func normalizedForDuplicateCheck(_ url: URL) -> String {
+        var normalized = url.absoluteString
+        if var components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            // Scheme and host are case-insensitive; the path is not.
+            if let scheme = components.scheme { components.scheme = scheme.lowercased() }
+            if let host = components.host { components.host = host.lowercased() }
+            normalized = components.string ?? normalized
+        }
+        if normalized.hasSuffix("/") { normalized.removeLast() }
+        return normalized
     }
 
     public func moveTab(_ sourceID: TabID, before targetID: TabID) {
@@ -837,21 +870,117 @@ public final class BrowserWindowModel: PermissionPrompting {
     public func zoomIn() {
         guard let tabID = session.activeTabID else { return }
         environment.engine.adjustZoom(tabID: tabID, by: 0.1)
+        persistZoomForActivePage()
     }
 
     public func zoomOut() {
         guard let tabID = session.activeTabID else { return }
         environment.engine.adjustZoom(tabID: tabID, by: -0.1)
+        persistZoomForActivePage()
     }
 
     public func resetZoom() {
         guard let tabID = session.activeTabID else { return }
         environment.engine.resetZoom(tabID: tabID)
+        if let host = Self.zoomHost(of: activeTab?.lastCommittedURL ?? tabURLs[tabID]) {
+            try? environment.sitePreferenceRepository.remove(origin: host, preference: "zoom")
+        }
+    }
+
+    /// Saves the current page zoom for the site's host. Zooming is a per-site
+    /// preference: returning to the host restores it, and hosts never inherit
+    /// a level dialed in somewhere else.
+    private func persistZoomForActivePage() {
+        // Private windows remember nothing, including zoom.
+        guard !session.isPrivate,
+              let tabID = session.activeTabID,
+              let host = Self.zoomHost(of: activeTab?.lastCommittedURL ?? tabURLs[tabID]) else { return }
+        let zoom = environment.engine.currentZoom(tabID: tabID)
+        try? environment.sitePreferenceRepository.set(origin: host, preference: "zoom", value: String(Double(zoom)))
+    }
+
+    /// Host-keyed so example.com keeps its level across pages on that site.
+    /// Returns nil for URLs without a host, where zoom is not remembered.
+    static func zoomHost(of url: URL?) -> String? {
+        guard let host = url?.host(percentEncoded: false), !host.isEmpty else { return nil }
+        return host.lowercased()
+    }
+
+    /// Restores the saved level — or resets to 100%, so a zoomed site does not
+    /// bleed into the next one the tab visits. Hostless pages (file:, about:)
+    /// reset too, since a warm webview may carry a previous site's level.
+    private func applySiteZoom(tabID: TabID, url: URL) {
+        guard let host = Self.zoomHost(of: url) else {
+            environment.engine.setZoom(tabID: tabID, to: 1)
+            return
+        }
+        let saved = (try? environment.sitePreferenceRepository.value(origin: host, preference: "zoom"))
+            .flatMap { Double($0) }
+        environment.engine.setZoom(tabID: tabID, to: saved.map { CGFloat($0) } ?? 1)
     }
 
     public func printPage() {
         guard let tabID = session.activeTabID else { return }
         environment.engine.printPage(tabID: tabID)
+    }
+
+    /// Saves the full page as a PDF next to the user's downloads location of
+    /// choice. The save panel is the consent point — nothing writes without it.
+    public func savePageAsPDF() {
+        guard let tabID = session.activeTabID else { return }
+        let baseName = Self.exportBaseName(for: activeTab)
+        Task {
+            do {
+                let data = try await environment.engine.pagePDF(tabID: tabID)
+                saveExport(data: data, baseName: baseName, extension: "pdf")
+            } catch {
+                statusMessage = "This page could not be saved as a PDF."
+            }
+        }
+    }
+
+    /// Saves the visible viewport as a PNG.
+    public func savePageScreenshot() {
+        guard let tabID = session.activeTabID else { return }
+        let baseName = Self.exportBaseName(for: activeTab)
+        Task {
+            do {
+                let data = try await environment.engine.pageScreenshot(tabID: tabID)
+                saveExport(data: data, baseName: baseName, extension: "png")
+            } catch {
+                statusMessage = "This page could not be captured."
+            }
+        }
+    }
+
+    private static func exportBaseName(for tab: BrowserTab?) -> String {
+        let raw = tab?.title ?? tab?.lastCommittedURL?.host ?? "page"
+        let safe = raw.replacingOccurrences(of: "[/:\\\\?%*|\"<>]", with: "-", options: .regularExpression)
+        return safe.isEmpty ? "page" : safe
+    }
+
+    private func saveExport(data: Data, baseName: String, extension ext: String) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "\(baseName).\(ext)"
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try data.write(to: url, options: .atomic)
+            statusMessage = "Saved \(url.lastPathComponent)"
+        } catch {
+            statusMessage = "The file could not be saved."
+        }
+    }
+
+    public func togglePictureInPicture() {
+        guard let tabID = session.activeTabID else { return }
+        Task {
+            if await environment.engine.togglePictureInPicture(tabID: tabID) {
+                statusMessage = nil
+            } else {
+                statusMessage = "No video on this page can play in Picture in Picture."
+            }
+        }
     }
 
     public func ensureLoaded(_ tabID: TabID) {
@@ -1041,6 +1170,18 @@ public final class BrowserWindowModel: PermissionPrompting {
             clearBrowsingData()
         case .aiQuickAction(let action):
             requestAIQuickAction(action)
+        case .zoomIn:
+            zoomIn()
+        case .zoomOut:
+            zoomOut()
+        case .resetZoom:
+            resetZoom()
+        case .savePageAsPDF:
+            savePageAsPDF()
+        case .savePageScreenshot:
+            savePageScreenshot()
+        case .togglePictureInPicture:
+            togglePictureInPicture()
         }
     }
 
@@ -1069,6 +1210,14 @@ public final class BrowserWindowModel: PermissionPrompting {
         )
         do {
             let request = try resolver.resolve(bangPreset == nil ? addressText : query)
+            // Typing a URL that is already open in this space switches to the
+            // existing tab instead of stacking a duplicate. Navigations the
+            // page itself triggers (target=_blank, redirects) are unaffected.
+            if let existing = duplicateTab(of: request.url, excluding: tabID) {
+                selectTab(existing)
+                statusMessage = "Switched to the tab that already had this page open"
+                return
+            }
             tabURLs[tabID] = request.url
             updateTab(tabID) { tab in
                 BrowserTab(
@@ -1219,6 +1368,18 @@ public final class BrowserWindowModel: PermissionPrompting {
         }
         _ = try? environment.closedTabRepository.remove(id: entry.id)
         _ = newTab(url: entry.url)
+    }
+
+    /// Reopens a specific entry from the recently-closed list and drops it
+    /// from that list, matching the ⇧⌘T behaviour.
+    public func reopenClosedTab(_ entry: ClosedTabEntry) {
+        _ = try? environment.closedTabRepository.remove(id: entry.id)
+        _ = newTab(url: entry.url)
+    }
+
+    /// The list behind the Recently Closed section.
+    public func recentlyClosedTabs(limit: Int = 20) -> [ClosedTabEntry] {
+        (try? environment.closedTabRepository.recent(limit: limit)) ?? []
     }
 
     public func clearBrowsingData() {
@@ -1421,6 +1582,12 @@ public final class BrowserWindowModel: PermissionPrompting {
         switch event {
         case .requestedAISelection:
             captureSelectionForAI(tabID: tabID)
+        case .linkHovered(let url):
+            // Only the visible tab owns the status bar; a background tab's
+            // hover events are ignored so the bar never lies.
+            if session.activeTabID == tabID {
+                hoveredLinkURL = url
+            }
         case .audioStateChanged(let state):
             if state.isPlaying || state.isMuted {
                 tabAudio[tabID] = state
@@ -1435,6 +1602,7 @@ public final class BrowserWindowModel: PermissionPrompting {
                 isLoading = true
                 loadingProgress = 0.05
                 statusMessage = nil
+                hoveredLinkURL = nil
             }
             updateTab(tabID) { tab in
                 BrowserTab(
@@ -1452,6 +1620,9 @@ public final class BrowserWindowModel: PermissionPrompting {
         case .committed(let url):
             if let url {
                 tabURLs[tabID] = url
+                // Page zoom is per-webview, so a navigation keeps the last
+                // site's level unless the destination's preference is applied.
+                applySiteZoom(tabID: tabID, url: url)
                 if session.activeTabID == tabID {
                     addressText = url.absoluteString
                     // Refresh now so the bookmark star follows the new page

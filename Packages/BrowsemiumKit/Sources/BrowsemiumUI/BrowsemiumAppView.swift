@@ -229,6 +229,15 @@ public struct BrowsemiumAppView: View {
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
                 }
+                .overlay(alignment: .bottomLeading) {
+                    if let hovered = model.hoveredLinkURL {
+                        LinkStatusBar(url: hovered)
+                            .padding(.leading, 8)
+                            .padding(.bottom, 8)
+                            .transition(.opacity)
+                            .allowsHitTesting(false)
+                    }
+                }
         }
         .browsemiumPanel(background: .browsemiumRaised)
     }
@@ -239,7 +248,7 @@ public struct BrowsemiumAppView: View {
             ReaderView(model: model, article: article)
         } else {
             switch model.activePanel {
-            case .history, .bookmarks, .downloads:
+            case .history, .bookmarks, .downloads, .recentlyClosed:
                 LibraryView(model: model)
             case .settings:
                 SettingsView(model: model)
@@ -259,6 +268,47 @@ public struct BrowsemiumAppView: View {
         }
     }
 
+}
+
+/// Chrome-style status bar: shows where a hovered link points so the user can
+/// check the destination before clicking. Read-only — clicking through it is
+/// impossible by design.
+@MainActor
+private struct LinkStatusBar: View {
+    let url: URL
+
+    var body: some View {
+        Text(url.absoluteString)
+            .font(.system(size: 11))
+            .foregroundStyle(Color.browsemiumSecondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .frame(maxWidth: 460, alignment: .leading)
+            .background(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 0,
+                    bottomLeadingRadius: 0,
+                    bottomTrailingRadius: BrowserMetrics.controlRadius,
+                    topTrailingRadius: BrowserMetrics.controlRadius,
+                    style: .continuous
+                )
+                .fill(Color.browsemiumRaised.opacity(0.96))
+            )
+            .overlay(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 0,
+                    bottomLeadingRadius: 0,
+                    bottomTrailingRadius: BrowserMetrics.controlRadius,
+                    topTrailingRadius: BrowserMetrics.controlRadius,
+                    style: .continuous
+                )
+                .stroke(Color.browsemiumBorder, lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.10), radius: 4, y: 1)
+            .accessibilityLabel("Link: \(url.absoluteString)")
+    }
 }
 
 /// Transient feedback that never occupies permanent space in the chrome.

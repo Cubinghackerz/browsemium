@@ -167,8 +167,31 @@ final class ChromiumEngine: NSObject, BrowserEngine {
         tabs[tabID]?.resetZoom()
     }
 
+    func currentZoom(tabID: TabID) -> CGFloat {
+        // CEF tracks zoom as a level, not a factor; the parked edition does
+        // not read it back yet, so report the default honestly.
+        1
+    }
+
+    func setZoom(tabID: TabID, to zoom: CGFloat) {
+        // Parked: Chromium zoom restore is unwired until CEF zoom levels are
+        // plumbed through ChromiumTab.
+    }
+
     func printPage(tabID: TabID) {
         tabs[tabID]?.printPage()
+    }
+
+    func pagePDF(tabID: TabID) async throws -> Data {
+        throw BrowsemiumError.captureUnavailable(EngineLimitation.captureMessage)
+    }
+
+    func pageScreenshot(tabID: TabID) async throws -> Data {
+        throw BrowsemiumError.captureUnavailable(EngineLimitation.captureMessage)
+    }
+
+    func togglePictureInPicture(tabID: TabID) async -> Bool {
+        false
     }
 
     func capture(tabID: TabID, request: CaptureRequest) async throws -> CapturedContext {

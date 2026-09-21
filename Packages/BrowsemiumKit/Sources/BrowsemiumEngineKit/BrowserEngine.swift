@@ -53,7 +53,19 @@ public protocol BrowserEngine: AnyObject {
     func clearFindHighlight(tabID: TabID)
     func adjustZoom(tabID: TabID, by delta: CGFloat)
     func resetZoom(tabID: TabID)
+    /// The page's live zoom factor (1 = 100%). Needed so the window can
+    /// persist the value the user just dialed in.
+    func currentZoom(tabID: TabID) -> CGFloat
+    /// Applies an exact zoom factor, for restoring a per-site preference.
+    func setZoom(tabID: TabID, to zoom: CGFloat)
     func printPage(tabID: TabID)
+    /// The full scrollable page as PDF data.
+    func pagePDF(tabID: TabID) async throws -> Data
+    /// The visible viewport as PNG data.
+    func pageScreenshot(tabID: TabID) async throws -> Data
+    /// Toggles Picture in Picture for the page's first video.
+    /// Returns whether the toggle was accepted.
+    func togglePictureInPicture(tabID: TabID) async -> Bool
     func capture(tabID: TabID, request: CaptureRequest) async throws -> CapturedContext
     func extractArticle(tabID: TabID) async throws -> ReaderArticle
     func fillCredential(tabID: TabID, username: String, password: String) async throws -> Bool

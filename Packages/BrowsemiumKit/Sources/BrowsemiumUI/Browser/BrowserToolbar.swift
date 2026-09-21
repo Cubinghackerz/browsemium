@@ -331,6 +331,11 @@ struct BrowserToolbar: View {
         Menu {
             Button("New Tab") { model.newTab() }
             Button("Reopen Closed Tab") { model.reopenClosedTab() }
+            Button("Recently Closed Tabs") { model.openPanel(.recentlyClosed) }
+            Divider()
+            Button("Save as PDF…") { model.savePageAsPDF() }
+            Button("Save Screenshot…") { model.savePageScreenshot() }
+            Button("Picture in Picture") { model.togglePictureInPicture() }
             Divider()
             Button("History") { model.openPanel(.history) }
             Button("Bookmarks") { model.openPanel(.bookmarks) }

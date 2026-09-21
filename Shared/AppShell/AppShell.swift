@@ -195,6 +195,14 @@ struct BrowserCommands: Commands {
                 .keyboardShortcut("0", modifiers: .command)
                 .disabled(model == nil)
             Divider()
+            Button("Save as PDF…") { model?.savePageAsPDF() }
+                .disabled(model == nil)
+            Button("Save Screenshot…") { model?.savePageScreenshot() }
+                .disabled(model == nil)
+            Divider()
+            Button("Picture in Picture") { model?.togglePictureInPicture() }
+                .disabled(model == nil)
+            Divider()
             Button("Print…") { model?.printPage() }
                 .keyboardShortcut("p", modifiers: .command)
                 .disabled(model == nil)

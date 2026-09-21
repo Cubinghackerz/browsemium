@@ -10,6 +10,7 @@ struct LibraryView: View {
         case history
         case bookmarks
         case downloads
+        case recentlyClosed
 
         var id: String { rawValue }
 
@@ -18,6 +19,7 @@ struct LibraryView: View {
             case .history: "History"
             case .bookmarks: "Bookmarks"
             case .downloads: "Downloads"
+            case .recentlyClosed: "Recently Closed"
             }
         }
     }
@@ -28,6 +30,7 @@ struct LibraryView: View {
     @State private var history: [HistoryVisit] = []
     @State private var bookmarks: [Bookmark] = []
     @State private var downloads: [DownloadRecord] = []
+    @State private var closedTabs: [ClosedTabEntry] = []
     @State private var errorMessage: String?
 
     var body: some View {
@@ -41,6 +44,7 @@ struct LibraryView: View {
             section = switch model.activePanel {
             case .bookmarks: .bookmarks
             case .downloads: .downloads
+            case .recentlyClosed: .recentlyClosed
             default: .history
             }
             reload()
@@ -118,6 +122,16 @@ struct LibraryView: View {
                 } else {
                     list(downloads)
                 }
+            case .recentlyClosed:
+                if closedTabs.isEmpty {
+                    BrowsemiumEmptyState(
+                        systemName: "arrow.uturn.backward",
+                        title: "No recently closed tabs",
+                        message: "Tabs you close appear here; press ⇧⌘T to reopen the latest."
+                    )
+                } else {
+                    list(closedTabs)
+                }
             }
         }
     }
@@ -181,6 +195,26 @@ struct LibraryView: View {
         }
     }
 
+    private func list(_ items: [ClosedTabEntry]) -> some View {
+        ScrollView {
+            LazyVStack(spacing: 1) {
+                ForEach(items) { entry in
+                    LibraryRow(
+                        title: entry.title.isEmpty ? (entry.url?.host ?? "Closed tab") : entry.title,
+                        subtitle: entry.url?.absoluteString ?? "No address recorded",
+                        trailing: entry.closedAt.formatted(date: .abbreviated, time: .shortened),
+                        action: {
+                            model.reopenClosedTab(entry)
+                            reload()
+                        }
+                    )
+                }
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
+        }
+    }
+
     private func reload() {
         let environment = model.environment
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -197,6 +231,14 @@ struct LibraryView: View {
             case .downloads:
                 downloads = try environment.downloadRepository.recent(limit: 200)
                     .filter { trimmed.isEmpty || $0.suggestedFilename.localizedCaseInsensitiveContains(trimmed) }
+            case .recentlyClosed:
+                let entries = try environment.closedTabRepository.recent(limit: 50)
+                closedTabs = trimmed.isEmpty
+                    ? entries
+                    : entries.filter {
+                        $0.title.localizedCaseInsensitiveContains(trimmed)
+                            || ($0.url?.absoluteString.localizedCaseInsensitiveContains(trimmed) ?? false)
+                    }
             }
             errorMessage = nil
         } catch {

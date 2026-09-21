@@ -24,6 +24,7 @@ public final class TabRuntime {
     private var webView: WKWebView?
     private var progressObservation: NSKeyValueObservation?
     private var audioProxy: TabAudioMessageProxy?
+    private var linkHoverProxy: LinkHoverMessageProxy?
     public private(set) var audioState = TabAudioState(isPlaying: false, isMuted: false)
 
     public var onEvent: ((TabRuntimeEvent) -> Void)?
@@ -93,6 +94,10 @@ public final class TabRuntime {
         view.configuration.userContentController.addUserScript(TabAudioMonitor.makeUserScript())
         view.configuration.userContentController.add(proxy, name: TabAudioMonitor.messageHandlerName)
         audioProxy = proxy
+        let hoverProxy = LinkHoverMessageProxy(runtime: self)
+        view.configuration.userContentController.addUserScript(LinkHoverMonitor.makeUserScript())
+        view.configuration.userContentController.add(hoverProxy, name: LinkHoverMonitor.messageHandlerName)
+        linkHoverProxy = hoverProxy
         progressObservation = view.observe(\.estimatedProgress, options: [.new]) { [weak self] webView, _ in
             Task { @MainActor [weak self] in
                 self?.report(.progressChanged(webView.estimatedProgress))
@@ -203,18 +208,77 @@ public final class TabRuntime {
         webView.evaluateJavaScript("window.getSelection && window.getSelection().removeAllRanges();")
     }
 
+    public var currentZoom: CGFloat {
+        webView?.pageZoom ?? 1
+    }
+
     public func adjustZoom(by delta: CGFloat) {
         guard let webView else { return }
         webView.pageZoom = min(max(webView.pageZoom + delta, 0.5), 3)
+    }
+
+    public func setZoom(_ zoom: CGFloat) {
+        webView?.pageZoom = min(max(zoom, 0.5), 3)
     }
 
     public func resetZoom() {
         webView?.pageZoom = 1
     }
 
+    /// The hovered link a page last reported, surfaced as a status-bar event.
+    func updateHoveredLink(_ url: URL?) {
+        report(.linkHovered(url))
+    }
+
     public func printPage() {
         guard let webView else { return }
         webView.printOperation(with: NSPrintInfo.shared).run()
+    }
+
+    /// The whole scrollable page as PDF data. WKPDFConfiguration's default
+    /// rect is the full page, not just the viewport.
+    public func renderPDF() async throws -> Data {
+        guard let webView else {
+            throw BrowsemiumError.webContentUnavailable
+        }
+        return try await webView.pdf(configuration: WKPDFConfiguration())
+    }
+
+    /// The visible viewport as PNG data.
+    public func renderScreenshot() async throws -> Data {
+        guard let webView else {
+            throw BrowsemiumError.webContentUnavailable
+        }
+        let image = try await webView.takeSnapshot(configuration: nil)
+        guard let tiff = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff),
+              let png = bitmap.representation(using: .png, properties: [:]) else {
+            throw BrowsemiumError.webContentUnavailable
+        }
+        return png
+    }
+
+    /// Toggles Picture in Picture on the page's first video, if WebKit's
+    /// presentation-mode API allows it. Reports honestly when it cannot.
+    public func togglePictureInPicture() async -> Bool {
+        guard let webView else { return false }
+        let script = """
+        (function() {
+          var video = document.querySelector('video');
+          if (!video) { return 'no-video'; }
+          try {
+            if (video.webkitSupportsPresentationMode
+                && video.webkitSupportsPresentationMode('picture-in-picture')) {
+              var inPiP = video.webkitPresentationMode === 'picture-in-picture';
+              video.webkitSetPresentationMode(inPiP ? 'inline' : 'picture-in-picture');
+              return inPiP ? 'exited' : 'entered';
+            }
+          } catch (error) {}
+          return 'unsupported';
+        })()
+        """
+        let result = try? await webView.evaluateJavaScript(script) as? String
+        return result == "entered" || result == "exited"
     }
 
     public func capture(_ request: CaptureRequest) async throws -> CapturedContext {
@@ -278,7 +342,7 @@ public final class TabRuntime {
             setLifecycle(lastCommittedURL == nil ? .metadataOnly : .crashed)
         case .crashed:
             setLifecycle(.crashed)
-        case .progressChanged, .requestedNewWindow, .requestedExternalScheme, .downloadStarted, .downloadFinished, .downloadFailed, .audioStateChanged, .requestedAISelection, .lifecycleChanged:
+        case .progressChanged, .requestedNewWindow, .requestedExternalScheme, .downloadStarted, .downloadFinished, .downloadFailed, .audioStateChanged, .requestedAISelection, .lifecycleChanged, .linkHovered:
             break
         }
         onEvent?(event)

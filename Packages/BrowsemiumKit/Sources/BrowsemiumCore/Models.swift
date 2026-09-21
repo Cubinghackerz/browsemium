@@ -292,6 +292,12 @@ public enum BrowserCommand: Hashable, Sendable {
     case openSettings
     case clearBrowsingData
     case aiQuickAction(AIQuickAction)
+    case zoomIn
+    case zoomOut
+    case resetZoom
+    case savePageAsPDF
+    case savePageScreenshot
+    case togglePictureInPicture
 }
 
 /// One-tap assistant workflows. Each bundles a context capture with a canned
@@ -336,6 +342,7 @@ public enum BrowserPanel: Hashable, Sendable {
     case history
     case bookmarks
     case downloads
+    case recentlyClosed
     case settings
 }
 

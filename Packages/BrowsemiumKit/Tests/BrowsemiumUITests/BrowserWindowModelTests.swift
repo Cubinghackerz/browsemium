@@ -107,3 +107,69 @@ func deferredStartupPopulatesBookmarksAfterInit() throws {
     model.performDeferredStartup()
     #expect(model.bookmarks.count == 1)
 }
+
+@Test @MainActor
+func submittingAnAlreadyOpenURLSwitchesToTheExistingTab() {
+    let model = BrowserWindowModel()
+    let openID = model.newTab(url: URL(string: "https://work.example")!)
+    _ = model.newTab()  // blank tab becomes active
+    let tabCount = model.session.tabs.count
+
+    model.addressText = "https://work.example"
+    model.submitAddress()
+
+    #expect(model.session.activeTabID == openID)
+    #expect(model.session.tabs.count == tabCount)
+    #expect(model.statusMessage != nil)
+}
+
+@Test @MainActor
+func duplicateCheckIgnoresTrailingSlashAndCase() {
+    let model = BrowserWindowModel()
+    let openID = model.newTab(url: URL(string: "https://work.example/path")!)
+    _ = model.newTab()
+
+    model.addressText = "https://WORK.example/path/"
+    model.submitAddress()
+
+    #expect(model.session.activeTabID == openID)
+}
+
+@Test @MainActor
+func zoomPreferenceRoundTripsPerHost() throws {
+    let environment = BrowserEnvironment.inMemory()
+    let model = BrowserWindowModel(environment: environment)
+    _ = model.newTab(url: URL(string: "https://zoom.example/page")!)
+
+    // No live webview in tests, so the engine reports 100%; the assertion is
+    // that the preference is written for the host and removed on reset.
+    model.zoomIn()
+    #expect(try environment.sitePreferenceRepository.value(origin: "zoom.example", preference: "zoom") != nil)
+
+    model.resetZoom()
+    #expect(try environment.sitePreferenceRepository.value(origin: "zoom.example", preference: "zoom") == nil)
+}
+
+@Test @MainActor
+func zoomPreferenceKeysOnTheLowercasedHost() throws {
+    let environment = BrowserEnvironment.inMemory()
+    let model = BrowserWindowModel(environment: environment)
+    _ = model.newTab(url: URL(string: "HTTPS://Zoom.Example/Path")!)
+
+    model.zoomIn()
+    #expect(try environment.sitePreferenceRepository.value(origin: "zoom.example", preference: "zoom") != nil)
+}
+
+@Test @MainActor
+func recentlyClosedListReopensASpecificEntry() throws {
+    let model = BrowserWindowModel()
+    let tabID = model.newTab(url: URL(string: "https://closed.example")!)
+    model.closeTab(tabID)
+
+    let entries = model.recentlyClosedTabs()
+    let entry = try #require(entries.first { $0.url?.absoluteString == "https://closed.example" })
+
+    model.reopenClosedTab(entry)
+    #expect(model.session.tabs.contains { $0.lastCommittedURL?.absoluteString == "https://closed.example" })
+    #expect(model.recentlyClosedTabs().contains { $0.id == entry.id } == false)
+}

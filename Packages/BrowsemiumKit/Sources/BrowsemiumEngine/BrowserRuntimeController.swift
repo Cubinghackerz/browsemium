@@ -300,8 +300,35 @@ public final class BrowserRuntimeController: BrowserRuntime, BrowserEngine {
         runtimes[tabID]?.resetZoom()
     }
 
+    public func currentZoom(tabID: TabID) -> CGFloat {
+        runtimes[tabID]?.currentZoom ?? 1
+    }
+
+    public func setZoom(tabID: TabID, to zoom: CGFloat) {
+        runtimes[tabID]?.setZoom(zoom)
+    }
+
     public func printPage(tabID: TabID) {
         runtimes[tabID]?.printPage()
+    }
+
+    public func pagePDF(tabID: TabID) async throws -> Data {
+        guard let runtime = runtimes[tabID] else {
+            throw BrowsemiumError.webContentUnavailable
+        }
+        return try await runtime.renderPDF()
+    }
+
+    public func pageScreenshot(tabID: TabID) async throws -> Data {
+        guard let runtime = runtimes[tabID] else {
+            throw BrowsemiumError.webContentUnavailable
+        }
+        return try await runtime.renderScreenshot()
+    }
+
+    public func togglePictureInPicture(tabID: TabID) async -> Bool {
+        guard let runtime = runtimes[tabID] else { return false }
+        return await runtime.togglePictureInPicture()
     }
 
     public func fillCredential(tabID: TabID, username: String, password: String) async throws -> Bool {

@@ -39,4 +39,7 @@ public enum TabRuntimeEvent: Sendable {
     case lifecycleChanged(TabLifecycle)
     /// The user chose "Ask Browsemium AI" from the page context menu.
     case requestedAISelection
+    /// The pointer entered or left a link in the page. `nil` clears the
+    /// status bar; only the active tab's events should be displayed.
+    case linkHovered(URL?)
 }
