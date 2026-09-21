@@ -51,7 +51,6 @@ public struct WebViewFactory {
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsMagnification = true
-        webView.setValue(false, forKey: "drawsBackground")
         return webView
     }
 }
