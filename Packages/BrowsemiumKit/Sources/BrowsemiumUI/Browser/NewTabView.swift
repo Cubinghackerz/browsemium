@@ -5,30 +5,57 @@ import BrowsemiumEngineKit
 /// The quiet start surface: the mark, the name, and the shortcuts that matter.
 struct NewTabView: View {
     @Bindable var model: BrowserWindowModel
+    @State private var topSites: [TopSite] = []
 
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
 
-            BrowsemiumLogo(size: 68)
-                .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
-                .padding(.bottom, 18)
+            VStack(spacing: 0) {
+                BrowsemiumLogo(size: 68)
+                    .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+                    .padding(.bottom, 18)
 
-            Text("Browsemium")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Color.browsemiumPrimary)
+                Text("Browsemium")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Color.browsemiumPrimary)
 
-            Text("Search or type an address — ⌘L jumps straight to it.")
-                .font(.system(size: 12.5))
-                .foregroundStyle(Color.browsemiumTertiary)
-                .padding(.top, 5)
+                Text("Search or type an address — ⌘L jumps straight to it.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Color.browsemiumTertiary)
+                    .padding(.top, 5)
 
-            HStack(spacing: 14) {
-                hint("⌘T", "New tab")
-                hint("⌘K", "Commands")
-                hint("⇧⌘A", "Assistant")
+                HStack(spacing: 14) {
+                    hint("⌘T", "New tab")
+                    hint("⌘K", "Commands")
+                    hint("⇧⌘A", "Assistant")
+                }
+                .padding(.top, 26)
             }
-            .padding(.top, 26)
+            // The header is one accessibility element; combining the whole
+            // page would swallow the site tiles below.
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("New tab. Command L focuses the address bar, Command K opens commands, Shift Command A opens the assistant.")
+
+            if !topSites.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Top Sites")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(Color.browsemiumTertiary)
+
+                    HStack(spacing: 8) {
+                        ForEach(topSites) { site in
+                            siteButton(
+                                url: site.url,
+                                title: site.title,
+                                hint: "\(site.visitCount) visits"
+                            )
+                        }
+                    }
+                }
+                .padding(.top, 34)
+                .frame(maxWidth: 680, alignment: .leading)
+            }
 
             if !model.bookmarks.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
@@ -38,7 +65,10 @@ struct NewTabView: View {
 
                     HStack(spacing: 8) {
                         ForEach(Array(model.bookmarks.prefix(8))) { bookmark in
-                            bookmarkButton(bookmark)
+                            siteButton(
+                                url: bookmark.url,
+                                title: bookmark.title.isEmpty ? (bookmark.url.host ?? "Bookmark") : bookmark.title
+                            )
                         }
                     }
                 }
@@ -52,17 +82,28 @@ struct NewTabView: View {
         .background(Color.browsemiumRaised)
         .contentShape(Rectangle())
         .onTapGesture { model.focusAddress() }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("New tab. Search or type an address. Command L focuses the address bar, Command K opens commands, Shift Command A opens the assistant.")
+        .onAppear { reloadTopSites() }
+        // Counts change while the app runs; refresh on navigation instead of
+        // snapshotting once at mount.
+        .onChange(of: model.activeTab?.lastCommittedURL) { reloadTopSites() }
     }
 
-    private func bookmarkButton(_ bookmark: Bookmark) -> some View {
+    private func reloadTopSites() {
+        // Private windows never surface history.
+        guard !model.session.isPrivate else {
+            topSites = []
+            return
+        }
+        topSites = (try? model.environment.historyRepository.topSites(limit: 8)) ?? []
+    }
+
+    private func siteButton(url: URL, title: String, hint: String? = nil) -> some View {
         Button {
-            model.open(bookmark.url)
+            model.open(url)
         } label: {
             VStack(spacing: 8) {
                 Group {
-                    if let favicon = model.favicons.image(for: bookmark.url) {
+                    if let favicon = model.favicons.image(for: url) {
                         Image(nsImage: favicon)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
@@ -75,7 +116,7 @@ struct NewTabView: View {
                 }
                 .frame(width: 22, height: 22)
 
-                Text(bookmark.title.isEmpty ? (bookmark.url.host ?? "Bookmark") : bookmark.title)
+                Text(title)
                     .font(.system(size: 10.5))
                     .foregroundStyle(Color.browsemiumSecondary)
                     .lineLimit(1)
@@ -93,7 +134,9 @@ struct NewTabView: View {
             }
         }
         .buttonStyle(.plain)
-        .help(bookmark.url.absoluteString)
+        .help(url.absoluteString)
+        .accessibilityLabel(title)
+        .accessibilityHint(hint ?? url.absoluteString)
     }
 
     private func hint(_ keys: String, _ description: String) -> some View {

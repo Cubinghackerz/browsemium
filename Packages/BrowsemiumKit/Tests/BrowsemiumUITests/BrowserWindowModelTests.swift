@@ -173,3 +173,20 @@ func recentlyClosedListReopensASpecificEntry() throws {
     #expect(model.session.tabs.contains { $0.lastCommittedURL?.absoluteString == "https://closed.example" })
     #expect(model.recentlyClosedTabs().contains { $0.id == entry.id } == false)
 }
+
+@Test @MainActor
+func openTabsSurfaceAsAddressSuggestions() {
+    let model = BrowserWindowModel()
+    let openID = model.newTab(url: URL(string: "https://docs.example/guide")!)
+    _ = model.newTab()
+
+    // A query containing a dot is treated as a typed URL and short-circuits
+    // suggestions, so match on the path instead.
+    model.addressText = "guide"
+    model.updateAddressSuggestions()
+
+    let openTab = model.addressSuggestions.first { $0.kind == .openTab }
+    #expect(openTab != nil)
+    model.acceptSuggestion(openTab!)
+    #expect(model.session.activeTabID == openID)
+}

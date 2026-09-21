@@ -83,6 +83,7 @@ private struct AddressSuggestionRow: View {
 
     private var icon: String {
         switch suggestion.kind {
+        case .openTab: "arrow.right.square"
         case .history: "clock"
         case .bookmark: "bookmark"
         case .search: "magnifyingglass"

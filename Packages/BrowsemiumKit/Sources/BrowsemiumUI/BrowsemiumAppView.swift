@@ -226,7 +226,7 @@ public struct BrowsemiumAppView: View {
                     if model.isFindBarVisible {
                         FindBar(model: model)
                             .padding(10)
-                            .transition(.move(edge: .top).combined(with: .opacity))
+                            .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
                     }
                 }
                 .overlay(alignment: .bottomLeading) {

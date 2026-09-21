@@ -16,6 +16,19 @@ public struct HistoryVisit: Hashable, Codable, Sendable, Identifiable {
     }
 }
 
+/// A frequently visited host, for the new-tab page. Everything is derived
+/// from local history — nothing leaves the machine to build this.
+public struct TopSite: Hashable, Sendable, Identifiable {
+    public let host: String
+    /// The most recent page visited on the host, so the tile opens somewhere
+    /// real and the favicon cache can look it up.
+    public let url: URL
+    public let title: String
+    public let visitCount: Int
+
+    public var id: String { host }
+}
+
 public final class HistoryRepository: @unchecked Sendable {
     private let database: AppDatabase
 
@@ -44,6 +57,40 @@ public final class HistoryRepository: @unchecked Sendable {
             sql: "SELECT id, url, title, visited_at FROM history_visits ORDER BY visited_at DESC LIMIT ?",
             arguments: [limit]
         )
+    }
+
+    /// Most-visited hosts across a bounded recent window, newest visit first.
+    /// Grouped in Swift because URLs are stored whole — pulling host strings
+    /// apart in SQL is more fragile than counting a few hundred rows.
+    public func topSites(limit: Int = 8, window: Int = 500) throws -> [TopSite] {
+        let visits = try recent(limit: window)
+        var counts: [String: (url: URL, title: String, count: Int)] = [:]
+        for visit in visits {
+            guard let host = visit.url.host, !host.isEmpty else { continue }
+            let key = host.lowercased()
+            if var entry = counts[key] {
+                entry.count += 1
+                if entry.title.isEmpty { entry.title = visit.title }
+                counts[key] = entry
+            } else {
+                counts[key] = (visit.url, visit.title, 1)
+            }
+        }
+        return counts
+            .sorted { lhs, rhs in
+                lhs.value.count != rhs.value.count
+                    ? lhs.value.count > rhs.value.count
+                    : lhs.key < rhs.key
+            }
+            .prefix(limit)
+            .map { host, entry in
+                TopSite(
+                    host: host,
+                    url: entry.url,
+                    title: entry.title.isEmpty ? host : entry.title,
+                    visitCount: entry.count
+                )
+            }
     }
 
     public func search(_ query: String, limit: Int = 50) throws -> [HistoryVisit] {

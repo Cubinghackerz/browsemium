@@ -192,6 +192,7 @@ public final class BrowserWindowModel: PermissionPrompting {
     /// One row in the address-bar suggestion list.
     public struct AddressSuggestion: Identifiable, Sendable, Hashable {
         public enum Kind: Sendable, Hashable {
+            case openTab
             case history
             case bookmark
             case search
@@ -230,6 +231,25 @@ public final class BrowserWindowModel: PermissionPrompting {
 
         var seen = Set<String>()
         var suggestions: [AddressSuggestion] = []
+
+        // Open tabs outrank history — switching to a tab you already have is
+        // cheaper than loading the page again. `value` carries the tab id.
+        for tab in session.tabs {
+            let url = tabURLs[tab.id] ?? tab.lastCommittedURL
+            guard let url,
+                  tab.title.localizedCaseInsensitiveContains(query)
+                    || url.absoluteString.localizedCaseInsensitiveContains(query),
+                  seen.insert(url.absoluteString).inserted else { continue }
+            suggestions.append(
+                AddressSuggestion(
+                    id: "opentab-\(tab.id.rawValue.uuidString)",
+                    kind: .openTab,
+                    title: tab.title,
+                    subtitle: "Switch to tab — \(url.host ?? url.absoluteString)",
+                    value: tab.id.rawValue.uuidString
+                )
+            )
+        }
 
         let visits = (try? environment.historyRepository.search(query, limit: 12)) ?? []
         for visit in visits {
@@ -309,10 +329,11 @@ public final class BrowserWindowModel: PermissionPrompting {
     public func acceptSuggestion(_ suggestion: AddressSuggestion) {
         addressSuggestions = []
         switch suggestion.kind {
-        case .history, .bookmark:
-            addressText = suggestion.value
-            submitAddress()
-        case .search:
+        case .openTab:
+            if let uuid = UUID(uuidString: suggestion.value) {
+                selectTab(TabID(rawValue: uuid))
+            }
+        case .history, .bookmark, .search:
             addressText = suggestion.value
             submitAddress()
         }

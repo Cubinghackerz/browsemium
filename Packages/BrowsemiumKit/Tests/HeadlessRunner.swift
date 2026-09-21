@@ -402,6 +402,17 @@ struct HeadlessRunner {
         try expect(report.prunedHistoryVisits == 1, "Retention should prune expired history")
         try expect(try history.count() == 1, "Retention removed the wrong history rows")
 
+        // Top sites groups by host, counts visits, and keeps the newest
+        // page as the tile's target.
+        try history.record(url: URL(string: "https://swift.org/")!, title: "Swift", visitedAt: now.addingTimeInterval(-10))
+        try history.record(url: URL(string: "https://swift.org/forums")!, title: "Forums", visitedAt: now.addingTimeInterval(-20))
+        try history.record(url: URL(string: "https://example.com/")!, title: "Example", visitedAt: now.addingTimeInterval(-30))
+        let top = try history.topSites(limit: 8)
+        try expect(top.first?.host == "swift.org", "Top sites should rank the most-visited host first")
+        try expect(top.first?.visitCount == 3, "Top sites should count every visit to the host")
+        try expect(top.first?.url.absoluteString == "https://swift.org/blog", "Top site tile should open the newest page on the host")
+        try expect(top.contains { $0.host == "example.com" }, "Top sites should include other hosts")
+
         let bookmarks = BookmarkRepository(database: database)
         let bookmark = try bookmarks.add(url: URL(string: "https://swift.org")!, title: "Swift")
         try expect(try bookmarks.contains(url: bookmark.url), "Bookmark was not stored")

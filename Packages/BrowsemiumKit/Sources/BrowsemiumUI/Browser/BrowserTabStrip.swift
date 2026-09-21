@@ -13,6 +13,7 @@ struct BrowserTabStrip: View {
     @State private var newGroupName = ""
     @State private var isRenamingGroup = false
     @State private var groupRenameText = ""
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var pinnedTabs: [BrowserTab] {
         model.visibleTabs.filter(\.isPinned)
@@ -48,7 +49,7 @@ struct BrowserTabStrip: View {
                     }
                     .onChange(of: model.session.activeTabID) {
                         guard let active = model.session.activeTabID else { return }
-                        withAnimation(.easeOut(duration: 0.18)) {
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
                             proxy.scrollTo(active, anchor: .center)
                         }
                     }
