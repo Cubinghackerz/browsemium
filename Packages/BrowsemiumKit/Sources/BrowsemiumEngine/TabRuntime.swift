@@ -264,7 +264,14 @@ public final class TabRuntime {
         guard let webView else { return false }
         let script = """
         (function() {
-          var video = document.querySelector('video');
+          // The first <video> in DOM order is often a decorative background
+          // clip; the one actually playing is the one the user means.
+          var videos = document.querySelectorAll('video');
+          var video = null;
+          for (var i = 0; i < videos.length; i++) {
+            if (!videos[i].paused && !videos[i].ended) { video = videos[i]; break; }
+          }
+          if (!video) { video = videos[0] || null; }
           if (!video) { return 'no-video'; }
           try {
             if (video.webkitSupportsPresentationMode
