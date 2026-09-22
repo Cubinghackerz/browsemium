@@ -340,8 +340,12 @@ public final class AIDockViewModel {
             errorMessage = "Open a page before using assistant actions."
             return
         }
+        guard !isWorking else { return }
         await attach(action.captureKind, tabID: tabID)
-        guard errorMessage == nil, !attachments.isEmpty else { return }
+        if errorMessage == nil && attachments.isEmpty {
+            errorMessage = "Nothing on this page could be captured."
+        }
+        guard errorMessage == nil else { return }
         // Respect a draft the user already typed: it stays the instruction for
         // the captured context. The canned prompt only fills an empty field.
         if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

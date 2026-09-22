@@ -451,11 +451,27 @@ public final class BrowserWindowModel: PermissionPrompting {
         let targetID = tabID ?? session.activeTabID
         guard let targetID, let tab = session.tabs.first(where: { $0.id == targetID }) else { return }
 
-        if !session.isPrivate {
-            try? environment.closedTabRepository.record(tab)
+        // A tab that never reached a page (a blank "New Tab") has nothing to
+        // reopen — recording it would fill Recently Closed with dead rows. The
+        // in-flight URL in tabURLs counts: a mid-load close still reopens.
+        if !session.isPrivate, let closedURL = tabURLs[targetID] ?? tab.lastCommittedURL {
+            try? environment.closedTabRepository.record(
+                BrowserTab(
+                    id: tab.id,
+                    spaceID: tab.spaceID,
+                    title: tab.title,
+                    lastCommittedURL: closedURL,
+                    position: tab.position,
+                    isPinned: tab.isPinned,
+                    lifecycle: tab.lifecycle,
+                    createdAt: tab.createdAt,
+                    lastAccessedAt: tab.lastAccessedAt
+                )
+            )
         }
         environment.engine.discard(tabID: targetID)
         tabURLs[targetID] = nil
+        hoveredLinkURL = nil
         tabAudio[targetID] = nil
         keepAwakeTabIDs.remove(targetID)
 
@@ -478,7 +494,8 @@ public final class BrowserWindowModel: PermissionPrompting {
             activeTabID: nextActiveID,
             isPrivate: session.isPrivate
         )
-        addressText = activeTab?.lastCommittedURL?.absoluteString ?? ""
+        addressText = nextActiveID.flatMap { tabURLs[$0] }?.absoluteString
+            ?? activeTab?.lastCommittedURL?.absoluteString ?? ""
         refreshNavigationState()
         persistSession()
     }

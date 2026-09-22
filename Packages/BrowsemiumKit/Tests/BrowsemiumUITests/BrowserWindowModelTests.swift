@@ -175,6 +175,14 @@ func recentlyClosedListReopensASpecificEntry() throws {
 }
 
 @Test @MainActor
+func closingABlankTabDoesNotLitterRecentlyClosed() {
+    let model = BrowserWindowModel()
+    let blank = model.newTab()
+    model.closeTab(blank)
+    #expect(model.recentlyClosedTabs().isEmpty)
+}
+
+@Test @MainActor
 func openTabsSurfaceAsAddressSuggestions() {
     let model = BrowserWindowModel()
     let openID = model.newTab(url: URL(string: "https://docs.example/guide")!)
