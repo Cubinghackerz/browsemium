@@ -7,6 +7,8 @@ import Foundation
 public struct DownloadInfo: Sendable, Identifiable {
     public let id: UUID
     public let tabID: TabID?
+    /// The URL the file is being fetched from — not the local destination.
+    public let sourceURL: URL?
     public let suggestedFilename: String
     public let destinationURL: URL?
     public let bytesReceived: Int64
@@ -17,6 +19,7 @@ public struct DownloadInfo: Sendable, Identifiable {
     public init(
         id: UUID,
         tabID: TabID?,
+        sourceURL: URL?,
         suggestedFilename: String,
         destinationURL: URL?,
         bytesReceived: Int64,
@@ -26,6 +29,7 @@ public struct DownloadInfo: Sendable, Identifiable {
     ) {
         self.id = id
         self.tabID = tabID
+        self.sourceURL = sourceURL
         self.suggestedFilename = suggestedFilename
         self.destinationURL = destinationURL
         self.bytesReceived = bytesReceived

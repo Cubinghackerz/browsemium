@@ -34,6 +34,7 @@ final class ChromiumDownloads: DownloadReporting {
             infos[info.id] = DownloadInfo(
                 id: info.id,
                 tabID: existing.tabID,
+                sourceURL: info.sourceURL ?? existing.sourceURL,
                 suggestedFilename: info.suggestedFilename.isEmpty ? existing.suggestedFilename : info.suggestedFilename,
                 destinationURL: info.destinationURL ?? existing.destinationURL,
                 bytesReceived: info.bytesReceived,

@@ -44,6 +44,7 @@ public final class DownloadCoordinator: NSObject, WKDownloadDelegate, DownloadRe
         let initial = DownloadInfo(
             id: id,
             tabID: tabID,
+            sourceURL: download.originalRequest?.url,
             suggestedFilename: download.originalRequest?.url?.lastPathComponent ?? "download",
             destinationURL: nil,
             bytesReceived: 0,
@@ -72,6 +73,7 @@ public final class DownloadCoordinator: NSObject, WKDownloadDelegate, DownloadRe
                 info = DownloadInfo(
                     id: info.id,
                     tabID: info.tabID,
+                    sourceURL: info.sourceURL,
                     suggestedFilename: info.suggestedFilename,
                     destinationURL: info.destinationURL,
                     bytesReceived: progress.completedUnitCount,
@@ -112,6 +114,7 @@ public final class DownloadCoordinator: NSObject, WKDownloadDelegate, DownloadRe
                 DownloadInfo(
                     id: info.id,
                     tabID: info.tabID,
+                    sourceURL: info.sourceURL,
                     suggestedFilename: suggestedFilename,
                     destinationURL: destination,
                     bytesReceived: info.bytesReceived,
@@ -126,6 +129,7 @@ public final class DownloadCoordinator: NSObject, WKDownloadDelegate, DownloadRe
                 DownloadInfo(
                     id: info.id,
                     tabID: info.tabID,
+                    sourceURL: info.sourceURL,
                     suggestedFilename: suggestedFilename,
                     destinationURL: nil,
                     bytesReceived: 0,
@@ -146,6 +150,7 @@ public final class DownloadCoordinator: NSObject, WKDownloadDelegate, DownloadRe
         let finished = DownloadInfo(
             id: info.id,
             tabID: info.tabID,
+            sourceURL: info.sourceURL,
             suggestedFilename: info.suggestedFilename,
             destinationURL: info.destinationURL,
             bytesReceived: info.bytesReceived,
@@ -165,6 +170,7 @@ public final class DownloadCoordinator: NSObject, WKDownloadDelegate, DownloadRe
         let failed = DownloadInfo(
             id: info.id,
             tabID: info.tabID,
+            sourceURL: info.sourceURL,
             suggestedFilename: info.suggestedFilename,
             destinationURL: info.destinationURL,
             bytesReceived: info.bytesReceived,

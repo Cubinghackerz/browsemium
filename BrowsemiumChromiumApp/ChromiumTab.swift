@@ -235,6 +235,7 @@ extension ChromiumTab: @preconcurrency BrowsemiumCEFBrowserDelegate {
         onDownload?(DownloadInfo(
             id: id,
             tabID: tabID,
+            sourceURL: nil,
             suggestedFilename: filename,
             destinationURL: destination.flatMap { URL(string: $0) },
             bytesReceived: 0,
@@ -256,6 +257,7 @@ extension ChromiumTab: @preconcurrency BrowsemiumCEFBrowserDelegate {
         onDownload?(DownloadInfo(
             id: id,
             tabID: tabID,
+            sourceURL: nil,
             suggestedFilename: "",
             destinationURL: nil,
             bytesReceived: receivedBytes,

@@ -59,7 +59,7 @@ final class WebNavigationDelegate: NSObject, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        runtime?.report(.failed(error.localizedDescription))
+        reportFailure(error)
     }
 
     func webView(
@@ -67,7 +67,31 @@ final class WebNavigationDelegate: NSObject, WKNavigationDelegate {
         didFailProvisionalNavigation navigation: WKNavigation!,
         withError error: Error
     ) {
-        runtime?.report(.failed(error.localizedDescription))
+        reportFailure(error)
+    }
+
+    private func reportFailure(_ error: Error) {
+        if Self.isExpectedInterruption(error) {
+            runtime?.report(.cancelled)
+        } else {
+            runtime?.report(.failed(error.localizedDescription))
+        }
+    }
+
+    /// Errors WebKit reports through the failure callbacks that are not real
+    /// failures: the user stopped the load, a redirect superseded it, or a
+    /// policy decision turned the navigation into a download.
+    static func isExpectedInterruption(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorCancelled {
+            return true
+        }
+        // WebKitErrorFrameLoadInterruptedByPolicyChange — the .download policy
+        // answer interrupts the provisional navigation on purpose.
+        if nsError.domain == "WebKitErrorDomain", nsError.code == 102 {
+            return true
+        }
+        return false
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {

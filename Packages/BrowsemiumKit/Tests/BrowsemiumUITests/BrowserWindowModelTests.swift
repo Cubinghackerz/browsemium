@@ -1,5 +1,5 @@
 import BrowsemiumCore
-import BrowsemiumUI
+@testable import BrowsemiumUI
 import Foundation
 import Testing
 import BrowsemiumEngineKit
@@ -180,6 +180,47 @@ func closingABlankTabDoesNotLitterRecentlyClosed() {
     let blank = model.newTab()
     model.closeTab(blank)
     #expect(model.recentlyClosedTabs().isEmpty)
+}
+
+@Test @MainActor
+func downloadHistoryRecordsTheSourceNotTheDestination() throws {
+    let environment = BrowserEnvironment.inMemory()
+    let model = BrowserWindowModel(environment: environment)
+    model.handleDownload(DownloadInfo(
+        id: UUID(),
+        tabID: nil,
+        sourceURL: URL(string: "https://files.example/report.pdf")!,
+        suggestedFilename: "report.pdf",
+        destinationURL: URL(fileURLWithPath: "/tmp/report.pdf"),
+        bytesReceived: 100,
+        totalBytes: 100,
+        isFinished: true,
+        failureMessage: nil
+    ))
+
+    let records = try environment.downloadRepository.recent()
+    let record = try #require(records.first)
+    #expect(record.sourceURL.absoluteString == "https://files.example/report.pdf")
+}
+
+@Test @MainActor
+func downloadWithoutASourceURLIsNotPersisted() throws {
+    let environment = BrowserEnvironment.inMemory()
+    let model = BrowserWindowModel(environment: environment)
+    model.handleDownload(DownloadInfo(
+        id: UUID(),
+        tabID: nil,
+        sourceURL: nil,
+        suggestedFilename: "mystery.bin",
+        destinationURL: URL(fileURLWithPath: "/tmp/mystery.bin"),
+        bytesReceived: 10,
+        totalBytes: 10,
+        isFinished: true,
+        failureMessage: nil
+    ))
+
+    // Better no row than a file:/// path masquerading as the source.
+    #expect(try environment.downloadRepository.recent().isEmpty)
 }
 
 @Test @MainActor

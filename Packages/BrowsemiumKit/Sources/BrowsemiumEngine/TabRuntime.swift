@@ -347,6 +347,10 @@ public final class TabRuntime {
             setLifecycle(.active)
         case .failed:
             setLifecycle(lastCommittedURL == nil ? .metadataOnly : .crashed)
+        case .cancelled:
+            // A cancelled navigation changed nothing: whatever was committed
+            // (if anything) is still the page, and the lifecycle is untouched.
+            break
         case .crashed:
             setLifecycle(.crashed)
         case .progressChanged, .requestedNewWindow, .requestedExternalScheme, .downloadStarted, .downloadFinished, .downloadFailed, .audioStateChanged, .requestedAISelection, .lifecycleChanged, .linkHovered:

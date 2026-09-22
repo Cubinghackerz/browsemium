@@ -1717,6 +1717,13 @@ public final class BrowserWindowModel: PermissionPrompting {
                 loadingProgress = 1
                 statusMessage = message
             }
+        case .cancelled:
+            // Downloads, redirects, and user stops land here — clear the
+            // spinner without putting an "error" in the status bar.
+            if session.activeTabID == tabID {
+                isLoading = false
+                loadingProgress = 1
+            }
         case .crashed:
             updateTab(tabID) { tab in
                 BrowserTab(
@@ -1761,7 +1768,8 @@ public final class BrowserWindowModel: PermissionPrompting {
         }
     }
 
-    private func handleDownload(_ info: DownloadInfo) {
+    /// Internal (not private) so tests can drive download reports directly.
+    func handleDownload(_ info: DownloadInfo) {
         let state: DownloadState = info.failureMessage != nil ? .failed : (info.isFinished ? .finished : .inProgress)
         let progress = DownloadProgress(
             id: info.id,
@@ -1782,20 +1790,25 @@ public final class BrowserWindowModel: PermissionPrompting {
         if info.isFinished || info.failureMessage != nil {
             scheduleDownloadDismissal(id: progress.id)
         }
-        let record = DownloadRecord(
-            id: info.id,
-            tabID: info.tabID,
-            sourceURL: info.destinationURL ?? URL(fileURLWithPath: "/"),
-            destinationURL: info.destinationURL,
-            suggestedFilename: info.suggestedFilename,
-            state: state,
-            bytesReceived: info.bytesReceived,
-            totalBytes: info.totalBytes,
-            failureMessage: info.failureMessage,
-            createdAt: Date(),
-            updatedAt: Date()
-        )
-        try? environment.downloadRepository.upsert(record)
+        // Only persist when the engine reported where the file came from —
+        // writing the local destination (or file:///) as "source" corrupts
+        // download history.
+        if let sourceURL = info.sourceURL {
+            let record = DownloadRecord(
+                id: info.id,
+                tabID: info.tabID,
+                sourceURL: sourceURL,
+                destinationURL: info.destinationURL,
+                suggestedFilename: info.suggestedFilename,
+                state: state,
+                bytesReceived: info.bytesReceived,
+                totalBytes: info.totalBytes,
+                failureMessage: info.failureMessage,
+                createdAt: Date(),
+                updatedAt: Date()
+            )
+            try? environment.downloadRepository.upsert(record)
+        }
 
         guard let tabID = info.tabID, tabID == session.activeTabID else { return }
         switch state {

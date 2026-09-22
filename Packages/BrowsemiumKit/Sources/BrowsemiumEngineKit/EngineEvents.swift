@@ -25,6 +25,10 @@ public enum TabRuntimeEvent: Sendable {
     case committed(URL?)
     case finished(title: String?, url: URL?)
     case failed(String)
+    /// A navigation ended in NSURLErrorCancelled — a download policy answer,
+    /// a redirect, or the user pressing stop. Not an error worth showing, but
+    /// the loading state still has to clear.
+    case cancelled
     case crashed
     case progressChanged(Double)
     case requestedNewWindow(URL)
