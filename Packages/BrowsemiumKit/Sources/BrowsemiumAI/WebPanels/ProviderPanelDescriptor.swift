@@ -92,7 +92,19 @@ public struct ProviderPanelDescriptor: Sendable, Identifiable {
         privacyURL: URL(string: "https://ollama.com/")!
     )
 
-    public static let all: [ProviderPanelDescriptor] = [.chatGPT, .claude, .gemini, .grok, .ollama]
+    public static let v0 = ProviderPanelDescriptor(
+        id: .vercelV0,
+        displayName: "v0 (Vercel)",
+        baseURL: URL(string: "https://v0.dev")!,
+        newConversationURL: URL(string: "https://v0.dev/")!,
+        queryParameter: nil,
+        maximumQueryCharacters: 0,
+        prefillReliability: .unsupported,
+        termsURL: URL(string: "https://vercel.com/legal/terms")!,
+        privacyURL: URL(string: "https://vercel.com/legal/privacy-policy")!
+    )
+
+    public static let all: [ProviderPanelDescriptor] = [.chatGPT, .claude, .gemini, .grok, .ollama, .v0]
 
     public static func descriptor(for provider: AIProviderID) -> ProviderPanelDescriptor {
         all.first { $0.id == provider } ?? .chatGPT

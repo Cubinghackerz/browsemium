@@ -1,12 +1,9 @@
 #!/bin/bash
 # Browsemium installer / updater.
 #
-# Apps fetched through a web browser get a quarantine flag, which is what makes
-# macOS say "Apple can't check it for malicious software". Files fetched with
-# curl carry no quarantine flag, so this install path opens without a warning.
-#
-# Integrity is still verified: the DMG's SHA-256 is checked against a checksum
-# served from browsemium.vercel.app, a different host than the download.
+# The downloaded artifact must pass four independent checks before installation:
+# the published SHA-256, Developer ID signature, expected Apple team identity,
+# and Apple's notarization/Gatekeeper assessment.
 #
 # Re-running this after a new release updates the app in place. Everything the
 # browser stores — tabs, history, bookmarks, profiles, passwords, settings —
@@ -17,6 +14,7 @@ set -euo pipefail
 
 REPO="Cubinghackerz/browsemium"
 CHECKSUM_URL="https://browsemium.vercel.app/checksum.txt"
+TEAM_ID_URL="https://browsemium.vercel.app/team-id.txt"
 APP="/Applications/Browsemium.app"
 TMP="$(mktemp -d)"
 MOUNT=""
@@ -57,14 +55,20 @@ echo "→ Downloading $(basename "$ASSET_URL")…"
 curl -fSL --progress-bar -o "$TMP/Browsemium.dmg" "$ASSET_URL"
 
 echo "→ Verifying SHA-256…"
-EXPECTED="$(curl -fsSL "$CHECKSUM_URL" | awk '{print $1}')"
+CHECKSUM_LINE="$(curl -fsSL "$CHECKSUM_URL")"
+EXPECTED="$(printf '%s' "$CHECKSUM_LINE" | awk '{print $1}')"
+EXPECTED_FILE="$(printf '%s' "$CHECKSUM_LINE" | awk '{print $2}')"
 ACTUAL="$(shasum -a 256 "$TMP/Browsemium.dmg" | awk '{print $1}')"
-if [ -z "$EXPECTED" ] || [ "$EXPECTED" != "$ACTUAL" ]; then
+if [ -z "$EXPECTED" ] || [ "$EXPECTED" != "$ACTUAL" ] || [ "$EXPECTED_FILE" != "$(basename "$ASSET_URL")" ]; then
   echo "✗ Checksum mismatch. Download may be corrupted — aborting." >&2
   echo "  expected: ${EXPECTED:-<none>}" >&2
   echo "  actual:   $ACTUAL" >&2
   exit 1
 fi
+
+echo "→ Verifying notarization…"
+xcrun stapler validate "$TMP/Browsemium.dmg" >/dev/null
+spctl --assess --type open --context context:primary-signature --verbose=4 "$TMP/Browsemium.dmg"
 
 echo "→ Mounting…"
 MOUNT="$(hdiutil attach "$TMP/Browsemium.dmg" -nobrowse -readonly | tail -n1 | grep -o '/Volumes/.*')"
@@ -79,8 +83,22 @@ cp -R "$MOUNT/Browsemium.app" "$TMP/Browsemium.app"
 hdiutil detach "$MOUNT" -quiet 2>/dev/null || true
 MOUNT=""
 
-if ! codesign --verify --strict "$TMP/Browsemium.app" >/dev/null 2>&1; then
+if ! codesign --verify --deep --strict "$TMP/Browsemium.app" >/dev/null 2>&1; then
   echo "✗ The downloaded app failed signature verification — aborting." >&2
+  exit 1
+fi
+
+EXPECTED_TEAM_ID="$(curl -fsSL "$TEAM_ID_URL" | tr -d '[:space:]')"
+ACTUAL_TEAM_ID="$(codesign -dv --verbose=4 "$TMP/Browsemium.app" 2>&1 | awk -F= '/^TeamIdentifier=/{print $2}')"
+AUTHORITIES="$(codesign -dv --verbose=4 "$TMP/Browsemium.app" 2>&1 | awk -F= '/^Authority=/{print $2}')"
+if ! printf '%s\n' "$EXPECTED_TEAM_ID" | grep -Eq '^[A-Z0-9]{10}$' \
+   || [ "$ACTUAL_TEAM_ID" != "$EXPECTED_TEAM_ID" ] \
+   || ! printf '%s\n' "$AUTHORITIES" | grep -q '^Developer ID Application:'; then
+  echo "✗ The app is not signed by Browsemium's expected Developer ID team — aborting." >&2
+  exit 1
+fi
+if ! spctl --assess --type execute --verbose=4 "$TMP/Browsemium.app"; then
+  echo "✗ Gatekeeper rejected the app — aborting." >&2
   exit 1
 fi
 

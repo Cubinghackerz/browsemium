@@ -114,6 +114,9 @@ private struct ChromiumWindowRoot: View {
             guard model == nil, let environment else { return }
             let created = BrowserWindowModel(environment: environment)
             created.persistsSession = registry.claimPrimary()
+            if PrivateWindowRequest.shared.consume() {
+                created.enterPrivateMode()
+            }
             model = created
 
             guard !initialURLs.isEmpty else { return }

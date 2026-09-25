@@ -27,6 +27,15 @@ public struct PaneID: Hashable, Codable, Sendable, Identifiable {
     }
 }
 
+public struct FolderID: Hashable, Codable, Sendable, Identifiable {
+    public let rawValue: UUID
+    public var id: UUID { rawValue }
+
+    public init(rawValue: UUID = UUID()) {
+        self.rawValue = rawValue
+    }
+}
+
 public struct ConversationID: Hashable, Codable, Sendable, Identifiable {
     public let rawValue: UUID
     public var id: UUID { rawValue }
@@ -52,6 +61,9 @@ public enum AIProviderID: String, CaseIterable, Codable, Sendable {
     case xAI
     /// A local Ollama server. Needs no credential and never leaves the Mac.
     case ollama
+    /// Vercel's v0 generative-UI API. BYOK: the user's own v0 API key, stored
+    /// in the keychain like every other key.
+    case vercelV0
 
     public var isLocal: Bool {
         self == .ollama
@@ -64,12 +76,91 @@ public struct BrowserSpace: Hashable, Codable, Sendable, Identifiable {
     public let createdAt: Date
     /// Optional accent for tab groups. Hex string like "#5B8DEF".
     public let color: String?
+    /// Locked spaces ask for Touch ID (or the login password) before their
+    /// tabs are shown. The lock protects the window, not the disk: an
+    /// unlocked Mac's files are still readable by anything running as the
+    /// user, and Browsemium says so rather than implying encryption.
+    public let isLocked: Bool
 
-    public init(id: SpaceID = SpaceID(), name: String, createdAt: Date = Date(), color: String? = nil) {
+    public init(
+        id: SpaceID = SpaceID(),
+        name: String,
+        createdAt: Date = Date(),
+        color: String? = nil,
+        isLocked: Bool = false
+    ) {
         self.id = id
         self.name = name
         self.createdAt = createdAt
         self.color = color
+        self.isLocked = isLocked
+    }
+
+    public func renamed(_ name: String) -> BrowserSpace {
+        BrowserSpace(id: id, name: name, createdAt: createdAt, color: color, isLocked: isLocked)
+    }
+
+    public func withLocked(_ isLocked: Bool) -> BrowserSpace {
+        BrowserSpace(id: id, name: name, createdAt: createdAt, color: color, isLocked: isLocked)
+    }
+
+    /// Old rows and older exported sessions have no lock flag; decoding must
+    /// not fail over a field that simply did not exist yet.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(SpaceID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        color = try container.decodeIfPresent(String.self, forKey: .color)
+        isLocked = try container.decodeIfPresent(Bool.self, forKey: .isLocked) ?? false
+    }
+}
+
+/// Asks the user to prove it is them before a locked space opens. Implemented
+/// with `LocalAuthentication`; tests inject a fake so the gating logic is
+/// exercised without a system prompt.
+@MainActor
+public protocol SpaceUnlockAuthenticating: AnyObject {
+    /// Returns true when the user authenticated. `reason` is shown in the
+    /// system prompt.
+    func authenticate(reason: String) async -> Bool
+}
+
+/// A named, collapsible group of tabs inside one space — Firefox's tab
+/// groups and Zen's folders. Membership lives on the tab (`folderID`); the
+/// folder record only carries the label and the collapsed flag.
+public struct TabFolder: Hashable, Codable, Sendable, Identifiable {
+    public let id: FolderID
+    public let spaceID: SpaceID
+    public let name: String
+    /// Optional accent, hex string like "#5B8DEF", matching BrowserSpace.
+    public let color: String?
+    /// Collapsed folders show as a single chip and hide their member tabs.
+    public let isCollapsed: Bool
+    public let createdAt: Date
+
+    public init(
+        id: FolderID = FolderID(),
+        spaceID: SpaceID,
+        name: String,
+        color: String? = nil,
+        isCollapsed: Bool = false,
+        createdAt: Date = Date()
+    ) {
+        self.id = id
+        self.spaceID = spaceID
+        self.name = name
+        self.color = color
+        self.isCollapsed = isCollapsed
+        self.createdAt = createdAt
+    }
+
+    public func renamed(_ name: String) -> TabFolder {
+        TabFolder(id: id, spaceID: spaceID, name: name, color: color, isCollapsed: isCollapsed, createdAt: createdAt)
+    }
+
+    public func withCollapsed(_ isCollapsed: Bool) -> TabFolder {
+        TabFolder(id: id, spaceID: spaceID, name: name, color: color, isCollapsed: isCollapsed, createdAt: createdAt)
     }
 }
 
@@ -80,6 +171,9 @@ public struct BrowserTab: Hashable, Codable, Sendable, Identifiable {
     public let lastCommittedURL: URL?
     public let position: Int
     public let isPinned: Bool
+    /// Folder membership inside the tab's space. Pinned tabs are never in a
+    /// folder: pinning a tab clears this.
+    public let folderID: FolderID?
     public let lifecycle: TabLifecycle
     public let createdAt: Date
     public let lastAccessedAt: Date
@@ -93,6 +187,7 @@ public struct BrowserTab: Hashable, Codable, Sendable, Identifiable {
         lastCommittedURL: URL? = nil,
         position: Int = 0,
         isPinned: Bool = false,
+        folderID: FolderID? = nil,
         lifecycle: TabLifecycle = .metadataOnly,
         createdAt: Date = Date(),
         lastAccessedAt: Date = Date()
@@ -103,28 +198,64 @@ public struct BrowserTab: Hashable, Codable, Sendable, Identifiable {
         self.lastCommittedURL = lastCommittedURL
         self.position = position
         self.isPinned = isPinned
+        self.folderID = folderID
         self.lifecycle = lifecycle
         self.createdAt = createdAt
         self.lastAccessedAt = lastAccessedAt
+    }
+
+    /// Field-by-field copies were dropping folder membership on every title
+    /// or lifecycle update; `replaced` makes the carried fields explicit.
+    /// Double-optional fields keep the existing value when omitted and clear
+    /// when passed `.some(nil)`.
+    public func replaced(
+        spaceID: SpaceID? = nil,
+        title: String? = nil,
+        lastCommittedURL: URL?? = nil,
+        position: Int? = nil,
+        isPinned: Bool? = nil,
+        folderID: FolderID?? = nil,
+        lifecycle: TabLifecycle? = nil,
+        lastAccessedAt: Date? = nil
+    ) -> BrowserTab {
+        BrowserTab(
+            id: id,
+            spaceID: spaceID ?? self.spaceID,
+            title: title ?? self.title,
+            lastCommittedURL: lastCommittedURL ?? self.lastCommittedURL,
+            position: position ?? self.position,
+            isPinned: isPinned ?? self.isPinned,
+            folderID: folderID ?? self.folderID,
+            lifecycle: lifecycle ?? self.lifecycle,
+            createdAt: createdAt,
+            lastAccessedAt: lastAccessedAt ?? self.lastAccessedAt
+        )
     }
 }
 
 public struct BrowserSessionState: Hashable, Codable, Sendable {
     public let spaces: [BrowserSpace]
     public let tabs: [BrowserTab]
+    /// Folder records for all spaces. Membership is on the tab (`folderID`);
+    /// this list is the folders' names, colours, and collapsed flags.
+    public let folders: [TabFolder]
     public let activeSpaceID: SpaceID
     public let activeTabID: TabID?
     public let isPrivate: Bool
 
+    /// `folders` has no default: rebuilding the session without it would
+    /// silently drop every folder the user created.
     public init(
         spaces: [BrowserSpace],
         tabs: [BrowserTab],
+        folders: [TabFolder],
         activeSpaceID: SpaceID,
         activeTabID: TabID?,
         isPrivate: Bool = false
     ) {
         self.spaces = spaces
         self.tabs = tabs
+        self.folders = folders
         self.activeSpaceID = activeSpaceID
         self.activeTabID = activeTabID
         self.isPrivate = isPrivate
@@ -298,6 +429,21 @@ public enum BrowserCommand: Hashable, Sendable {
     case savePageAsPDF
     case savePageScreenshot
     case togglePictureInPicture
+    case toggleTabLayout
+    case toggleSplitView
+    case switchSpace(SpaceID)
+    case openURLInNewTab(URL)
+    case searchFor(String)
+    case moveTabToSpace(TabID, SpaceID)
+    case assignTabToFolder(TabID, FolderID?)
+    case openTabInSplit(TabID)
+    case runAISkill(AISkill)
+    case summarizeOpenTabs
+    case duplicateTab(TabID)
+    case copyTabURL(TabID)
+    case selectAdjacentTab(forward: Bool)
+    case closeOtherTabs(TabID)
+    case newPrivateWindow
 }
 
 /// One-tap assistant workflows. Each bundles a context capture with a canned
@@ -307,12 +453,18 @@ public enum AIQuickAction: String, Hashable, Sendable, CaseIterable {
     case summarizePage
     case keyPoints
     case explainSelection
+    case rewriteSelection
+    case shortenSelection
+    case bulletPoints
 
     public var title: String {
         switch self {
         case .summarizePage: "Summarize this page"
         case .keyPoints: "Extract key points"
         case .explainSelection: "Explain the selection"
+        case .rewriteSelection: "Rewrite the selection"
+        case .shortenSelection: "Shorten the selection"
+        case .bulletPoints: "Turn the selection into bullets"
         }
     }
 
@@ -325,6 +477,12 @@ public enum AIQuickAction: String, Hashable, Sendable, CaseIterable {
             "List the key points of this page as bullets."
         case .explainSelection:
             "Explain the selected text."
+        case .rewriteSelection:
+            "Rewrite the selected text so it is clearer, keeping its meaning and tone."
+        case .shortenSelection:
+            "Shorten the selected text without losing meaning."
+        case .bulletPoints:
+            "Turn the selected text into a short bullet list."
         }
     }
 
@@ -332,8 +490,46 @@ public enum AIQuickAction: String, Hashable, Sendable, CaseIterable {
     public var captureKind: CaptureKind {
         switch self {
         case .summarizePage, .keyPoints: .readablePage
-        case .explainSelection: .selection
+        case .explainSelection, .rewriteSelection, .shortenSelection, .bulletPoints: .selection
         }
+    }
+
+    /// Writing assists put text in the composer for the user to copy; they
+    /// never type into the page.
+    public var isWritingAssist: Bool {
+        switch self {
+        case .rewriteSelection, .shortenSelection, .bulletPoints: true
+        case .summarizePage, .keyPoints, .explainSelection: false
+        }
+    }
+}
+
+/// A saved prompt the user can re-run from the palette or the assistant.
+/// Skills are local rows in the profile database — never uploaded, never
+/// shared, and never sent anywhere until the user sends a message.
+public struct AISkill: Hashable, Codable, Sendable, Identifiable {
+    public let id: UUID
+    public let name: String
+    public let prompt: String
+    public let createdAt: Date
+
+    public init(id: UUID = UUID(), name: String, prompt: String, createdAt: Date = Date()) {
+        self.id = id
+        self.name = name
+        self.prompt = prompt
+        self.createdAt = createdAt
+    }
+
+    // Identity is the row's id, not its fields: a skill that has been through
+    // the database and back must still equal the value the caller saved.
+    // SQLite does not preserve `Date` to the microsecond, and synthesized
+    // equality made the same skill compare unequal after a reload.
+    public static func == (lhs: AISkill, rhs: AISkill) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
     }
 }
 

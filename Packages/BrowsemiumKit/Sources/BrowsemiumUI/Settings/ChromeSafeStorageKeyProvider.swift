@@ -11,8 +11,8 @@ struct ChromeSafeStorageKeyProvider: BrowserCredentialKeyProviding {
     let keychain: KeychainStore
 
     func safeStorageKey(for source: BrowserImportSource) throws -> Data? {
-        // Chrome, Brave, Edge, Vivaldi, Arc, and Chromium share the scheme but
-        // each stores its key under its own keychain item.
+        // Every Chromium-family browser shares the scheme but each stores its
+        // key under its own keychain item.
         guard let service = source.safeStorageService else { return nil }
         guard let password = try keychain.secret(service: service), !password.isEmpty else {
             return nil

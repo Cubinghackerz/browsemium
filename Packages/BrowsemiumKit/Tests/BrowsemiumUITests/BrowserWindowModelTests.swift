@@ -5,6 +5,36 @@ import Testing
 import BrowsemiumEngineKit
 
 @Test @MainActor
+func blockingPauseIsRememberedForOneHostOnly() {
+    let engine = StubEngine()
+    let model = BrowserWindowModel(environment: .inMemory(engine: engine))
+    model.addressText = "https://paused.example/page"
+    model.submitAddress()
+    let pausedTab = model.session.activeTabID
+
+    model.setBlockingPaused(true)
+
+    #expect(model.isBlockingPaused(for: URL(string: "https://paused.example/other")))
+    #expect(model.isBlockingPaused(for: URL(string: "https://open.example")) == false)
+    #expect(engine.pausedTabs[pausedTab!] == true)
+    #expect(engine.pausedHosts.contains("paused.example"))
+    #expect(engine.pausedHosts.contains("open.example") == false)
+}
+
+@Test @MainActor
+func aPrivateWindowDoesNotRememberABlockingPause() {
+    let model = BrowserWindowModel()
+    model.enterPrivateMode()
+    model.addressText = "https://paused.example"
+    model.submitAddress()
+
+    model.setBlockingPaused(true)
+
+    #expect(model.isBlockingPaused(for: URL(string: "https://paused.example")) == false)
+    #expect(model.statusMessage == "A private window does not remember site exceptions.")
+}
+
+@Test @MainActor
 func newTabBecomesActive() {
     let model = BrowserWindowModel()
     let originalCount = model.session.tabs.count
@@ -85,8 +115,10 @@ func reloadIsDisabledUntilAPageExists() {
 @Test @MainActor
 func commandFilteringIsCaseInsensitive() {
     let model = BrowserWindowModel()
-    #expect(model.filteredCommands(query: "bookmarks").map(\.title) == ["Open Bookmarks"])
-    #expect(model.filteredCommands(query: "NEW").map(\.title) == ["New Tab"])
+    // The palette mixes tabs, intents, history, and commands; these assert the
+    // command is found, not that it is the only row.
+    #expect(model.filteredCommands(query: "bookmarks").contains { $0.title == "Open Bookmarks" })
+    #expect(model.filteredCommands(query: "NEW").contains { $0.title == "New Tab" })
     #expect(model.filteredCommands(query: "   ").count == model.paletteCommands.count)
 }
 
@@ -136,6 +168,57 @@ func duplicateCheckIgnoresTrailingSlashAndCase() {
 }
 
 @Test @MainActor
+func selectingSearchEnginePersistsAndAppliesToTheNextAddressSearch() {
+    let environment = BrowserEnvironment.inMemory(engine: StubEngine())
+    let model = BrowserWindowModel(environment: environment)
+
+    model.selectSearchEngine(.bing)
+
+    #expect(model.activeSearchEngineName == "Bing")
+    #expect(model.searchEngineTemplate == SearchEnginePreset.bing.template)
+    #expect(environment.loadSettings().searchEngineTemplate == SearchEnginePreset.bing.template)
+
+    model.addressText = "browsemium browser"
+    model.submitAddress()
+
+    #expect(model.activeTab?.lastCommittedURL?.host == "www.bing.com")
+    #expect(model.activeTab?.lastCommittedURL?.query?.contains("browsemium") == true)
+}
+
+@Test @MainActor
+func searchEngineTemplateTracksSettingsChangesAndProfileSwitches() {
+    let environment = BrowserEnvironment.inMemory(engine: StubEngine())
+    let model = BrowserWindowModel(environment: environment)
+
+    model.updateSettings { $0.searchEngineTemplate = SearchEnginePreset.brave.template }
+    #expect(model.searchEngineTemplate == SearchEnginePreset.brave.template)
+    #expect(model.activeSearchEngineName == "Brave")
+
+    let profile = model.createProfile(named: "Alternate", switchToIt: false)!
+    model.switchProfile(to: profile)
+    #expect(model.searchEngineTemplate == SearchEnginePreset.google.template)
+
+    model.updateSettings { $0.searchEngineTemplate = SearchEnginePreset.duckDuckGo.template }
+    #expect(model.searchEngineTemplate == SearchEnginePreset.duckDuckGo.template)
+
+    model.switchProfile(to: environment.profiles.first { $0.name == "Personal" }!)
+    #expect(model.searchEngineTemplate == SearchEnginePreset.brave.template)
+}
+
+@Test @MainActor
+func bangSearchOverridesDefaultWithoutChangingIt() {
+    let environment = BrowserEnvironment.inMemory(engine: StubEngine())
+    let model = BrowserWindowModel(environment: environment)
+    model.selectSearchEngine(.bing)
+
+    model.addressText = "!d private browsing"
+    model.submitAddress()
+
+    #expect(model.activeTab?.lastCommittedURL?.host == "duckduckgo.com")
+    #expect(model.activeSearchEngineName == "Bing")
+}
+
+@Test @MainActor
 func zoomPreferenceRoundTripsPerHost() throws {
     let environment = BrowserEnvironment.inMemory()
     let model = BrowserWindowModel(environment: environment)
@@ -148,6 +231,27 @@ func zoomPreferenceRoundTripsPerHost() throws {
 
     model.resetZoom()
     #expect(try environment.sitePreferenceRepository.value(origin: "zoom.example", preference: "zoom") == nil)
+}
+
+@Test @MainActor
+func zoomDisplayPublishesChangesImmediately() {
+    let engine = StubEngine()
+    let model = BrowserWindowModel(environment: .inMemory(engine: engine))
+    _ = model.newTab(url: URL(string: "https://zoom.example/page")!)
+    let initialRevision = model.zoomDisplayRevision
+
+    model.zoomIn()
+    #expect(model.activeZoomPercent == 110)
+    #expect(model.zoomDisplayRevision == initialRevision + 1)
+
+    model.zoomOut()
+    #expect(model.activeZoomPercent == 100)
+    #expect(model.zoomDisplayRevision == initialRevision + 2)
+
+    model.zoomIn()
+    model.resetZoom()
+    #expect(model.activeZoomPercent == 100)
+    #expect(model.zoomDisplayRevision == initialRevision + 4)
 }
 
 @Test @MainActor
@@ -201,6 +305,51 @@ func downloadHistoryRecordsTheSourceNotTheDestination() throws {
     let records = try environment.downloadRepository.recent()
     let record = try #require(records.first)
     #expect(record.sourceURL.absoluteString == "https://files.example/report.pdf")
+    #expect(record.destinationURL?.path == "/tmp/report.pdf")
+    #expect(record.state == .finished)
+}
+
+@Test @MainActor
+func downloadProgressUpdatesLiveAndFinishesInTheDownloadsList() throws {
+    let environment = BrowserEnvironment.inMemory()
+    let model = BrowserWindowModel(environment: environment)
+    let id = UUID()
+    let source = URL(string: "https://files.example/archive.zip")!
+    let destination = URL(fileURLWithPath: "/tmp/archive.zip")
+
+    model.handleDownload(DownloadInfo(
+        id: id,
+        tabID: nil,
+        sourceURL: source,
+        suggestedFilename: "archive.zip",
+        destinationURL: destination,
+        bytesReceived: 2_500,
+        totalBytes: 10_000,
+        isFinished: false,
+        failureMessage: nil
+    ))
+
+    #expect(model.activeDownloads.count == 1)
+    #expect(model.activeDownloads.first?.fraction == 0.25)
+    #expect(model.downloads.first?.destinationURL == destination)
+    #expect(try environment.downloadRepository.recent().first?.state == .inProgress)
+
+    model.handleDownload(DownloadInfo(
+        id: id,
+        tabID: nil,
+        sourceURL: source,
+        suggestedFilename: "archive.zip",
+        destinationURL: destination,
+        bytesReceived: 10_000,
+        totalBytes: 10_000,
+        isFinished: true,
+        failureMessage: nil
+    ))
+
+    #expect(model.activeDownloads.isEmpty)
+    #expect(model.downloads.count == 1)
+    #expect(model.downloads.first?.isFinished == true)
+    #expect(try environment.downloadRepository.recent().first?.state == .finished)
 }
 
 @Test @MainActor
@@ -238,4 +387,160 @@ func openTabsSurfaceAsAddressSuggestions() {
     #expect(openTab != nil)
     model.acceptSuggestion(openTab!)
     #expect(model.session.activeTabID == openID)
+}
+
+@Test @MainActor
+func togglingTabLayoutUpdatesModelAndPersists() {
+    let environment = BrowserEnvironment.inMemory()
+    let model = BrowserWindowModel(environment: environment)
+    #expect(model.tabLayout == .top)
+
+    model.toggleTabLayout()
+    #expect(model.tabLayout == .sidebar)
+    #expect(environment.loadSettings().tabLayout == .sidebar)
+
+    model.toggleTabLayout()
+    #expect(model.tabLayout == .top)
+    #expect(environment.loadSettings().tabLayout == .top)
+}
+
+@Test @MainActor
+func storedSidebarLayoutIsPickedUpAtLaunch() {
+    let environment = BrowserEnvironment.inMemory()
+    var settings = environment.loadSettings()
+    settings.tabLayout = .sidebar
+    environment.saveSettings(settings)
+
+    let model = BrowserWindowModel(environment: environment)
+    #expect(model.tabLayout == .sidebar)
+}
+
+@Test @MainActor
+func tabLayoutSettingDecodesFromOlderSettingsJSON() throws {
+    let json = #"{"searchEngineTemplate":"https://www.google.com/search?q="}"#
+    let settings = try JSONDecoder().decode(BrowserSettings.self, from: Data(json.utf8))
+    #expect(settings.tabLayout == .top)
+}
+
+@Test @MainActor
+func submittingSearchKeepsQueryInAddressBar() {
+    let engine = StubEngine()
+    let model = BrowserWindowModel(environment: .inMemory(engine: engine))
+    model.selectSearchEngine(.duckDuckGo)
+
+    model.addressText = "what is ai"
+    model.submitAddress()
+
+    #expect(model.addressText == "what is ai")
+}
+
+@Test @MainActor
+func committedSearchNavigationWithExtraParamsKeepsQuery() {
+    let engine = StubEngine()
+    let model = BrowserWindowModel(environment: .inMemory(engine: engine))
+    model.selectSearchEngine(.duckDuckGo)
+
+    model.addressText = "what is ai"
+    model.submitAddress()
+    let tab = model.session.activeTabID!
+
+    // The results page's own JavaScript appends ia=web after load; the bar
+    // must keep showing the query, not the rewritten URL.
+    let rewritten = URL(string: "https://duckduckgo.com/?q=what+is+ai&ia=web")!
+    engine.emit(.committed(rewritten), for: tab)
+    #expect(model.addressText == "what is ai")
+    engine.emit(.finished(title: "what is ai at DuckDuckGo", url: rewritten), for: tab)
+    #expect(model.addressText == "what is ai")
+}
+
+@Test @MainActor
+func navigatingAwayFromSearchShowsURL() {
+    let engine = StubEngine()
+    let model = BrowserWindowModel(environment: .inMemory(engine: engine))
+    model.selectSearchEngine(.duckDuckGo)
+
+    model.addressText = "what is ai"
+    model.submitAddress()
+    let tab = model.session.activeTabID!
+    engine.emit(.committed(URL(string: "https://duckduckgo.com/?q=what+is+ai&ia=web")!), for: tab)
+    #expect(model.addressText == "what is ai")
+
+    // Following a result leaves the search page, so the real URL returns.
+    engine.emit(.committed(URL(string: "https://example.com/article")!), for: tab)
+    #expect(model.addressText == "https://example.com/article")
+}
+
+@Test @MainActor
+func switchingTabsPreservesSearchDisplay() {
+    let engine = StubEngine()
+    let model = BrowserWindowModel(environment: .inMemory(engine: engine))
+    model.selectSearchEngine(.duckDuckGo)
+
+    model.addressText = "what is ai"
+    model.submitAddress()
+    let first = model.session.activeTabID!
+    engine.emit(.committed(URL(string: "https://duckduckgo.com/?q=what+is+ai&ia=web")!), for: first)
+
+    _ = model.newTab()
+    #expect(model.addressText == "")
+
+    model.selectTab(first)
+    #expect(model.addressText == "what is ai")
+}
+
+@Test @MainActor
+func bangSearchShowsParsedQueryInAddressBar() {
+    let engine = StubEngine()
+    let model = BrowserWindowModel(environment: .inMemory(engine: engine))
+    model.selectSearchEngine(.bing)
+
+    model.addressText = "!d private browsing"
+    model.submitAddress()
+
+    #expect(model.addressText == "private browsing")
+    let tab = model.session.activeTabID!
+    engine.emit(.committed(URL(string: "https://duckduckgo.com/?q=private+browsing")!), for: tab)
+    #expect(model.addressText == "private browsing")
+}
+
+@Test @MainActor
+func navigatingToAURLShowsTheURL() {
+    let engine = StubEngine()
+    let model = BrowserWindowModel(environment: .inMemory(engine: engine))
+
+    model.addressText = "https://example.com/path"
+    model.submitAddress()
+    #expect(model.addressText == "https://example.com/path")
+
+    let tab = model.session.activeTabID!
+    engine.emit(.committed(URL(string: "https://example.com/path")!), for: tab)
+    #expect(model.addressText == "https://example.com/path")
+}
+
+@Test @MainActor
+func togglingSidebarCollapsedPersists() {
+    let key = "browsemium.sidebarCollapsed"
+    let previous = UserDefaults.standard.object(forKey: key)
+    defer {
+        if let previous {
+            UserDefaults.standard.set(previous, forKey: key)
+        } else {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+    }
+    UserDefaults.standard.removeObject(forKey: key)
+
+    let environment = BrowserEnvironment.inMemory()
+    let model = BrowserWindowModel(environment: environment)
+    #expect(model.isSidebarCollapsed == false)
+
+    model.toggleSidebarCollapsed()
+    #expect(model.isSidebarCollapsed == true)
+
+    // A fresh window picks up the stored choice, like the bookmarks bar does.
+    let relaunched = BrowserWindowModel(environment: environment)
+    #expect(relaunched.isSidebarCollapsed == true)
+
+    relaunched.toggleSidebarCollapsed()
+    #expect(relaunched.isSidebarCollapsed == false)
 }

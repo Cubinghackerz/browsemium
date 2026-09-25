@@ -8,6 +8,9 @@ public enum BrowserImportSource: String, CaseIterable, Identifiable, Sendable {
     case edge
     case vivaldi
     case arc
+    case dia
+    case helium
+    case opera
     case chromium
     case firefox
     case safari
@@ -21,6 +24,9 @@ public enum BrowserImportSource: String, CaseIterable, Identifiable, Sendable {
         case .edge: "Microsoft Edge"
         case .vivaldi: "Vivaldi"
         case .arc: "Arc"
+        case .dia: "Dia"
+        case .helium: "Helium"
+        case .opera: "Opera"
         case .chromium: "Chromium"
         case .firefox: "Firefox"
         case .safari: "Safari"
@@ -36,7 +42,7 @@ public enum BrowserImportSource: String, CaseIterable, Identifiable, Sendable {
 
     public var family: Family {
         switch self {
-        case .chrome, .brave, .edge, .vivaldi, .arc, .chromium: .chromium
+        case .chrome, .brave, .edge, .vivaldi, .arc, .dia, .helium, .opera, .chromium: .chromium
         case .firefox: .firefox
         case .safari: .safari
         }
@@ -51,6 +57,9 @@ public enum BrowserImportSource: String, CaseIterable, Identifiable, Sendable {
         case .edge: "Microsoft Edge Safe Storage"
         case .vivaldi: "Vivaldi Safe Storage"
         case .arc: "Arc Safe Storage"
+        case .dia: "Dia Safe Storage"
+        case .helium: "Helium Safe Storage"
+        case .opera: "Opera Safe Storage"
         case .chromium: "Chromium Safe Storage"
         case .firefox, .safari: nil
         }
@@ -66,6 +75,9 @@ public enum BrowserImportSource: String, CaseIterable, Identifiable, Sendable {
         case .edge: return base.appendingPathComponent("Microsoft Edge", isDirectory: true)
         case .vivaldi: return base.appendingPathComponent("Vivaldi", isDirectory: true)
         case .arc: return base.appendingPathComponent("Arc/User Data", isDirectory: true)
+        case .dia: return base.appendingPathComponent("Dia/User Data", isDirectory: true)
+        case .helium: return base.appendingPathComponent("net.imput.helium", isDirectory: true)
+        case .opera: return base.appendingPathComponent("com.operasoftware.Opera", isDirectory: true)
         case .chromium: return base.appendingPathComponent("Chromium", isDirectory: true)
         case .firefox: return base.appendingPathComponent("Firefox/Profiles", isDirectory: true)
         case .safari: return home.appendingPathComponent("Library/Safari", isDirectory: true)
@@ -347,8 +359,8 @@ public enum BrowserProfileLocator {
         }
     }
 
-    /// Chrome, Brave, Edge, Vivaldi, Arc, and Chromium all keep profiles in
-    /// `Default` / `Profile N` folders. Display names come from the browser's
+    /// Every Chromium-family browser keeps profiles in `Default` /
+    /// `Profile N` folders. Display names come from the browser's
     /// `Local State` file so a profile named "Work" is offered as "Chrome —
     /// Work" instead of "Chrome — Profile 2".
     private static func chromiumCandidates() -> [BrowserProfileCandidate] {
@@ -783,14 +795,15 @@ public final class BrowserDataImporter: @unchecked Sendable {
         return newest.values.sorted { $0.visitedAt > $1.visitedAt }
     }
 
-    /// Chrome, Brave, Edge, Vivaldi, Arc, and Chromium share this layout.
+    /// Every Chromium-family browser shares this layout: Chrome, Brave, Edge,
+    /// Vivaldi, Arc, Dia, Helium, Opera, and Chromium itself.
     private func readChromium(_ folder: URL) throws -> ([ImportedBookmark], [ImportedVisit]) {
         let bookmarksURL = folder.appendingPathComponent("Bookmarks")
         let historyURL = folder.appendingPathComponent("History")
         guard FileManager.default.fileExists(atPath: bookmarksURL.path) ||
                 FileManager.default.fileExists(atPath: historyURL.path) ||
                 FileManager.default.fileExists(atPath: folder.appendingPathComponent("Login Data").path) else {
-            throw ImportError.unsupportedFolder("Chrome, Brave, Edge, Vivaldi, Arc, or Chromium")
+            throw ImportError.unsupportedFolder("Chrome, Brave, Edge, Vivaldi, Arc, Dia, Helium, Opera, or Chromium")
         }
 
         var importedBookmarks: [ImportedBookmark] = []

@@ -4,6 +4,87 @@ public enum ProtectionLevel: String, CaseIterable, Codable, Sendable {
     case off
     case standard
     case strict
+
+    public var title: String {
+        switch self {
+        case .off: "Off"
+        case .standard: "Balanced"
+        case .strict: "Strict"
+        }
+    }
+
+    public var summary: String {
+        switch self {
+        case .off:
+            "No bundled blocking rules. WebKit's own tracking protection stays on."
+        case .standard:
+            "Blocks ads and trackers with the bundled rules. WebKit's own tracking protection stays on."
+        case .strict:
+            Self.strictSummary
+        }
+    }
+
+    private static var strictSummary: String {
+        var sentences = ["Strict upgrades http pages to https, except local addresses."]
+        if #available(macOS 26.4, *) {
+            sentences.append("Pages run with JavaScript JIT disabled, which can slow heavy web apps.")
+        } else {
+            sentences.append("JavaScript JIT hardening needs macOS 26.4 or newer.")
+        }
+        if #available(macOS 27.0, *) {
+            sentences.insert("Strict sends the Global Privacy Control signal.", at: 0)
+        } else {
+            sentences.append("The Global Privacy Control signal needs macOS 27 or newer.")
+        }
+        return sentences.joined(separator: " ")
+    }
+
+    public var blocksContentRules: Bool {
+        self != .off
+    }
+
+    public var sendsGlobalPrivacyControl: Bool {
+        self == .strict
+    }
+
+    public var requiresHTTPS: Bool {
+        self == .strict
+    }
+
+    public var hardensWebContent: Bool {
+        self == .strict
+    }
+
+    public static let plaintextExemptHosts: Set<String> = [
+        "localhost", "127.0.0.1", "::1", "[::1]"
+    ]
+
+    public static let blockingPreference = "blocking"
+    public static let blockingPausedValue = "paused"
+
+    public static func rulesEnabled(
+        protectionBlocksContent: Bool,
+        pausedHosts: Set<String>,
+        host: String?
+    ) -> Bool {
+        guard protectionBlocksContent else { return false }
+        guard let host else { return true }
+        return !pausedHosts.contains(host.lowercased())
+    }
+
+    public func httpsUpgrade(of url: URL) -> URL? {
+        guard requiresHTTPS, url.scheme?.lowercased() == "http" else { return nil }
+        guard let host = url.host?.lowercased(), !Self.plaintextExemptHosts.contains(host) else {
+            return nil
+        }
+        if let port = url.port, port != 80 { return nil }
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        components.scheme = "https"
+        components.port = nil
+        return components.url
+    }
 }
 
 public enum AppearancePreference: String, CaseIterable, Codable, Sendable {
@@ -16,6 +97,21 @@ public enum AppearancePreference: String, CaseIterable, Codable, Sendable {
         case .system: "System"
         case .light: "Light"
         case .dark: "Dark"
+        }
+    }
+}
+
+/// Where open tabs live in the window. `top` is the classic strip; `sidebar`
+/// is a vertical list down the leading edge, which scales to many tabs and
+/// keeps full titles readable — the Arc/Zen/Firefox pattern.
+public enum TabLayout: String, CaseIterable, Codable, Sendable {
+    case top
+    case sidebar
+
+    public var title: String {
+        switch self {
+        case .top: "Top"
+        case .sidebar: "Sidebar"
         }
     }
 }
@@ -120,7 +216,6 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
     public var appearance: AppearancePreference
     public var historyRetentionDays: Int?
     public var clearOnQuit: Bool
-    public var remoteSearchSuggestions: Bool
     public var protectionLevel: ProtectionLevel
     public var persistAIConversations: Bool
     public var isAIDockEnabled: Bool
@@ -142,15 +237,26 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
     public var maximumLiveTabs: Int
     /// Keeps one WebKit process warm so new tabs open faster.
     public var warmTabPreloading: Bool
-    /// Applies compiled content rules to block ads and trackers.
-    public var contentBlockingEnabled: Bool
+    /// Whether tabs sit in a top strip or a leading sidebar.
+    public var tabLayout: TabLayout
+    /// Opens the peek overlay after the pointer rests on a link. Off by
+    /// default: the preview loads the page, so hovering becomes a network
+    /// request — that should be a deliberate choice.
+    public var linkPreviewOnHover: Bool
+    /// Offers one-click install when a Chrome Web Store extension listing is
+    /// open in the active tab. On by default; turning it off keeps the store
+    /// an ordinary web page.
+    public var offerWebStoreInstalls: Bool
+
+    public var contentBlockingEnabled: Bool {
+        protectionLevel.blocksContentRules
+    }
 
     public init(
         searchEngineTemplate: String = SearchEnginePreset.google.template,
         appearance: AppearancePreference = .system,
         historyRetentionDays: Int? = 90,
         clearOnQuit: Bool = false,
-        remoteSearchSuggestions: Bool = false,
         protectionLevel: ProtectionLevel = .standard,
         persistAIConversations: Bool = false,
         isAIDockEnabled: Bool = true,
@@ -160,13 +266,14 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
         tabSleepMinutes: Int = 5,
         maximumLiveTabs: Int = 4,
         warmTabPreloading: Bool = true,
-        contentBlockingEnabled: Bool = true
+        tabLayout: TabLayout = .top,
+        linkPreviewOnHover: Bool = false,
+        offerWebStoreInstalls: Bool = true
     ) {
         self.searchEngineTemplate = searchEngineTemplate
         self.appearance = appearance
         self.historyRetentionDays = historyRetentionDays
         self.clearOnQuit = clearOnQuit
-        self.remoteSearchSuggestions = remoteSearchSuggestions
         self.protectionLevel = protectionLevel
         self.persistAIConversations = persistAIConversations
         self.isAIDockEnabled = isAIDockEnabled
@@ -176,7 +283,9 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
         self.tabSleepMinutes = tabSleepMinutes
         self.maximumLiveTabs = maximumLiveTabs
         self.warmTabPreloading = warmTabPreloading
-        self.contentBlockingEnabled = contentBlockingEnabled
+        self.tabLayout = tabLayout
+        self.linkPreviewOnHover = linkPreviewOnHover
+        self.offerWebStoreInstalls = offerWebStoreInstalls
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -184,7 +293,6 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
         case appearance
         case historyRetentionDays
         case clearOnQuit
-        case remoteSearchSuggestions
         case protectionLevel
         case persistAIConversations
         case isAIDockEnabled
@@ -195,6 +303,9 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
         case maximumLiveTabs
         case warmTabPreloading
         case contentBlockingEnabled
+        case tabLayout
+        case linkPreviewOnHover
+        case offerWebStoreInstalls
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -207,7 +318,6 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
             try container.encodeNil(forKey: .historyRetentionDays)
         }
         try container.encode(clearOnQuit, forKey: .clearOnQuit)
-        try container.encode(remoteSearchSuggestions, forKey: .remoteSearchSuggestions)
         try container.encode(protectionLevel, forKey: .protectionLevel)
         try container.encode(persistAIConversations, forKey: .persistAIConversations)
         try container.encode(isAIDockEnabled, forKey: .isAIDockEnabled)
@@ -217,7 +327,9 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
         try container.encode(tabSleepMinutes, forKey: .tabSleepMinutes)
         try container.encode(maximumLiveTabs, forKey: .maximumLiveTabs)
         try container.encode(warmTabPreloading, forKey: .warmTabPreloading)
-        try container.encode(contentBlockingEnabled, forKey: .contentBlockingEnabled)
+        try container.encode(tabLayout, forKey: .tabLayout)
+        try container.encode(linkPreviewOnHover, forKey: .linkPreviewOnHover)
+        try container.encode(offerWebStoreInstalls, forKey: .offerWebStoreInstalls)
     }
 
     /// Settings written by older builds must still decode; any key that did
@@ -231,8 +343,15 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
             ? try container.decodeIfPresent(Int.self, forKey: .historyRetentionDays)
             : defaults.historyRetentionDays
         clearOnQuit = try container.decodeIfPresent(Bool.self, forKey: .clearOnQuit) ?? defaults.clearOnQuit
-        remoteSearchSuggestions = try container.decodeIfPresent(Bool.self, forKey: .remoteSearchSuggestions) ?? defaults.remoteSearchSuggestions
-        protectionLevel = try container.decodeIfPresent(ProtectionLevel.self, forKey: .protectionLevel) ?? defaults.protectionLevel
+        let storedLevel = try container.decodeIfPresent(ProtectionLevel.self, forKey: .protectionLevel)
+        let legacyBlocking = try container.decodeIfPresent(Bool.self, forKey: .contentBlockingEnabled)
+        if legacyBlocking == false {
+            protectionLevel = .off
+        } else if let storedLevel {
+            protectionLevel = storedLevel
+        } else {
+            protectionLevel = defaults.protectionLevel
+        }
         persistAIConversations = try container.decodeIfPresent(Bool.self, forKey: .persistAIConversations) ?? defaults.persistAIConversations
         isAIDockEnabled = try container.decodeIfPresent(Bool.self, forKey: .isAIDockEnabled) ?? defaults.isAIDockEnabled
         includePageMetadataInWebAI = try container.decodeIfPresent(Bool.self, forKey: .includePageMetadataInWebAI) ?? defaults.includePageMetadataInWebAI
@@ -241,7 +360,9 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
         tabSleepMinutes = try container.decodeIfPresent(Int.self, forKey: .tabSleepMinutes) ?? defaults.tabSleepMinutes
         maximumLiveTabs = try container.decodeIfPresent(Int.self, forKey: .maximumLiveTabs) ?? defaults.maximumLiveTabs
         warmTabPreloading = try container.decodeIfPresent(Bool.self, forKey: .warmTabPreloading) ?? defaults.warmTabPreloading
-        contentBlockingEnabled = try container.decodeIfPresent(Bool.self, forKey: .contentBlockingEnabled) ?? defaults.contentBlockingEnabled
+        tabLayout = try container.decodeIfPresent(TabLayout.self, forKey: .tabLayout) ?? defaults.tabLayout
+        linkPreviewOnHover = try container.decodeIfPresent(Bool.self, forKey: .linkPreviewOnHover) ?? defaults.linkPreviewOnHover
+        offerWebStoreInstalls = try container.decodeIfPresent(Bool.self, forKey: .offerWebStoreInstalls) ?? defaults.offerWebStoreInstalls
     }
 
     /// Idle seconds before a background tab may be unloaded.

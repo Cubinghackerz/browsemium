@@ -31,6 +31,11 @@ public protocol BrowserEngine: AnyObject {
     /// Drops every web view, including the warm spare, because they belong to
     /// the previous profile's data store.
     func teardownForProfileSwitch()
+    /// Puts the engine's web views into private mode: no profile data store,
+    /// no cookies or site storage left behind. Engines that cannot isolate
+    /// storage may ignore this — but a browser that shows a private window
+    /// must honour it.
+    func setPrivateBrowsing(_ isPrivate: Bool)
     func isLive(tabID: TabID) -> Bool
     var liveTabCount: Int { get }
 
@@ -83,6 +88,12 @@ public protocol BrowserEngine: AnyObject {
     var blocking: BlockingState { get }
     /// Fired when blocking rules become usable, so open tabs can pick them up.
     var onBlockingActivated: (() -> Void)? { get set }
+    /// Removes or restores the compiled rule list for one tab. Engines that
+    /// cannot do this keep the default, which does nothing.
+    func setContentRulesPaused(tabID: TabID, paused: Bool)
+    /// Hosts whose bundled rules are paused. Used before a navigation so the
+    /// next page is not loaded under the previous site's exception.
+    func replacePausedBlockingHosts(_ hosts: Set<String>)
 
     // MARK: - Settings, permissions, memory
 
@@ -100,6 +111,20 @@ public protocol BrowserEngine: AnyObject {
     func clearSiteData(dataStoreIdentifier: UUID, includeCache: Bool, modifiedSince: Date) async
     func clearCache(dataStoreIdentifier: UUID) async
     func removeAllData(dataStoreIdentifier: UUID) async
+    /// Permanently removes the profile's persistent store. All views using it
+    /// must be released first. Unlike `removeAllData`, failure is surfaced so
+    /// the profile registry is never deleted on a false success.
+    func removeProfileDataStore(dataStoreIdentifier: UUID) async throws
+}
+
+public extension BrowserEngine {
+    /// Engines that cannot isolate storage keep their previous behaviour;
+    /// the WebKit engine overrides this with an ephemeral data store.
+    func setPrivateBrowsing(_ isPrivate: Bool) {}
+
+    func setContentRulesPaused(tabID: TabID, paused: Bool) {}
+
+    func replacePausedBlockingHosts(_ hosts: Set<String>) {}
 }
 
 /// Download progress, reported to every window.
@@ -145,5 +170,16 @@ public enum BlockingState: Sendable, Equatable {
     public var isActive: Bool {
         if case .active = self { return true }
         return false
+    }
+}
+
+public enum ProfileDataStoreRemovalError: Error, LocalizedError, Sendable, Equatable {
+    case unsupported
+
+    public var errorDescription: String? {
+        switch self {
+        case .unsupported:
+            "This browser engine cannot safely remove an entire profile data store yet."
+        }
     }
 }

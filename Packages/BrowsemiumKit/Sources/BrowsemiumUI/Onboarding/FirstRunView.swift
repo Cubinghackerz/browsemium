@@ -15,12 +15,13 @@ struct FirstRunView: View {
     @State private var step = 0
     @State private var searchTemplate = SearchEnginePreset.google.template
     @State private var appearance: AppearancePreference = .system
+    @State private var tabLayout: TabLayout = .top
     @State private var protection: ProtectionLevel = .standard
     @State private var retentionDays: Int = 90
     @State private var clearOnQuit = false
     @State private var assistantEnabled = true
 
-    private let stepCount = 5
+    private let stepCount = 6
 
     private let retentionOptions: [(label: String, days: Int)] = [
         ("7 days", 7),
@@ -38,7 +39,8 @@ struct FirstRunView: View {
                 case 0: welcomeStep
                 case 1: searchStep
                 case 2: appearanceStep
-                case 3: privacyStep
+                case 3: tabLayoutStep
+                case 4: privacyStep
                 default: assistantStep
                 }
             }
@@ -144,6 +146,64 @@ struct FirstRunView: View {
         }
     }
 
+    /// The one question every browser asks eventually: tabs across the top,
+    /// or down the side? Two miniature mockups make the choice obvious.
+    private var tabLayoutStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Spacer()
+            stepHeader(
+                title: "Tabs",
+                detail: "How do you like them? You can switch any time from the View menu or Settings."
+            )
+
+            HStack(spacing: 8) {
+                TabLayoutCard(
+                    title: "Horizontal",
+                    detail: "A strip across the top",
+                    isSelected: tabLayout == .top
+                ) {
+                    tabLayout = .top
+                } preview: {
+                    VStack(spacing: 3) {
+                        HStack(spacing: 3) {
+                            ForEach(0..<3, id: \.self) { index in
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(index == 0 ? Color.browsemiumPrimary.opacity(0.55) : Color.browsemiumTertiary.opacity(0.4))
+                                    .frame(width: 22, height: 9)
+                            }
+                        }
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.browsemiumTertiary.opacity(0.25))
+                            .frame(height: 26)
+                    }
+                }
+
+                TabLayoutCard(
+                    title: "Vertical",
+                    detail: "A sidebar down the left",
+                    isSelected: tabLayout == .sidebar
+                ) {
+                    tabLayout = .sidebar
+                } preview: {
+                    HStack(spacing: 3) {
+                        VStack(spacing: 3) {
+                            ForEach(0..<3, id: \.self) { index in
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(index == 0 ? Color.browsemiumPrimary.opacity(0.55) : Color.browsemiumTertiary.opacity(0.4))
+                                    .frame(width: 16, height: 8)
+                            }
+                        }
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.browsemiumTertiary.opacity(0.25))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 34)
+                    }
+                }
+            }
+            Spacer()
+        }
+    }
+
     private var privacyStep: some View {
         VStack(alignment: .leading, spacing: 16) {
             Spacer()
@@ -160,10 +220,16 @@ struct FirstRunView: View {
                     BrowsemiumTabPicker(
                         values: ProtectionLevel.allCases,
                         selection: $protection,
-                        label: { $0.rawValue.capitalized }
+                        label: { $0.title }
                     )
                     .accessibilityLabel("Content protection level")
                 }
+
+                Text(protection.summary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.browsemiumTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 HStack {
                     Text("Keep history for")
@@ -272,6 +338,7 @@ struct FirstRunView: View {
         model.updateSettings { settings in
             settings.searchEngineTemplate = searchTemplate
             settings.appearance = appearance
+            settings.tabLayout = tabLayout
             settings.protectionLevel = protection
             settings.historyRetentionDays = retentionDays
             settings.clearOnQuit = clearOnQuit
@@ -319,6 +386,55 @@ private struct OptionRow: View {
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
         .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+}
+
+@MainActor
+private struct TabLayoutCard<Preview: View>: View {
+    let title: String
+    let detail: String
+    let isSelected: Bool
+    let action: () -> Void
+    @ViewBuilder let preview: () -> Preview
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                preview()
+                    .padding(8)
+                    .frame(height: 56, alignment: .center)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.browsemiumField)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(isSelected ? Color.browsemiumBorderStrong : Color.browsemiumBorder, lineWidth: 1)
+                    }
+
+                VStack(spacing: 1) {
+                    Text(title)
+                        .font(.system(size: 11.5, weight: isSelected ? .semibold : .regular))
+                        .foregroundStyle(isSelected ? Color.browsemiumPrimary : Color.browsemiumSecondary)
+                    Text(detail)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.browsemiumTertiary)
+                }
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous)
+                    .fill(isSelected ? Color.browsemiumSelection : (isHovering ? Color.browsemiumHover : Color.clear))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel("\(title) tabs")
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 }

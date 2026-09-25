@@ -38,6 +38,9 @@ struct SettingsView: View {
     @State private var profileDeleteTarget: BrowserProfile?
     @State private var profiles: [BrowserProfile] = []
     @State private var isDefaultBrowser = DefaultBrowser.isDefault
+    @State private var chromeWebStoreInput = ""
+    @State private var isSearchEngineMenuPresented = false
+    @State private var isHistoryMenuPresented = false
 
     private let retentionOptions: [(label: String, days: Int?)] = [
         ("7 days", 7),
@@ -59,6 +62,7 @@ struct SettingsView: View {
                     performanceSection
                     importSection
                     privacySection
+                    extensionsSection
                     sitePermissionsSection
                     passwordsSection
                     assistantSection
@@ -81,6 +85,9 @@ struct SettingsView: View {
         }
         .onChange(of: model.profileSwitchToken) {
             refreshProfiles()
+        }
+        .onChange(of: model.searchEngineTemplate) { _, template in
+            settings.searchEngineTemplate = template
         }
         .sheet(item: $importPreview) { preview in
             ImportPreviewSheet(
@@ -179,10 +186,12 @@ struct SettingsView: View {
         ) {
             Button("Delete profile and all of its data", role: .destructive) {
                 if let target = profileDeleteTarget {
-                    model.deleteProfile(target)
+                    Task { @MainActor in
+                        await model.deleteProfile(target)
+                        refreshProfiles()
+                    }
                 }
                 profileDeleteTarget = nil
-                refreshProfiles()
             }
             Button("Cancel", role: .cancel) { profileDeleteTarget = nil }
         } message: {
@@ -209,6 +218,15 @@ struct SettingsView: View {
                 .accessibilityLabel("Appearance")
             }
 
+            SettingsRow("Tab layout") {
+                BrowsemiumTabPicker(
+                    values: TabLayout.allCases,
+                    selection: settingBinding(\.tabLayout),
+                    label: \.title
+                )
+                .accessibilityLabel("Tab layout")
+            }
+
             SettingsRow("Default browser") {
                 HStack(spacing: 8) {
                     if isDefaultBrowser {
@@ -217,12 +235,14 @@ struct SettingsView: View {
                             .foregroundStyle(Color.browsemiumTertiary)
                     } else {
                         BrowsemiumTextButton("Make Default") {
-                            if DefaultBrowser.requestDefault() {
-                                isDefaultBrowser = true
-                                statusMessage = "Browsemium is now the default browser"
-                            } else {
-                                DefaultBrowser.openSystemSettings()
-                                statusMessage = "Set Browsemium as the default in System Settings"
+                            Task { @MainActor in
+                                if await DefaultBrowser.requestDefault() {
+                                    isDefaultBrowser = true
+                                    statusMessage = "Browsemium is now the default browser"
+                                } else {
+                                    DefaultBrowser.openSystemSettings()
+                                    statusMessage = "Set Browsemium as the default in System Settings"
+                                }
                             }
                         }
                     }
@@ -275,11 +295,7 @@ struct SettingsView: View {
                 }
             }
 
-            Text("Each profile keeps its own tabs, bookmarks, history, passwords, logins, and site data. Nothing is shared between them.")
-                .font(.system(size: 11))
-                .foregroundStyle(Color.browsemiumTertiary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            SettingsNote("Each profile keeps its own tabs, bookmarks, history, passwords, logins, and site data. Nothing is shared between them.")
         }
     }
 
@@ -294,14 +310,36 @@ struct SettingsView: View {
         SettingsCard("Browsing", systemImage: "globe") {
             SettingsRow("Search engine") {
                 HStack(spacing: 10) {
-                    Picker("Search engine", selection: searchEngineBinding) {
-                        ForEach(SearchEnginePreset.all) { preset in
-                            Text(preset.name).tag(preset.template)
+                    Button {
+                        isSearchEngineMenuPresented = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            SearchEngineMark(
+                                engineName: SearchEnginePreset.name(for: settings.searchEngineTemplate),
+                                size: 16
+                            )
+                            Text(SearchEnginePreset.name(for: settings.searchEngineTemplate))
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color.browsemiumPrimary)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(Color.browsemiumTertiary)
                         }
-                        Text("Custom").tag(Self.customEngineTag)
+                        .padding(.horizontal, 8)
+                        .frame(height: 26)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color.browsemiumField)
+                        )
+                        .contentShape(Rectangle())
                     }
-                    .labelsHidden()
-                    .frame(width: 150)
+                    .buttonStyle(.plain)
+                    .popover(isPresented: $isSearchEngineMenuPresented, arrowEdge: .bottom) {
+                        SearchEngineMenuPanel(model: model) {
+                            isSearchEngineMenuPresented = false
+                        }
+                        .presentationBackground(.clear)
+                    }
                     .accessibilityLabel("Search engine")
 
                     if searchEngineBinding.wrappedValue == Self.customEngineTag {
@@ -317,13 +355,48 @@ struct SettingsView: View {
             }
 
             SettingsRow("Keep history for") {
-                Picker("Keep history for", selection: retentionBinding) {
-                    ForEach(retentionOptions, id: \.label) { option in
-                        Text(option.label).tag(option.days ?? -1)
+                Button {
+                    isHistoryMenuPresented = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.browsemiumSecondary)
+                        Text(retentionOptions.first { $0.days == settings.historyRetentionDays }?.label ?? "90 days")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.browsemiumPrimary)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(Color.browsemiumTertiary)
                     }
+                    .padding(.horizontal, 8)
+                    .frame(height: 26)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.browsemiumField)
+                    )
+                    .contentShape(Rectangle())
                 }
-                .labelsHidden()
-                .frame(width: 170)
+                .buttonStyle(.plain)
+                .popover(isPresented: $isHistoryMenuPresented, arrowEdge: .bottom) {
+                    MenuPanelContainer {
+                        ForEach(retentionOptions, id: \.label) { option in
+                            MenuPanelRow(
+                                title: option.label,
+                                isSelected: settings.historyRetentionDays == option.days
+                            ) {
+                                settings.historyRetentionDays = option.days
+                                save()
+                                isHistoryMenuPresented = false
+                            } icon: {
+                                Image(systemName: "clock")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Color.browsemiumSecondary)
+                            }
+                        }
+                    }
+                    .presentationBackground(.clear)
+                }
                 .accessibilityLabel("History retention")
             }
 
@@ -332,9 +405,10 @@ struct SettingsView: View {
                 isOn: settingBinding(\.clearOnQuit)
             )
             SettingsToggleRow(
-                "Send search suggestions while typing",
-                isOn: settingBinding(\.remoteSearchSuggestions)
+                "Preview links on hover",
+                isOn: settingBinding(\.linkPreviewOnHover)
             )
+            SettingsNote("Off by default. Rest the pointer on a link to open a preview. The preview loads that page.")
         }
     }
 
@@ -456,14 +530,6 @@ struct SettingsView: View {
 
     private var privacySection: some View {
         SettingsCard("Privacy & Blocking", systemImage: "hand.raised") {
-            SettingsToggleRow("Block ads and trackers", isOn: settingBinding(\.contentBlockingEnabled))
-
-            SettingsRow("Content rules") {
-                Text(contentRuleStatusText)
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(contentRuleStatusColor)
-            }
-
             SettingsRow("Content protection") {
                 BrowsemiumTabPicker(
                     values: ProtectionLevel.allCases,
@@ -474,9 +540,15 @@ struct SettingsView: View {
                             save()
                         }
                     ),
-                    label: { $0.rawValue.capitalized }
+                    label: { $0.title }
                 )
                 .accessibilityLabel("Content protection level")
+            }
+
+            SettingsRow("Content rules") {
+                Text(contentRuleStatusText)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(contentRuleStatusColor)
             }
 
             SettingsRow("Browsing data") {
@@ -489,8 +561,117 @@ struct SettingsView: View {
                 }
             }
 
-            SettingsNote("Browsemium relies on WebKit tracking prevention and never reports a blocked-item count it cannot verify. Browsing data stays on this Mac.")
+            SettingsNote(settings.protectionLevel.summary)
         }
+    }
+
+    private var extensionsSection: some View {
+        SettingsCard("Extensions", systemImage: "puzzlepiece.extension") {
+            if let reason = model.extensionsUnavailableReason {
+                SettingsRow("Not available") {
+                    Text(reason)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Color.browsemiumSecondary)
+                }
+            } else if model.installedExtensions.isEmpty {
+                SettingsRow("No extensions installed") {
+                    BrowsemiumTextButton("Install extension…") { presentExtensionInstaller() }
+                }
+            } else {
+                ForEach(model.installedExtensions) { record in
+                    SettingsRow(record.name) {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(record.version.isEmpty ? "WebExtension" : "Version \(record.version)")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Color.browsemiumTertiary)
+                                if let error = record.lastError {
+                                    Text(error)
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Color.browsemiumWarning)
+                                        .lineLimit(2)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                            BrowsemiumIconButton(
+                                systemName: model.isExtensionActionVisible(record.id) ? "pin" : "pin.slash",
+                                label: model.isExtensionActionVisible(record.id)
+                                    ? "Hide \(record.name) from the toolbar"
+                                    : "Show \(record.name) in the toolbar",
+                                isActive: model.isExtensionActionVisible(record.id)
+                            ) {
+                                model.setExtensionActionVisible(
+                                    record.id,
+                                    isVisible: !model.isExtensionActionVisible(record.id)
+                                )
+                            }
+                            Toggle("", isOn: Binding(
+                                get: { record.isEnabled },
+                                set: { model.setExtensionEnabled(record.id, isEnabled: $0) }
+                            ))
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .controlSize(.small)
+                            .accessibilityLabel("Enable \(record.name)")
+                            BrowsemiumTextButton("Remove", role: .destructive) {
+                                model.removeExtension(record.id)
+                            }
+                        }
+                    }
+                }
+                SettingsRow("Install another") {
+                    BrowsemiumTextButton("Install extension…") { presentExtensionInstaller() }
+                }
+            }
+
+            if model.extensionsUnavailableReason == nil {
+                SettingsToggleRow(
+                    "Offer to install when a Chrome Web Store listing is open",
+                    isOn: settingBinding(\.offerWebStoreInstalls)
+                )
+                SettingsRow("Chrome Web Store") {
+                    HStack(spacing: 8) {
+                        Text("Beta")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(Color.browsemiumAccentFillText)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color.browsemiumAccentFill))
+                        TextField("Store link or extension ID", text: $chromeWebStoreInput)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.small)
+                            .frame(minWidth: 170)
+                            .onSubmit { installFromChromeWebStore() }
+                        BrowsemiumTextButton(model.isInstallingFromWebStore ? "Installing…" : "Install") {
+                            installFromChromeWebStore()
+                        }
+                        .disabled(model.isInstallingFromWebStore)
+                    }
+                }
+                SettingsNote("Beta — the package is fetched from Google's public update service with only the extension ID; no browsing data is sent. Chrome-format extensions run on WebKit's extension API, so anything WebKit does not support simply does not run. Chrome Web Store is a trademark of Google; each extension's own terms apply.")
+            }
+
+            SettingsNote("Browsemium runs extensions through WebKit's public extension API, gated on macOS 15.4 or newer. Extensions are per profile, start disabled, and ask before they get host access. WebKit extensions cannot intercept network requests — first-party blocking stays with Browsemium's own content rules. Installed files live under Application Support/Browsemium/Extensions.")
+        }
+    }
+
+    private func presentExtensionInstaller() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose an Extension"
+        panel.message = "Pick an unpacked extension folder, a .zip, a .crx, or an .appex bundle."
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        panel.treatsFilePackagesAsDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        model.installExtension(from: url)
+    }
+
+    private func installFromChromeWebStore() {
+        let input = chromeWebStoreInput
+        guard !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        model.installExtensionFromChromeWebStore(input)
+        chromeWebStoreInput = ""
     }
 
     private var sitePermissionsSection: some View {

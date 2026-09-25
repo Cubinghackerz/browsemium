@@ -51,15 +51,21 @@ PLIST
 
 rm -rf "$ARCHIVE_PATH" "$EXPORT_PATH"
 
-xcodebuild archive \
-  -project "${ROOT}/Browsemium.xcodeproj" \
-  -scheme Browsemium \
-  -configuration Release \
-  -destination "generic/platform=macOS" \
-  -archivePath "$ARCHIVE_PATH" \
-  DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
-  CODE_SIGN_STYLE=Automatic \
-  | xcbeautify 2>/dev/null || true
+ARCHIVE_ARGS=(
+  archive
+  -project "${ROOT}/Browsemium.xcodeproj"
+  -scheme Browsemium
+  -configuration Release
+  -destination "generic/platform=macOS"
+  -archivePath "$ARCHIVE_PATH"
+  DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM"
+  CODE_SIGN_STYLE=Automatic
+)
+if command -v xcbeautify >/dev/null 2>&1; then
+  xcodebuild "${ARCHIVE_ARGS[@]}" | xcbeautify
+else
+  xcodebuild "${ARCHIVE_ARGS[@]}"
+fi
 
 xcodebuild -exportArchive \
   -archivePath "$ARCHIVE_PATH" \

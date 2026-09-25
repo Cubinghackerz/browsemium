@@ -146,6 +146,11 @@ struct BrowserCommands: Commands {
                 .disabled(model == nil)
             Button("New Window") { openWindow(id: "main") }
                 .keyboardShortcut("n", modifiers: .command)
+            Button("New Private Window") {
+                PrivateWindowRequest.shared.arm()
+                openWindow(id: "main")
+            }
+            .keyboardShortcut("n", modifiers: [.command, .shift])
         }
 
         CommandGroup(after: .newItem) {
@@ -174,6 +179,36 @@ struct BrowserCommands: Commands {
             Button("Forward") { model?.goForward() }
                 .keyboardShortcut("]", modifiers: .command)
                 .disabled(model == nil)
+        }
+
+        CommandMenu("Tabs") {
+            Button("Duplicate Tab") {
+                if let id = model?.session.activeTabID { model?.duplicateTab(id) }
+            }
+            .disabled(model?.session.activeTabID == nil)
+            Button("Copy Current URL") {
+                if let id = model?.session.activeTabID { model?.copyURL(of: id) }
+            }
+            .keyboardShortcut("c", modifiers: [.command, .shift])
+            .disabled(model?.session.activeTabID == nil)
+            Divider()
+            Button("Select Next Tab") { model?.selectAdjacentTab(forward: true) }
+                .keyboardShortcut(.tab, modifiers: .control)
+                .disabled(model == nil)
+            Button("Select Previous Tab") { model?.selectAdjacentTab(forward: false) }
+                .keyboardShortcut(.tab, modifiers: [.control, .shift])
+                .disabled(model == nil)
+            Divider()
+            ForEach(1...9, id: \.self) { index in
+                Button("Show Tab \(index)") { model?.selectTab(atStripIndex: index) }
+                    .keyboardShortcut(KeyEquivalent(Character("\(index)")), modifiers: .command)
+                    .disabled(model == nil)
+            }
+            Divider()
+            Button("Close Other Tabs") {
+                if let id = model?.session.activeTabID { model?.closeOtherTabs(around: id) }
+            }
+            .disabled(model?.session.activeTabID == nil)
         }
 
         CommandMenu("Page") {
@@ -212,6 +247,19 @@ struct BrowserCommands: Commands {
             Button("Commands") { model?.toggleCommandPalette() }
                 .keyboardShortcut("k", modifiers: .command)
                 .disabled(model == nil)
+            Divider()
+            Button(model?.isSplitViewActive == true ? "Close Split View" : "Split View with Recent Tab") {
+                model?.toggleSplitView()
+            }
+            .keyboardShortcut("d", modifiers: [.command, .shift])
+            .disabled(model == nil)
+            Divider()
+            Button("Open Preview as Tab") { model?.promotePeekToTab() }
+                .disabled(model?.peek == nil)
+            Button("Close Preview") { model?.closePeek() }
+                .keyboardShortcut(.escape, modifiers: [])
+                .disabled(model?.peek == nil)
+            Divider()
             Button(model?.isAIDockVisible == true ? "Hide Assistant" : "Show Assistant") {
                 model?.toggleAIDock()
             }
@@ -221,6 +269,11 @@ struct BrowserCommands: Commands {
                 model?.toggleBookmarksBar()
             }
             .keyboardShortcut("b", modifiers: [.command, .shift])
+            .disabled(model == nil)
+            Button(model?.isSidebarCollapsed == true ? "Show Sidebar" : "Hide Sidebar") {
+                model?.toggleSidebarCollapsed()
+            }
+            .keyboardShortcut("s", modifiers: [.control, .command])
             .disabled(model == nil)
         }
 

@@ -15,15 +15,22 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DMG_PATH="${1:-${ROOT}/build/Browsemium.dmg}"
-: "${NOTARY_PROFILE:?Set NOTARY_PROFILE to a notarytool keychain profile name}"
-
 if [[ ! -f "$DMG_PATH" ]]; then
   echo "No DMG at $DMG_PATH. Run Scripts/release/create-dmg.sh first." >&2
   exit 1
 fi
 
 echo "Submitting $DMG_PATH for notarization…"
-xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
+if [[ -n "${NOTARY_KEY_PATH:-}" && -n "${NOTARY_KEY_ID:-}" && -n "${NOTARY_ISSUER_ID:-}" ]]; then
+  xcrun notarytool submit "$DMG_PATH" \
+    --key "$NOTARY_KEY_PATH" \
+    --key-id "$NOTARY_KEY_ID" \
+    --issuer "$NOTARY_ISSUER_ID" \
+    --wait
+else
+  : "${NOTARY_PROFILE:?Set NOTARY_PROFILE, or NOTARY_KEY_PATH/NOTARY_KEY_ID/NOTARY_ISSUER_ID}"
+  xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
+fi
 
 echo "Stapling the notarization ticket…"
 xcrun stapler staple "$DMG_PATH"

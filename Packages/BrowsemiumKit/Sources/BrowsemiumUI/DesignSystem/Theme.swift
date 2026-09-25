@@ -151,6 +151,12 @@ public enum BrowserMetrics {
     public static let tabWidth: CGFloat = 190
     public static let tabMinimumWidth: CGFloat = 120
 
+    /// The vertical tab sidebar's fixed width — wide enough for real titles,
+    /// narrow enough that the page stays dominant.
+    public static let sidebarWidth: CGFloat = 216
+    /// Reserved drag space at the sidebar's top where the traffic lights sit.
+    public static let sidebarTrafficLightInset: CGFloat = 34
+
     /// Continuous-ish rounding: panels read as one object, not a card grid.
     public static let panelRadius: CGFloat = 10
     public static let controlRadius: CGFloat = 8

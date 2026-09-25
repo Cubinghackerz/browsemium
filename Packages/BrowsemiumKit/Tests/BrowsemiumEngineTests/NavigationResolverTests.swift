@@ -78,6 +78,17 @@ func emptyInputIsRejected() {
 }
 
 @Test
+func resolveDetailFlagsSearches() throws {
+    let search = try resolver.resolveDetail("what is ai")
+    #expect(search.isSearch)
+    #expect(search.request.url.host == "www.google.com")
+
+    let direct = try resolver.resolveDetail("https://example.com/path")
+    #expect(!direct.isSearch)
+    #expect(direct.request.url.host == "example.com")
+}
+
+@Test
 func malformedExplicitSchemeIsRejected() {
     do {
         _ = try resolver.resolve("https://")

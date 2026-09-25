@@ -44,7 +44,7 @@ final class WebUIDelegate: NSObject, WKUIDelegate {
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
         if let url = navigationAction.request.url {
-            runtime?.report(.requestedNewWindow(url))
+            runtime?.report(navigationAction.requestsPeek ? .requestedPeek(url) : .requestedNewWindow(url))
         }
         return nil
     }
@@ -53,7 +53,7 @@ final class WebUIDelegate: NSObject, WKUIDelegate {
     /// selected. The selection is captured and attached in the assistant; the
     /// message itself is still typed and sent by the user.
     func webView(_ webView: WKWebView, willOpenMenu menu: NSMenu, with event: NSEvent) {
-        let copySelector = Selector(("copy:"))
+        let copySelector = #selector(NSTextView.copy(_:))
         let hasSelection = menu.items.contains { $0.action == copySelector }
         guard hasSelection else { return }
         let item = NSMenuItem(

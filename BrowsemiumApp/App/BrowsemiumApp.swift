@@ -88,6 +88,11 @@ private struct BrowsemiumWindowRoot: View {
             guard model == nil, let environment else { return }
             let created = BrowserWindowModel(environment: environment)
             created.persistsSession = registry.claimPrimary()
+            // A private window is private from its first frame — before any
+            // view could start a persistent web view.
+            if PrivateWindowRequest.shared.consume() {
+                created.enterPrivateMode()
+            }
             model = created
 
             guard !initialURLs.isEmpty else { return }

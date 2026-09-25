@@ -3,6 +3,7 @@ import BrowsemiumCore
 import BrowsemiumData
 import BrowsemiumEngine
 import BrowsemiumEngineKit
+import BrowsemiumExtensions
 import Foundation
 import BrowsemiumEngineKit
 
@@ -26,15 +27,35 @@ public final class BrowserEnvironment {
     public private(set) var savedCredentialRepository: SavedCredentialRepository
     public private(set) var sitePreferenceRepository: SitePreferenceRepository
     public private(set) var conversationRepository: AIConversationRepository
+    public private(set) var aiSkillRepository: AISkillRepository
+    public private(set) var extensionRepository: ExtensionRepository
     public private(set) var privacyDataManager: PrivacyDataManager
     public private(set) var maintenance: DatabaseMaintenance
+    /// The on-disk extension store. Files are shared between profiles; what
+    /// each profile *loads* is decided by `extensionRepository`.
+    public let extensionStore: ExtensionStore
+    /// Downloads Chrome Web Store packages (beta). A `var` so tests can stub
+    /// the network; the default hits Google's public update service.
+    public var chromeWebStore: any ChromeWebStoreDownloading = ChromeWebStoreDownloader()
+    /// Backing store for the extension host. Held untyped because stored
+    /// properties cannot carry `@available`; use `extensionHost` instead.
+    private var extensionHostStorage: AnyObject?
     public let keychain: KeychainStore
+
+    /// The active profile's WebKit extension host. Nil on macOS < 15.4,
+    /// where WebKit has no public extension API.
+    @available(macOS 15.4, *)
+    public var extensionHost: ExtensionHost? {
+        extensionHostStorage as? ExtensionHost
+    }
 
     public init(
         rootDatabase: AppDatabase,
         profileStore: ProfileStore,
         activeProfile: BrowserProfile,
-        engine: (any BrowserEngine)? = nil
+        engine: (any BrowserEngine)? = nil,
+        extensionStore: ExtensionStore? = nil,
+        keychain: KeychainStore = KeychainStore()
     ) throws {
         self.rootDatabase = rootDatabase
         self.profileStore = profileStore
@@ -51,10 +72,22 @@ public final class BrowserEnvironment {
         savedCredentialRepository = SavedCredentialRepository(database: database)
         sitePreferenceRepository = SitePreferenceRepository(database: database)
         conversationRepository = AIConversationRepository(database: database)
+        aiSkillRepository = AISkillRepository(database: database)
+        extensionRepository = ExtensionRepository(database: database)
         privacyDataManager = PrivacyDataManager(database: database)
         maintenance = DatabaseMaintenance(database: database)
-        keychain = KeychainStore()
+        if let extensionStore {
+            self.extensionStore = extensionStore
+        } else {
+            // Application Support is created on demand; if even that fails,
+            // extensions still work for this run rather than crashing launch.
+            let root = (try? ExtensionStore.defaultRootDirectory())
+                ?? FileManager.default.temporaryDirectory.appendingPathComponent("Browsemium/Extensions", isDirectory: true)
+            self.extensionStore = ExtensionStore(rootDirectory: root)
+        }
+        self.keychain = keychain
         WebViewFactory.dataStoreIdentifier = activeProfile.dataStoreUUID
+        rebuildExtensionHost()
     }
 
     public static func live(engine: (any BrowserEngine)? = nil) throws -> BrowserEnvironment {
@@ -81,7 +114,11 @@ public final class BrowserEnvironment {
         )
     }
 
-    public static func inMemory(engine: (any BrowserEngine)? = nil) -> BrowserEnvironment {
+    public static func inMemory(
+        engine: (any BrowserEngine)? = nil,
+        extensionStore: ExtensionStore? = nil,
+        keychain: KeychainStore = KeychainStore()
+    ) -> BrowserEnvironment {
         do {
             let rootDatabase = try AppDatabase.inMemory()
             let profileStore = ProfileStore(
@@ -97,7 +134,9 @@ public final class BrowserEnvironment {
                 rootDatabase: rootDatabase,
                 profileStore: profileStore,
                 activeProfile: profile,
-                engine: engine
+                engine: engine,
+                extensionStore: extensionStore,
+                keychain: keychain
             )
         } catch {
             fatalError("Browsemium could not create its in-memory database: \(error)")
@@ -110,7 +149,7 @@ public final class BrowserEnvironment {
     /// profile so two profiles can hold different keys for the same provider.
     /// A key saved by a pre-profiles build is migrated on first use.
     public func providerCredentialAccount(_ provider: AIProviderID) -> String {
-        let scoped = "profile.\(activeProfile.id.uuidString).provider.\(provider.rawValue)"
+        let scoped = Self.providerCredentialAccount(provider, profileID: activeProfile.id)
         let legacy = "provider.\(provider.rawValue)"
         if (try? keychain.hasSecret(account: scoped)) != true,
            let value = try? keychain.secret(account: legacy),
@@ -141,10 +180,65 @@ public final class BrowserEnvironment {
         savedCredentialRepository = SavedCredentialRepository(database: database)
         sitePreferenceRepository = SitePreferenceRepository(database: database)
         conversationRepository = AIConversationRepository(database: database)
+        aiSkillRepository = AISkillRepository(database: database)
+        extensionRepository = ExtensionRepository(database: database)
         privacyDataManager = PrivacyDataManager(database: database)
         maintenance = DatabaseMaintenance(database: database)
         WebViewFactory.dataStoreIdentifier = profile.dataStoreUUID
+        rebuildExtensionHost()
         try? profileStore.touch(id: profile.id)
+    }
+
+    // MARK: - Extensions
+
+    /// Builds the profile's extension host and attaches it to the web-view
+    /// factory. Called on launch and after a profile switch: extension
+    /// storage is keyed to the profile's data store, so a switch must never
+    /// reuse the previous host.
+    public func rebuildExtensionHost() {
+        guard #available(macOS 15.4, *) else { return }
+        extensionHost?.unloadAll()
+        let host = ExtensionHost(profileIdentifier: activeProfile.dataStoreUUID)
+        extensionHostStorage = host
+        WebViewFactory.extensionController = host.controller
+    }
+
+    /// Loads every extension this profile has enabled, and unloads any that
+    /// are no longer enabled — the registry is authoritative, so disabling an
+    /// extension in Settings takes effect immediately instead of at relaunch.
+    /// Extensions that fail to load keep their record and store the error for
+    /// Settings to show.
+    public func loadEnabledExtensions() async {
+        guard #available(macOS 15.4, *) else { return }
+        if extensionHost == nil {
+            rebuildExtensionHost()
+        }
+        guard let host = extensionHost else { return }
+        let records = (try? extensionRepository.all()) ?? []
+        let enabledIDs = Set(records.filter(\.isEnabled).map(\.id))
+        for id in host.contexts.keys where !enabledIDs.contains(id) {
+            host.unload(id: id)
+        }
+        let installed = Dictionary(
+            uniqueKeysWithValues: ((try? extensionStore.installed()) ?? []).map { ($0.id, $0) }
+        )
+        for record in records where record.isEnabled {
+            guard let item = installed[record.id] else {
+                try? extensionRepository.setLastError(id: record.id, message: "The extension's files are missing.")
+                continue
+            }
+            await host.load(item)
+            if let error = host.loadErrors[record.id] {
+                try? extensionRepository.setLastError(id: record.id, message: error)
+            } else {
+                let name = host.displayNames[record.id] ?? record.name
+                let version = host.displayVersions[record.id] ?? record.version
+                if name != record.name || version != record.version {
+                    _ = try? extensionRepository.upsert(id: record.id, name: name, version: version)
+                }
+                try? extensionRepository.setLastError(id: record.id, message: nil)
+            }
+        }
     }
 
     public func createProfile(name: String) throws -> BrowserProfile {
@@ -164,8 +258,24 @@ public final class BrowserEnvironment {
         }
     }
 
-    public func deleteProfile(_ profile: BrowserProfile) throws {
+    public func deleteProfile(_ profile: BrowserProfile) async throws {
+        let profileDatabase = try profileStore.database(for: profile)
+        let credentialAccounts = try SavedCredentialRepository(database: profileDatabase)
+            .all()
+            .map(\.keychainAccount)
+        let providerAccounts = AIProviderID.allCases.map {
+            Self.providerCredentialAccount($0, profileID: profile.id)
+        }
+
+        try await engine.removeProfileDataStore(dataStoreIdentifier: profile.dataStoreUUID)
+        for account in credentialAccounts + providerAccounts {
+            try keychain.deleteSecret(account: account)
+        }
         try profileStore.delete(id: profile.id)
+    }
+
+    private static func providerCredentialAccount(_ provider: AIProviderID, profileID: UUID) -> String {
+        "profile.\(profileID.uuidString).provider.\(provider.rawValue)"
     }
 
     // MARK: - Settings

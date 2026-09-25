@@ -49,6 +49,10 @@ struct LibraryView: View {
             }
             reload()
         }
+        .onChange(of: terminalDownloadUpdates) { _, _ in
+            guard section == .downloads else { return }
+            reload()
+        }
     }
 
     private var header: some View {
@@ -113,15 +117,7 @@ struct LibraryView: View {
                     list(bookmarks)
                 }
             case .downloads:
-                if downloads.isEmpty {
-                    BrowsemiumEmptyState(
-                        systemName: "arrow.down.circle",
-                        title: "No downloads yet",
-                        message: "Files you download appear here with their destination."
-                    )
-                } else {
-                    list(downloads)
-                }
+                downloadsContent
             case .recentlyClosed:
                 if closedTabs.isEmpty {
                     BrowsemiumEmptyState(
@@ -174,24 +170,33 @@ struct LibraryView: View {
         }
     }
 
-    private func list(_ items: [DownloadRecord]) -> some View {
-        ScrollView {
-            LazyVStack(spacing: 1) {
-                ForEach(items) { download in
-                    LibraryRow(
-                        title: download.suggestedFilename,
-                        subtitle: download.destinationURL?.path ?? download.sourceURL.absoluteString,
-                        trailing: download.state.rawValue,
-                        action: {
-                            if let url = download.destinationURL {
-                                NSWorkspace.shared.activateFileViewerSelecting([url])
-                            }
-                        }
-                    )
-                }
-            }
-            .padding(.vertical, 6)
-            .padding(.horizontal, 8)
+    @ViewBuilder
+    private var downloadsContent: some View {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let active = model.activeDownloads.filter {
+            query.isEmpty || $0.filename.localizedCaseInsensitiveContains(query)
+        }
+        let activeIDs = Set(active.map(\.id))
+        let history = downloads.filter { !activeIDs.contains($0.id) }
+
+        if active.isEmpty && history.isEmpty {
+            BrowsemiumEmptyState(
+                systemName: "arrow.down.circle",
+                title: "No downloads yet",
+                message: "Files you download appear here with their progress and destination."
+            )
+        } else {
+            DownloadsListView(activeDownloads: active, history: history)
+        }
+    }
+
+    /// Refresh persisted history when a live download reaches a terminal
+    /// state, but not on each progress tick. Active rows read the observable
+    /// model directly and therefore update continuously.
+    private var terminalDownloadUpdates: [String] {
+        model.downloads.compactMap { download in
+            guard download.isFinished || download.failureMessage != nil else { return nil }
+            return "\(download.id.uuidString):\(download.failureMessage ?? "downloaded")"
         }
     }
 

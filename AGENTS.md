@@ -1,5 +1,8 @@
 # Browsemium Development
 
+`MEGAPLAN.md` holds the competitive research and phased product roadmap;
+check it before starting feature work so new code lands in the right phase.
+
 ## Prerequisites
 
 Building the macOS app requires the full Xcode installation, not only the Command Line Tools. Use Xcode 16.3 or newer for Swift 6.1 support, select it with `xcode-select`, accept its license, and install `xcodegen` 2.41 or newer.

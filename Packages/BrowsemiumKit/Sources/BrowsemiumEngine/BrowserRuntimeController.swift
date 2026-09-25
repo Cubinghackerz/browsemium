@@ -15,13 +15,20 @@ public final class BrowserRuntimeController: BrowserRuntime, BrowserEngine {
     public let memoryPressure = MemoryPressureCoordinator()
     public let contentRules = ContentRuleListManager()
     public var sleepPolicy: TabSleepPolicy
+    public private(set) var protectionLevel: ProtectionLevel = .standard
+    private var appliedBlocking: Bool?
+    private var pausedBlockingHosts: Set<String> = []
 
     /// Answers camera and microphone requests. Set by the window that owns the
     /// prompt; every runtime in this controller asks it.
     public weak var permissionPrompter: PermissionPrompting? {
         didSet {
             for runtime in runtimes.values {
-                runtime.permissionPrompter = permissionPrompter
+        runtime.permissionPrompter = permissionPrompter
+        runtime.blockingPausedHosts = { [weak self] in
+            self?.pausedBlockingHosts ?? []
+        }
+        runtime.applyProtection(protectionLevel)
             }
         }
     }
@@ -94,11 +101,28 @@ public final class BrowserRuntimeController: BrowserRuntime, BrowserEngine {
             : TabSleepPolicy(idleInterval: .greatestFiniteMagnitude, maximumLiveTabs: Int.max)
 
         warmPool.setEnabled(settings.warmTabPreloading)
+        WebViewFactory.protectionLevel = settings.protectionLevel
+
+        if protectionLevel != settings.protectionLevel {
+            protectionLevel = settings.protectionLevel
+            warmPool.release()
+            if settings.warmTabPreloading {
+                warmPool.prepare()
+            }
+            for runtime in runtimes.values {
+                runtime.applyProtection(settings.protectionLevel)
+            }
+        }
 
         if settings.contentBlockingEnabled {
             contentRules.activate()
         } else {
             contentRules.deactivate()
+        }
+
+        if appliedBlocking != settings.contentBlockingEnabled {
+            appliedBlocking = settings.contentBlockingEnabled
+            applyRulesToOpenTabs()
         }
     }
 
@@ -161,7 +185,7 @@ public final class BrowserRuntimeController: BrowserRuntime, BrowserEngine {
         }
         let runtime = TabRuntime(
             tabID: tabID,
-            isPrivate: isPrivate,
+            isPrivate: isPrivate || isPrivateBrowsingEnabled,
             factory: factory,
             warmPool: warmPool,
             contentRules: contentRules,
@@ -202,6 +226,22 @@ public final class BrowserRuntimeController: BrowserRuntime, BrowserEngine {
         runtimes[tabID]?.hibernate()
         runtimes[tabID] = nil
         activePanes[tabID] = nil
+    }
+
+    public func setContentRulesPaused(tabID: TabID, paused: Bool) {
+        runtimes[tabID]?.setContentRulesSuppressed(paused)
+    }
+
+    public func replacePausedBlockingHosts(_ hosts: Set<String>) {
+        pausedBlockingHosts = Set(hosts.map { $0.lowercased() })
+        for runtime in runtimes.values where !runtime.isPrivate {
+            guard let host = runtime.currentWebView?.url?.host?.lowercased() else { continue }
+            runtime.setContentRulesSuppressed(pausedBlockingHosts.contains(host))
+        }
+    }
+
+    public func isBlockingPaused(host: String) -> Bool {
+        pausedBlockingHosts.contains(host.lowercased())
     }
 
     public func activate(tabID: TabID, in pane: PaneID) async {
@@ -379,6 +419,32 @@ public final class BrowserRuntimeController: BrowserRuntime, BrowserEngine {
         warmPool.release()
     }
 
+    // MARK: - Private browsing
+
+    /// Whether new web views go into private mode. A private runtime uses
+    /// `WKWebsiteDataStore.nonPersistent()`: cookies, caches, and site
+    /// storage die with the tab.
+    public private(set) var isPrivateBrowsingEnabled = false
+
+    public func setPrivateBrowsing(_ isPrivate: Bool) {
+        guard isPrivateBrowsingEnabled != isPrivate else { return }
+        isPrivateBrowsingEnabled = isPrivate
+        // Existing web views belong to the other mode. Reusing a persistent
+        // web view in a private session — or the reverse — would leak exactly
+        // what the mode promises not to keep, so they are dropped instead.
+        for runtime in runtimes.values {
+            runtime.hibernate()
+        }
+        runtimes.removeAll()
+        activePanes.removeAll()
+        warmPool.release()
+    }
+
+    /// Whether a tab's web view is running against an ephemeral store.
+    public func isPrivateRuntime(tabID: TabID) -> Bool {
+        runtimes[tabID]?.isPrivate ?? false
+    }
+
     public func beginMemoryPressureMonitoring(
         handler: @escaping @MainActor (MemoryPressureLevel) -> Void
     ) {
@@ -443,6 +509,21 @@ public final class BrowserRuntimeController: BrowserRuntime, BrowserEngine {
             from: dataStoreIdentifier,
             modifiedSince: .distantPast
         )
+    }
+
+    /// Deletes the persistent store container itself. WebKit requires every
+    /// WKWebView using the identifier to have been released before this call.
+    public func removeProfileDataStore(dataStoreIdentifier: UUID) async throws {
+        try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<Void, any Error>) in
+            WKWebsiteDataStore.remove(forIdentifier: dataStoreIdentifier) { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            }
+        }
     }
 
     private func remove(types: Set<String>, from dataStoreIdentifier: UUID, modifiedSince: Date) async {

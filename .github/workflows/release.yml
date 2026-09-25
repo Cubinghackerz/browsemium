@@ -1,17 +1,12 @@
 name: Release
 
-# Publishing a release is a tag push: git tag v2.0.0 && git push origin v2.0.0.
-# The workflow builds the DMG, signs it for Sparkle, publishes the GitHub
-# release, refreshes the appcast and checksum, deploys the site, and updates
-# the Homebrew cask. No manual steps.
 on:
   push:
-    tags:
-      - "v*"
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release (for example 2.0.0)"
+        description: "Version to release (for example 2.1.0)"
         required: true
 
 permissions:
@@ -21,160 +16,210 @@ jobs:
   release:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
-      - name: Resolve version
+      - name: Resolve and verify release metadata
         id: version
         run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${GITHUB_REF_NAME#v}"
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Releasing $VERSION"
-
-      - name: Install XcodeGen
-        run: brew install xcodegen
-
-      - name: Restore the Sparkle signing key
-        run: |
-          if [ -z "${{ secrets.SPARKLE_ED25519_KEY }}" ]; then
-            echo "SPARKLE_ED25519_KEY secret is not set; updates could not be signed." >&2
+          set -euo pipefail
+          VERSION="${{ github.event.inputs.version }}"
+          if [[ -z "$VERSION" ]]; then VERSION="${GITHUB_REF_NAME#v}"; fi
+          PROJECT_VERSION="$(awk -F'"' '/MARKETING_VERSION:/ {print $2; exit}' project.yml)"
+          PROJECT_BUILD="$(awk -F'"' '/CURRENT_PROJECT_VERSION:/ {print $2; exit}' project.yml)"
+          EXPECTED_BUILD="$(printf '%s' "$VERSION" | tr -d '.')"
+          if [[ "$VERSION" != "$PROJECT_VERSION" ]]; then
+            echo "Tag/input $VERSION does not match project.yml $PROJECT_VERSION" >&2
             exit 1
           fi
-          mkdir -p "$HOME/.config/browsemium"
-          printf '%s' "${{ secrets.SPARKLE_ED25519_KEY }}" > "$HOME/.config/browsemium/sparkle-ed25519.key"
-          chmod 600 "$HOME/.config/browsemium/sparkle-ed25519.key"
+          test "$PROJECT_BUILD" = "$EXPECTED_BUILD"
+          test -f "ReleaseNotes/$VERSION.md"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Generate the project
-        run: xcodegen generate --spec project.yml
-
-      - name: Build the DMG (with launch and crash-recovery gates)
-        run: Scripts/release/build-local-dmg.sh "${{ steps.version.outputs.version }}"
-
-      - name: Sign the DMG for Sparkle
-        id: sign
+      - name: Select Xcode and install XcodeGen
         run: |
-          DMG="build/Browsemium-${{ steps.version.outputs.version }}.dmg"
+          set -euo pipefail
+          newest=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          sudo xcode-select -s "$newest"
+          brew install xcodegen
+          xcodebuild -version
+          xcodegen --version
+
+      - name: Run release validation gates
+        run: |
+          set -euo pipefail
+          Scripts/verify-project.sh
+          BROWSEMIUM_HEADLESS=1 swift run --package-path Packages/BrowsemiumKit BrowsemiumHeadlessTests
+          swift test --package-path Packages/BrowsemiumKit
+          xcodebuild -project Browsemium.xcodeproj -scheme Browsemium \
+            -configuration Debug -destination 'platform=macOS' test
+
+      - name: Import Developer ID certificate
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
+        run: |
+          set -euo pipefail
+          : "${CERTIFICATE_BASE64:?DEVELOPER_ID_P12_BASE64 is required}"
+          : "${CERTIFICATE_PASSWORD:?DEVELOPER_ID_P12_PASSWORD is required}"
+          : "${DEVELOPMENT_TEAM:?DEVELOPMENT_TEAM is required}"
+          KEYCHAIN="$RUNNER_TEMP/browsemium-signing.keychain-db"
+          CERTIFICATE="$RUNNER_TEMP/developer-id.p12"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          printf '%s' "$CERTIFICATE_BASE64" | base64 -D > "$CERTIFICATE"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERTIFICATE" -k "$KEYCHAIN" -P "$CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          security find-identity -v -p codesigning "$KEYCHAIN" | grep 'Developer ID Application'
+
+      - name: Restore Sparkle and notarization keys
+        env:
+          SPARKLE_KEY: ${{ secrets.SPARKLE_ED25519_KEY }}
+          NOTARY_KEY_BASE64: ${{ secrets.NOTARY_KEY_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          : "${SPARKLE_KEY:?SPARKLE_ED25519_KEY is required}"
+          : "${NOTARY_KEY_BASE64:?NOTARY_KEY_BASE64 is required}"
+          : "${NOTARY_KEY_ID:?NOTARY_KEY_ID is required}"
+          : "${NOTARY_ISSUER_ID:?NOTARY_ISSUER_ID is required}"
+          mkdir -p "$HOME/.config/browsemium"
+          printf '%s' "$SPARKLE_KEY" > "$HOME/.config/browsemium/sparkle-ed25519.key"
+          chmod 600 "$HOME/.config/browsemium/sparkle-ed25519.key"
+          printf '%s' "$NOTARY_KEY_BASE64" | base64 -D > "$RUNNER_TEMP/AuthKey.p8"
+          chmod 600 "$RUNNER_TEMP/AuthKey.p8"
+
+      - name: Build, notarize, and verify the universal DMG
+        env:
+          DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
+          NOTARY_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          Scripts/release/build-archive.sh
+          Scripts/release/create-dmg.sh build/export/Browsemium.app
+          mv build/Browsemium.dmg "build/Browsemium-$VERSION.dmg"
+          Scripts/release/notarize.sh "build/Browsemium-$VERSION.dmg"
+          APP="build/export/Browsemium.app"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          spctl --assess --type execute --verbose=4 "$APP"
+          ARCHS="$(lipo -archs "$APP/Contents/MacOS/Browsemium")"
+          grep -qw arm64 <<< "$ARCHS"
+          grep -qw x86_64 <<< "$ARCHS"
+          TEAM="$(codesign -dv --verbose=4 "$APP" 2>&1 | awk -F= '/^TeamIdentifier=/{print $2}')"
+          test "$TEAM" = "$DEVELOPMENT_TEAM"
+
+      - name: Sign update and prepare site metadata
+        id: sign
+        env:
+          DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          DMG="build/Browsemium-$VERSION.dmg"
           SIGNATURE="$(swift Scripts/release/sparkle-eddsa.swift sign "$DMG")"
           SHA="$(shasum -a 256 "$DMG" | awk '{print $1}')"
           SIZE="$(stat -f%z "$DMG")"
-          echo "signature=$SIGNATURE" >> "$GITHUB_OUTPUT"
+          python3 Scripts/release/update-appcast.py \
+            --version "$VERSION" --signature "$SIGNATURE" --size "$SIZE" --sha256 "$SHA"
+          python3 Scripts/release/update-landing-page.py --version "$VERSION" --sha256 "$SHA"
+          printf '%s\n' "$DEVELOPMENT_TEAM" > Site/team-id.txt
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
 
-      - name: Publish the GitHub release
+      - name: Sign and verify the appcast
+        run: |
+          set -euo pipefail
+          SIGN_UPDATE="$(find "$HOME/Library/Developer/Xcode/DerivedData" -type f \
+            -path '*/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update' -perm -111 -print -quit)"
+          test -n "$SIGN_UPDATE"
+          KEY="$HOME/.config/browsemium/sparkle-ed25519.key"
+          "$SIGN_UPDATE" --ed-key-file "$KEY" --disable-signing-warning Site/appcast.xml
+          "$SIGN_UPDATE" --verify --ed-key-file "$KEY" Site/appcast.xml
+
+      - name: Create draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           VERSION="${{ steps.version.outputs.version }}"
-          NOTES="ReleaseNotes/$VERSION.md"
-          if [ ! -f "$NOTES" ]; then
-            NOTES="$(mktemp)"
-            printf 'Browsemium %s. See the repository for details.\n' "$VERSION" > "$NOTES"
-          fi
           if gh release view "v$VERSION" >/dev/null 2>&1; then
             gh release upload "v$VERSION" "build/Browsemium-$VERSION.dmg" --clobber
-            gh release edit "v$VERSION" --notes-file "$NOTES"
+            gh release edit "v$VERSION" --draft --title "Browsemium $VERSION" \
+              --notes-file "ReleaseNotes/$VERSION.md"
           else
             gh release create "v$VERSION" "build/Browsemium-$VERSION.dmg" \
-              --title "Browsemium $VERSION" \
-              --notes-file "$NOTES"
+              --draft --verify-tag --title "Browsemium $VERSION" \
+              --notes-file "ReleaseNotes/$VERSION.md"
           fi
 
-      - name: Refresh the appcast and checksum
-        run: |
-          python3 Scripts/release/update-appcast.py \
-            --version "${{ steps.version.outputs.version }}" \
-            --signature "${{ steps.sign.outputs.signature }}" \
-            --size "${{ steps.sign.outputs.size }}" \
-            --sha256 "${{ steps.sign.outputs.sha }}"
-          python3 Scripts/release/update-landing-page.py \
-            --version "${{ steps.version.outputs.version }}" \
-            --sha256 "${{ steps.sign.outputs.sha }}"
-
-      - name: Sign the appcast feed
-        run: |
-          SIGN_UPDATE="$(find "$GITHUB_WORKSPACE/build/local/DerivedData" "$HOME/Library/Developer/Xcode/DerivedData" \
-            -type f \
-            -path '*/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update' \
-            -perm -111 \
-            -print -quit 2>/dev/null || true)"
-          if [ -z "$SIGN_UPDATE" ]; then
-            echo "Sparkle sign_update was not found; refusing to publish an unsigned appcast." >&2
-            exit 1
-          fi
-          KEY_FILE="$HOME/.config/browsemium/sparkle-ed25519.key"
-          "$SIGN_UPDATE" \
-            --ed-key-file "$KEY_FILE" \
-            --disable-signing-warning \
-            Site/appcast.xml
-          "$SIGN_UPDATE" \
-            --verify \
-            --ed-key-file "$KEY_FILE" \
-            Site/appcast.xml
-
-      - name: Commit the refreshed site files
-        run: |
-          git config user.name "Browsemium Release"
-          git config user.email "releases@browsemium.local"
-          git add Site/appcast.xml Site/checksum.txt Site/index.html
-          git diff --cached --quiet || git commit -m "Publish ${{ steps.version.outputs.version }} appcast and site metadata"
-          # The tag checkout leaves HEAD detached, so push explicitly to main.
-          git push origin HEAD:main
-
-      - name: Deploy the site
+      - name: Commit and deploy the update feed
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
         run: |
-          # `secrets` is not allowed in a step `if:` condition, so the check
-          # lives here instead.
-          if [ -z "$VERCEL_TOKEN" ]; then
-            echo "VERCEL_TOKEN is not set; skipping the site deploy." >&2
-            exit 0
-          fi
-          npx --yes vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN" --cwd Site
+          set -euo pipefail
+          : "${VERCEL_TOKEN:?VERCEL_TOKEN is required}"
+          : "${VERCEL_ORG_ID:?VERCEL_ORG_ID is required}"
+          : "${VERCEL_PROJECT_ID:?VERCEL_PROJECT_ID is required}"
+          VERSION="${{ steps.version.outputs.version }}"
+          npx --yes vercel@60.0.1 deploy --prod --yes --token "$VERCEL_TOKEN" --cwd Site
+          curl --fail --retry 8 --retry-delay 5 \
+            "https://browsemium.vercel.app/appcast.xml" | grep -q "Browsemium $VERSION"
+          test "$(curl --fail https://browsemium.vercel.app/team-id.txt | tr -d '[:space:]')" = "$DEVELOPMENT_TEAM"
+          git config user.name "Browsemium Release"
+          git config user.email "releases@browsemium.local"
+          git add Site/appcast.xml Site/checksum.txt Site/index.html Site/team-id.txt
+          git diff --cached --quiet || git commit -m "Publish $VERSION appcast and site metadata"
+          git push origin HEAD:main
+
+      - name: Publish and verify the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          gh release edit "v$VERSION" --draft=false
+          curl --fail --location --retry 5 \
+            "https://github.com/Cubinghackerz/browsemium/releases/download/v$VERSION/Browsemium-$VERSION.dmg" \
+            --output "$RUNNER_TEMP/published.dmg"
+          test "$(shasum -a 256 "$RUNNER_TEMP/published.dmg" | awk '{print $1}')" = "${{ steps.sign.outputs.sha }}"
 
       - name: Update the Homebrew cask
         env:
-          # The default GITHUB_TOKEN cannot push to the tap repository, so a
-          # PAT (repo scope on homebrew-tap) must be stored as TAP_TOKEN.
           TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
         run: |
-          if [ -z "$TAP_TOKEN" ]; then
-            echo "TAP_TOKEN is not set; skipping the cask update." >&2
-            exit 0
-          fi
+          set -euo pipefail
+          : "${TAP_TOKEN:?TAP_TOKEN is required}"
           VERSION="${{ steps.version.outputs.version }}"
           SHA="${{ steps.sign.outputs.sha }}"
           TAP="Cubinghackerz/homebrew-tap"
-          TMP="$(mktemp -d)"
-          git clone --depth 1 "https://x-access-token:$TAP_TOKEN@github.com/$TAP.git" "$TMP"
-          mkdir -p "$TMP/Casks"
-          cat > "$TMP/Casks/browsemium.rb" <<EOF
+          TAP_DIR="$(mktemp -d)"
+          git clone --depth 1 "https://x-access-token:$TAP_TOKEN@github.com/$TAP.git" "$TAP_DIR"
+          mkdir -p "$TAP_DIR/Casks"
+          cat > "$TAP_DIR/Casks/browsemium.rb" <<EOF
           cask "browsemium" do
             version "$VERSION"
             sha256 "$SHA"
-
             url "https://github.com/Cubinghackerz/browsemium/releases/download/v#{version}/Browsemium-#{version}.dmg"
             name "Browsemium"
-            desc "macOS browser built around AI assistants"
+            desc "Private, native macOS browser with user-directed AI"
             homepage "https://browsemium.vercel.app"
-
             app "Browsemium.app"
-
-            caveats <<~EOS
-              Browsemium is signed ad-hoc rather than with a Developer ID, so the
-              first launch is blocked once. Allow it under System Settings →
-              Privacy & Security → Open Anyway, or install with no warning at all:
-                curl -fsSL https://browsemium.vercel.app/install.sh | bash
-            EOS
           end
           EOF
-          cd "$TMP"
+          cd "$TAP_DIR"
           git config user.name "Browsemium Release"
           git config user.email "releases@browsemium.local"
           git add Casks/browsemium.rb

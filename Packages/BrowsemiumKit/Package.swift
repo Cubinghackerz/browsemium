@@ -10,6 +10,7 @@ var products: [Product] = [
     .library(name: "BrowsemiumData", targets: ["BrowsemiumData"]),
     .library(name: "BrowsemiumEngineKit", targets: ["BrowsemiumEngineKit"]),
     .library(name: "BrowsemiumEngine", targets: ["BrowsemiumEngine"]),
+    .library(name: "BrowsemiumExtensions", targets: ["BrowsemiumExtensions"]),
     .library(name: "BrowsemiumAI", targets: ["BrowsemiumAI"])
 ]
 
@@ -44,6 +45,14 @@ var targets: [Target] = [
         ],
         swiftSettings: [.swiftLanguageMode(.v6)]
     ),
+    // WebKit's public extension APIs (macOS 15.4+) plus the on-disk
+    // extension store. Depends on Core only, so it links into either edition
+    // without pulling in the browser UI.
+    .target(
+        name: "BrowsemiumExtensions",
+        dependencies: ["BrowsemiumCore"],
+        swiftSettings: [.swiftLanguageMode(.v6)]
+    ),
     .target(
         name: "BrowsemiumAI",
         dependencies: [
@@ -76,6 +85,7 @@ if isHeadless {
                 "BrowsemiumCoreTests",
                 "BrowsemiumDataTests",
                 "BrowsemiumEngineTests",
+                "BrowsemiumExtensionsTests",
                 "BrowsemiumUISnapshotTests",
                 "BrowsemiumUITests"
             ],
@@ -96,6 +106,7 @@ if isHeadless {
                 "BrowsemiumData",
                 "BrowsemiumEngine",
                 "BrowsemiumEngineKit",
+                "BrowsemiumExtensions",
                 "BrowsemiumAI"
             ],
             resources: [
@@ -134,7 +145,12 @@ if isHeadless {
         ),
         .testTarget(
             name: "BrowsemiumUITests",
-            dependencies: ["BrowsemiumCore", "BrowsemiumEngine", "BrowsemiumEngineKit", "BrowsemiumUI"],
+            dependencies: ["BrowsemiumCore", "BrowsemiumEngine", "BrowsemiumEngineKit", "BrowsemiumExtensions", "BrowsemiumUI"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        .testTarget(
+            name: "BrowsemiumExtensionsTests",
+            dependencies: ["BrowsemiumCore", "BrowsemiumExtensions"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(

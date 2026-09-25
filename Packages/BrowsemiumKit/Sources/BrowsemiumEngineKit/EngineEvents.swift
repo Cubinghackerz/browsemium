@@ -32,6 +32,9 @@ public enum TabRuntimeEvent: Sendable {
     case crashed
     case progressChanged(Double)
     case requestedNewWindow(URL)
+    /// A link was activated with the peek modifier (⌘- or ⌥-click): the
+    /// window shows it in the preview overlay instead of a new tab.
+    case requestedPeek(URL)
     case requestedExternalScheme(URL)
     case downloadStarted(UUID)
     case downloadFinished(UUID)

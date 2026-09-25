@@ -12,25 +12,29 @@ struct NewTabView: View {
             Spacer()
 
             VStack(spacing: 0) {
-                BrowsemiumLogo(size: 68)
-                    .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
-                    .padding(.bottom, 18)
+                if model.session.isPrivate {
+                    privateHeader
+                } else {
+                    BrowsemiumLogo(size: 68)
+                        .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+                        .padding(.bottom, 18)
 
-                Text("Browsemium")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Color.browsemiumPrimary)
+                    Text("Browsemium")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Color.browsemiumPrimary)
 
-                Text("Search or type an address — ⌘L jumps straight to it.")
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Color.browsemiumTertiary)
-                    .padding(.top, 5)
+                    Text("Search or type an address — ⌘L jumps straight to it.")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Color.browsemiumTertiary)
+                        .padding(.top, 5)
 
-                HStack(spacing: 14) {
-                    hint("⌘T", "New tab")
-                    hint("⌘K", "Commands")
-                    hint("⇧⌘A", "Assistant")
+                    HStack(spacing: 14) {
+                        hint("⌘T", "New tab")
+                        hint("⌘K", "Commands")
+                        hint("⇧⌘A", "Assistant")
+                    }
+                    .padding(.top, 26)
                 }
-                .padding(.top, 26)
             }
             // The header is one accessibility element; combining the whole
             // page would swallow the site tiles below.
@@ -95,6 +99,39 @@ struct NewTabView: View {
             return
         }
         topSites = (try? model.environment.historyRepository.topSites(limit: 8)) ?? []
+    }
+
+    /// The private window's start surface: what this mode protects, stated
+    /// plainly — including what it cannot protect. No overclaiming.
+    private var privateHeader: some View {
+        VStack(spacing: 0) {
+            Image(systemName: "theatermasks.fill")
+                .font(.system(size: 40, weight: .light))
+                .foregroundStyle(BrowserToolbar.privateTint)
+                .padding(.bottom, 16)
+
+            Text("Private Window")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color.browsemiumPrimary)
+
+            VStack(alignment: .leading, spacing: 7) {
+                Label("History, cookies, and site data stay out of this profile's storage", systemImage: "checkmark")
+                Label("Extensions do not run here", systemImage: "checkmark")
+                Label("Closing the window wipes everything it touched", systemImage: "checkmark")
+                Label("Downloads save to disk and bookmarks you make are kept", systemImage: "minus")
+                Label("Sites, your network, and your ISP can still see your activity", systemImage: "exclamationmark.triangle")
+            }
+            .font(.system(size: 12))
+            .foregroundStyle(Color.browsemiumSecondary)
+            .padding(.top, 18)
+            .accessibilityElement(children: .combine)
+
+            Text("Search or type an address — ⌘L jumps straight to it.")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Color.browsemiumTertiary)
+                .padding(.top, 20)
+        }
+        .frame(maxWidth: 460)
     }
 
     private func siteButton(url: URL, title: String, hint: String? = nil) -> some View {

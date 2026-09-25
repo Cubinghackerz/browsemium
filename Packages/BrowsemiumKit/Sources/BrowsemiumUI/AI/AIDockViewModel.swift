@@ -313,14 +313,30 @@ public final class AIDockViewModel {
         do {
             let captured = try await environment.engine.capture(tabID: tabID, request: CaptureRequest(kinds: [kind]))
             guard contextGeneration == generation else { return }
-            // Keep one current attachment of each type. Recapturing replaces
-            // stale content instead of silently sending multiple page versions.
+            // Replace stale content instead of sending several versions of
+            // the same thing. Page text is keyed by URL, so re-capturing the
+            // active page leaves other tabs' text attached; selections and
+            // screenshots stay singular.
+            var capturedURLs = Set<URL>()
+            var capturedPagesWithoutURL = false
+            for attachment in captured.attachments {
+                guard case .readablePage(let context) = attachment else { continue }
+                if let url = context.url {
+                    capturedURLs.insert(url)
+                } else {
+                    capturedPagesWithoutURL = true
+                }
+            }
             attachments.removeAll { attachment in
                 switch (kind, attachment) {
-                case (.selection, .selection), (.readablePage, .readablePage), (.viewportImage, .viewportImage):
+                case (.selection, .selection), (.viewportImage, .viewportImage), (.fullPageImage, .fullPageImage):
                     true
-                case (.fullPageImage, .fullPageImage):
-                    true
+                case (.readablePage, .readablePage(let existing)):
+                    if let url = existing.url {
+                        capturedURLs.contains(url)
+                    } else {
+                        capturedPagesWithoutURL
+                    }
                 default:
                     false
                 }
@@ -365,9 +381,13 @@ public final class AIDockViewModel {
         }
     }
 
-    /// Adopts context captured outside the dock (the page context menu),
-    /// replacing any attachment of the same kind so stale content never
-    /// travels with a new selection.
+    /// Adopts context captured outside the dock (the page context menu, or
+    /// several tabs at once), replacing stale content so nothing from a
+    /// previous capture travels with a new request.
+    ///
+    /// Page text is keyed by URL: re-capturing one page replaces its own
+    /// entry, while other tabs' text stays — multi-tab requests carry one
+    /// readable page per tab. Selections and screenshots stay singular.
     public func adopt(_ incoming: [AIContextAttachment]) {
         contextGeneration &+= 1
         activeStreamRestoreAllowed = false
@@ -375,10 +395,10 @@ public final class AIDockViewModel {
         for attachment in incoming {
             attachments.removeAll { existing in
                 switch (attachment, existing) {
-                case (.selection, .selection), (.readablePage, .readablePage), (.viewportImage, .viewportImage):
+                case (.selection, .selection), (.viewportImage, .viewportImage), (.fullPageImage, .fullPageImage):
                     true
-                case (.fullPageImage, .fullPageImage):
-                    true
+                case (.readablePage(let new), .readablePage(let old)):
+                    new.url == old.url || (new.url == nil && old.url == nil)
                 default:
                     false
                 }
@@ -386,6 +406,42 @@ public final class AIDockViewModel {
             attachments.append(attachment)
         }
         errorMessage = nil
+    }
+
+    /// Adopts page text from several tabs and stages the multi-tab prompt.
+    /// The review sheet still gates the send.
+    public func adoptTabsContext(_ incoming: [AIContextAttachment], prompt: String) {
+        adopt(incoming)
+        guard !attachments.isEmpty else { return }
+        if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            draft = prompt
+        }
+        beginReview()
+    }
+
+    /// Fills the composer from a saved skill. Nothing is sent: the user
+    /// still reads the prompt and presses send.
+    public func applySkill(_ skill: AISkill) {
+        draft = skill.prompt
+        errorMessage = nil
+    }
+
+    /// Multi-tab summarization: capture each live tab's readable text and
+    /// stage the prompt. The window model is passed in because tab state
+    /// lives there, not in the assistant; tabs that never loaded are skipped
+    /// by the capture with a status note, never woken silently.
+    public func runMultiTabSummary(windowModel: BrowserWindowModel) async {
+        let tabs = windowModel.tabsAvailableForAIContext()
+        guard !tabs.isEmpty else {
+            errorMessage = "Open another page first — there is only one live tab."
+            return
+        }
+        let attachments = await windowModel.captureTabsForAI(tabs.map(\.id))
+        guard !attachments.isEmpty else { return }
+        adoptTabsContext(
+            attachments,
+            prompt: "Summarize these \(attachments.count) pages in a few short paragraphs, then note what they disagree about."
+        )
     }
 
     public func clearAttachments() {
@@ -1102,18 +1158,7 @@ public final class AIDockViewModel {
     }
 
     private func makeAdapter(for provider: AIProviderID, credential: String) -> any AIProviderAdapter {
-        switch provider {
-        case .openAI:
-            OpenAIAdapter(credential: credential)
-        case .anthropic:
-            AnthropicAdapter(credential: credential)
-        case .gemini:
-            GeminiAdapter(credential: credential)
-        case .xAI:
-            XAIAdapter(credential: credential)
-        case .ollama:
-            OllamaAdapter()
-        }
+        AIAdapterFactory.make(for: provider, credential: credential)
     }
 
     public let providerPanel = ProviderPanelController()

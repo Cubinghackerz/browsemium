@@ -103,6 +103,67 @@ public final class AppDatabase: @unchecked Sendable {
         migrator.registerMigration("profile-v4-closed-tabs-no-space-fk") { database in
             try rebuildClosedTabsWithoutSpaceFK(database)
         }
+        migrator.registerMigration("profile-v5-folders") { database in
+            // Named, collapsible groups of tabs inside a space. Tabs point at
+            // their folder; deleting a folder ungroups its tabs, never
+            // deletes them.
+            try database.execute(sql: """
+                CREATE TABLE folders (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    space_id TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    color TEXT,
+                    is_collapsed INTEGER NOT NULL DEFAULT 0,
+                    position INTEGER NOT NULL DEFAULT 0,
+                    created_at DATETIME NOT NULL
+                )
+                """)
+            try database.execute(sql: """
+                ALTER TABLE tabs ADD COLUMN folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL
+                """)
+        }
+        migrator.registerMigration("profile-v6-extensions") { database in
+            // Per-profile extension enablement. The extension files live in
+            // the shared on-disk store; this table decides what this profile
+            // loads, and remembers the last load error for the UI.
+            try database.execute(sql: """
+                CREATE TABLE extensions (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    name TEXT NOT NULL,
+                    version TEXT NOT NULL,
+                    is_enabled INTEGER NOT NULL DEFAULT 0,
+                    installed_at DATETIME NOT NULL,
+                    last_error TEXT
+                )
+                """)
+        }
+        migrator.registerMigration("profile-v7-ai-skills") { database in
+            // Saved assistant prompts, local to this profile.
+            try database.execute(sql: """
+                CREATE TABLE ai_skills (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    name TEXT NOT NULL,
+                    prompt TEXT NOT NULL,
+                    created_at DATETIME NOT NULL
+                )
+                """)
+        }
+        migrator.registerMigration("profile-v8-space-lock") { database in
+            // Locked spaces require authentication before their tabs show.
+            try database.execute(sql: "ALTER TABLE spaces ADD COLUMN is_locked INTEGER NOT NULL DEFAULT 0")
+        }
+        migrator.registerMigration("profile-v9-session-meta") { database in
+            // Session-level state that is not a row of its own — for now,
+            // which space was active when the session was written. Without it
+            // a restore always landed on the oldest space while the active
+            // tab could belong to another.
+            try database.execute(sql: """
+                CREATE TABLE session_meta (
+                    key TEXT PRIMARY KEY NOT NULL,
+                    value TEXT NOT NULL
+                )
+                """)
+        }
         return migrator
     }
 
@@ -322,10 +383,33 @@ public final class BrowserSessionRepository: @unchecked Sendable {
                 for space in session.spaces {
                         try database.execute(
                             sql: """
-                                INSERT INTO spaces (id, name, created_at, color) VALUES (?, ?, ?, ?)
-                                ON CONFLICT(id) DO UPDATE SET name = excluded.name, color = excluded.color
+                                INSERT INTO spaces (id, name, created_at, color, is_locked) VALUES (?, ?, ?, ?, ?)
+                                ON CONFLICT(id) DO UPDATE SET
+                                    name = excluded.name,
+                                    color = excluded.color,
+                                    is_locked = excluded.is_locked
                                 """,
-                            arguments: [space.id.rawValue.uuidString, space.name, space.createdAt, space.color]
+                            arguments: [space.id.rawValue.uuidString, space.name, space.createdAt, space.color, space.isLocked]
+                        )
+                    }
+                    // Folders that vanished from the session are dropped;
+                    // their tabs ungroup via ON DELETE SET NULL.
+                    try database.execute(sql: "DELETE FROM folders")
+                    for (position, folder) in session.folders.enumerated() {
+                        try database.execute(
+                            sql: """
+                                INSERT INTO folders (id, space_id, name, color, is_collapsed, position, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                                """,
+                            arguments: [
+                                folder.id.rawValue.uuidString,
+                                folder.spaceID.rawValue.uuidString,
+                                folder.name,
+                                folder.color,
+                                folder.isCollapsed,
+                                position,
+                                folder.createdAt
+                            ]
                         )
                     }
                     try database.execute(sql: "DELETE FROM tabs")
@@ -333,14 +417,15 @@ public final class BrowserSessionRepository: @unchecked Sendable {
                         try database.execute(
                             sql: """
                                 INSERT INTO tabs (
-                                    id, space_id, title, url, position, is_pinned, lifecycle, created_at, last_accessed_at
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    id, space_id, title, url, position, is_pinned, folder_id, lifecycle, created_at, last_accessed_at
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 ON CONFLICT(id) DO UPDATE SET
                                     space_id = excluded.space_id,
                                     title = excluded.title,
                                     url = excluded.url,
                                     position = excluded.position,
                                     is_pinned = excluded.is_pinned,
+                                    folder_id = excluded.folder_id,
                                     lifecycle = excluded.lifecycle,
                                     last_accessed_at = excluded.last_accessed_at
                                 """,
@@ -351,12 +436,20 @@ public final class BrowserSessionRepository: @unchecked Sendable {
                                 tab.lastCommittedURL?.absoluteString,
                                 tab.position,
                                 tab.isPinned,
+                                tab.folderID?.rawValue.uuidString,
                                 tab.lifecycle.rawValue,
                                 tab.createdAt,
                                 tab.lastAccessedAt
                             ]
                         )
                 }
+                    try database.execute(
+                        sql: """
+                            INSERT INTO session_meta (key, value) VALUES ('active_space_id', ?)
+                            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                            """,
+                        arguments: [session.activeSpaceID.rawValue.uuidString]
+                    )
             }
         } catch let error as BrowsemiumError {
             throw error
@@ -370,17 +463,38 @@ public final class BrowserSessionRepository: @unchecked Sendable {
             return try database.databaseQueue.read { database in
                 let spaces: [BrowserSpace] = try Row.fetchAll(
                     database,
-                    sql: "SELECT id, name, created_at, color FROM spaces ORDER BY created_at"
+                    sql: "SELECT id, name, created_at, color, is_locked FROM spaces ORDER BY created_at"
                 ).compactMap { row in
                     guard let idString = row["id"] as String?, let id = UUID(uuidString: idString) else { return nil }
                     return BrowserSpace(
                         id: SpaceID(rawValue: id),
                         name: row["name"] ?? "Personal",
                         createdAt: row["created_at"] ?? Date(),
-                        color: row["color"] as String?
+                        color: row["color"] as String?,
+                        isLocked: row["is_locked"] ?? false
                     )
                 }
                 guard let activeSpace = spaces.first else { return nil }
+
+                let folders: [TabFolder] = try Row.fetchAll(
+                    database,
+                    sql: "SELECT id, space_id, name, color, is_collapsed, created_at FROM folders ORDER BY position, created_at"
+                ).compactMap { row in
+                    guard let idString = row["id"] as String?,
+                          let id = UUID(uuidString: idString),
+                          let spaceString = row["space_id"] as String?,
+                          let spaceID = UUID(uuidString: spaceString) else {
+                        return nil
+                    }
+                    return TabFolder(
+                        id: FolderID(rawValue: id),
+                        spaceID: SpaceID(rawValue: spaceID),
+                        name: row["name"] ?? "Folder",
+                        color: row["color"] as String?,
+                        isCollapsed: row["is_collapsed"] ?? false,
+                        createdAt: row["created_at"] ?? Date()
+                    )
+                }
 
                 let tabs: [BrowserTab] = try Row.fetchAll(
                     database,
@@ -401,17 +515,36 @@ public final class BrowserSessionRepository: @unchecked Sendable {
                         lastCommittedURL: rawURL.flatMap(URL.init(string:)),
                         position: row["position"] ?? 0,
                         isPinned: row["is_pinned"] ?? false,
+                        folderID: (row["folder_id"] as String?).flatMap(UUID.init).map(FolderID.init(rawValue:)),
                         lifecycle: TabLifecycle(rawValue: lifecycleRaw) == .crashed ? .metadataOnly : .hibernated,
                         createdAt: row["created_at"] ?? Date(),
                         lastAccessedAt: row["last_accessed_at"] ?? Date()
                     )
                 }
                 guard !tabs.isEmpty else { return nil }
-                let activeTab = tabs.max { $0.lastAccessedAt < $1.lastAccessedAt }?.id
+                // The space that was active when the session was written,
+                // validated against what actually loaded. Older databases
+                // have no record and land on the first space, as before.
+                let storedActiveSpaceID = (try? String.fetchOne(
+                    database,
+                    sql: "SELECT value FROM session_meta WHERE key = 'active_space_id'"
+                ))
+                .flatMap(UUID.init(uuidString:))
+                .map(SpaceID.init(rawValue:))
+                let resolvedSpace = storedActiveSpaceID
+                    .flatMap { id in spaces.first { $0.id == id } }
+                    ?? activeSpace
+                // The active tab is the space's most recent — never a tab
+                // from a space the strip is not showing.
+                let activeTab = tabs
+                    .filter { $0.spaceID == resolvedSpace.id }
+                    .max { $0.lastAccessedAt < $1.lastAccessedAt }?.id
+                    ?? tabs.max { $0.lastAccessedAt < $1.lastAccessedAt }?.id
                 return BrowserSessionState(
                     spaces: spaces,
                     tabs: tabs,
-                    activeSpaceID: activeSpace.id,
+                    folders: folders,
+                    activeSpaceID: resolvedSpace.id,
                     activeTabID: activeTab
                 )
             }

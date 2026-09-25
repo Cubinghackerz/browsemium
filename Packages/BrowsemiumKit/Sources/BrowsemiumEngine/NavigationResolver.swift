@@ -9,6 +9,13 @@ public struct NavigationResolver: Sendable {
     }
 
     public func resolve(_ input: String) throws -> NavigationRequest {
+        try resolveDetail(input).request
+    }
+
+    /// Resolves the input and reports whether it became a search, so the
+    /// address bar can keep showing the typed query while the tab sits on
+    /// the search-results page.
+    public func resolveDetail(_ input: String) throws -> (request: NavigationRequest, isSearch: Bool) {
         let value = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else {
             throw BrowsemiumError.emptyNavigationInput
@@ -20,7 +27,7 @@ public struct NavigationResolver: Sendable {
                 throw BrowsemiumError.blockedScheme(scheme)
             }
             if scheme == "http" || scheme == "https" {
-                return NavigationRequest(url: try validatedWebURL(value))
+                return (NavigationRequest(url: try validatedWebURL(value)), false)
             }
             if value.contains("://") {
                 throw BrowsemiumError.unsupportedScheme(scheme)
@@ -28,7 +35,7 @@ public struct NavigationResolver: Sendable {
         }
 
         if let directURL = try directURL(for: value) {
-            return NavigationRequest(url: directURL)
+            return (NavigationRequest(url: directURL), false)
         }
 
         if let explicitScheme = Self.explicitScheme(in: value) {
@@ -53,7 +60,7 @@ public struct NavigationResolver: Sendable {
         guard let url = components.url else {
             throw BrowsemiumError.malformedURL(value)
         }
-        return NavigationRequest(url: url)
+        return (NavigationRequest(url: url), true)
     }
 
     private func directURL(for value: String) throws -> URL? {

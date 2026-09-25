@@ -11,6 +11,9 @@ struct AIDockView: View {
     @Bindable var model: BrowserWindowModel
     @Bindable var ai: AIDockViewModel
     @FocusState private var composerFocused: Bool
+    @State private var isNamingSkill = false
+    @State private var skillNameDraft = ""
+    @State private var isProviderPanelPresented = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -60,6 +63,17 @@ struct AIDockView: View {
         }
         .sheet(isPresented: $ai.isReviewPresented) {
             AIContextReviewSheet(model: model, ai: ai)
+        }
+        .alert("Save Skill", isPresented: $isNamingSkill) {
+            TextField("Name", text: $skillNameDraft)
+            Button("Save") {
+                let name = skillNameDraft
+                skillNameDraft = ""
+                model.saveAISkill(name: name, prompt: ai.draft)
+            }
+            Button("Cancel", role: .cancel) { skillNameDraft = "" }
+        } message: {
+            Text("The current draft becomes a reusable prompt. Skills stay on this Mac.")
         }
         .onChange(of: model.session.activeTabID) {
             // Context is page-specific. Never leave a previous tab's content
@@ -145,19 +159,11 @@ struct AIDockView: View {
     private var header: some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
-                Menu {
-                    ForEach(AIProviderID.allCases, id: \.self) { provider in
-                        Button(ProviderPanelDescriptor.descriptor(for: provider).displayName) {
-                            ai.provider = provider
-                            // A local server has no website to embed; it is
-                            // API-only by nature.
-                            if provider.isLocal {
-                                ai.mode = .api
-                            }
-                        }
-                    }
+                Button {
+                    isProviderPanelPresented = true
                 } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 6) {
+                        ProviderMark(provider: ai.provider, size: 16)
                         Text(ai.descriptor.displayName)
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(Color.browsemiumPrimary)
@@ -165,14 +171,18 @@ struct AIDockView: View {
                             .font(.system(size: 8, weight: .semibold))
                             .foregroundStyle(Color.browsemiumTertiary)
                     }
-                    .padding(.horizontal, 8)
-                    .frame(height: 24)
+                    .padding(.horizontal, 6)
+                    .frame(height: 26)
                     .contentShape(Rectangle())
                 }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .accessibilityLabel("AI provider")
+                .buttonStyle(.plain)
+                .popover(isPresented: $isProviderPanelPresented, arrowEdge: .bottom) {
+                    ProviderMenuPanel(ai: ai) {
+                        isProviderPanelPresented = false
+                    }
+                    .presentationBackground(.clear)
+                }
+                .accessibilityLabel("AI provider, \(ai.descriptor.displayName)")
 
                 Spacer(minLength: 6)
 
@@ -309,7 +319,7 @@ struct AIDockView: View {
                         Task { await ai.connect() }
                     }
                 }
-                Text("Keys stay in your macOS keychain and are sent only to \(ai.descriptor.displayName). Consumer subscriptions do not include API credits.")
+                Text("Stored in Keychain. Sent only to \(ai.descriptor.displayName). A chat subscription is not an API key.")
                     .font(.system(size: 10.5))
                     .foregroundStyle(Color.browsemiumTertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -335,6 +345,54 @@ struct AIDockView: View {
                     .foregroundStyle(Color.browsemiumTertiary)
             }
         }
+    }
+
+    /// Writing assists, multi-tab capture, and saved skills in one menu, so
+    /// the composer row stays readable as the feature set grows.
+    private var assistMenu: some View {
+        Menu {
+            Section("Writing assist") {
+                Button("Rewrite selection") { runQuickAction(.rewriteSelection) }
+                Button("Shorten selection") { runQuickAction(.shortenSelection) }
+                Button("Selection to bullets") { runQuickAction(.bulletPoints) }
+            }
+            Section {
+                Button("Summarize open tabs") {
+                    Task { await ai.runMultiTabSummary(windowModel: model) }
+                }
+            }
+            Section("Skills") {
+                Button("Save draft as Skill…") {
+                    skillNameDraft = String(ai.draft.prefix(40))
+                    isNamingSkill = true
+                }
+                .disabled(ai.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                ForEach(model.aiSkills) { skill in
+                    Button(skill.name) { ai.applySkill(skill) }
+                }
+                if !model.aiSkills.isEmpty {
+                    Menu("Delete Skill") {
+                        ForEach(model.aiSkills) { skill in
+                            Button(skill.name, role: .destructive) { model.deleteAISkill(skill) }
+                        }
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "wand.and.stars")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.browsemiumSecondary)
+                .frame(width: 28, height: 28)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Writing assists, tab summaries, and skills")
+        .accessibilityLabel("Assistant actions")
+    }
+
+    private func runQuickAction(_ action: AIQuickAction) {
+        Task { await ai.runQuickAction(action, tabID: model.session.activeTabID) }
     }
 
     private var composer: some View {
@@ -379,6 +437,8 @@ struct AIDockView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Add file attachment")
                 .help("Attach a file")
+
+                assistMenu
 
                 VStack(spacing: 0) {
                     TextField("Ask about this page…", text: $ai.draft, axis: .vertical)
@@ -673,6 +733,71 @@ private struct AttachmentChip: View {
     }
 }
 
+@MainActor
+private struct ProviderMark: View {
+    let provider: AIProviderID
+    var size: CGFloat = 18
+
+    var body: some View {
+        Image(systemName: Self.symbol(for: provider))
+            .font(.system(size: size * 0.55, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(
+                RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+                    .fill(Self.tint(for: provider))
+            )
+            .accessibilityHidden(true)
+    }
+
+    private static func symbol(for provider: AIProviderID) -> String {
+        switch provider {
+        case .openAI: "bubble.left.fill"
+        case .anthropic: "sparkle"
+        case .gemini: "sparkles"
+        case .xAI: "bolt.fill"
+        case .ollama: "desktopcomputer"
+        case .vercelV0: "square.and.pencil"
+        }
+    }
+
+    private static func tint(for provider: AIProviderID) -> Color {
+        switch provider {
+        case .openAI: Color(red: 0.16, green: 0.65, blue: 0.47)
+        case .anthropic: Color(red: 0.83, green: 0.47, blue: 0.28)
+        case .gemini: Color(red: 0.26, green: 0.45, blue: 0.92)
+        case .xAI: Color(red: 0.15, green: 0.15, blue: 0.16)
+        case .ollama: Color(red: 0.20, green: 0.20, blue: 0.22)
+        case .vercelV0: Color(red: 0.12, green: 0.12, blue: 0.13)
+        }
+    }
+}
+
+@MainActor
+private struct ProviderMenuPanel: View {
+    @Bindable var ai: AIDockViewModel
+    let dismiss: () -> Void
+
+    var body: some View {
+        MenuPanelContainer {
+            ForEach(ProviderPanelDescriptor.all) { descriptor in
+                MenuPanelRow(
+                    title: descriptor.displayName,
+                    isSelected: ai.provider == descriptor.id
+                ) {
+                    ai.provider = descriptor.id
+                    if descriptor.id.isLocal {
+                        ai.mode = .api
+                    }
+                    dismiss()
+                } icon: {
+                    ProviderMark(provider: descriptor.id)
+                }
+            }
+        }
+    }
+}
+
 /// Makes a chip a drag source when it has something to hand over.
 private struct DraggableAttachment: ViewModifier {
     let provider: (() -> NSItemProvider)?
@@ -697,10 +822,10 @@ private struct AIChatTranscript: View {
                 LazyVStack(alignment: .leading, spacing: 12) {
                     if ai.messages.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Attach page context, then ask.")
-                                .font(.system(size: 12.5, weight: .medium))
+                            Text("Ask about this page.")
+                                .font(.system(size: 13, weight: .medium))
                                 .foregroundStyle(Color.browsemiumPrimary)
-                            Text("Nothing leaves your Mac until you confirm it in the review sheet.")
+                            Text("Attach a selection or the page first. Nothing is sent until you review it.")
                                 .font(.system(size: 11.5))
                                 .foregroundStyle(Color.browsemiumSecondary)
                                 .fixedSize(horizontal: false, vertical: true)

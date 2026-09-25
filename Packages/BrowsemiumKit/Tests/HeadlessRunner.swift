@@ -436,11 +436,39 @@ struct HeadlessRunner {
         try settingsRepository.save(stored)
         try expect(try settingsRepository.load() == stored, "Settings were not persisted")
 
+        try expect(stored.contentBlockingEnabled, "Strict protection must keep the content rules on")
+        try expect(
+            stored.protectionLevel.sendsGlobalPrivacyControl,
+            "Strict protection must send the Global Privacy Control signal"
+        )
+        try expect(
+            stored.protectionLevel.httpsUpgrade(of: URL(string: "http://example.com/a")!)?.absoluteString
+                == "https://example.com/a",
+            "Strict protection must upgrade plaintext pages"
+        )
+        try expect(
+            stored.protectionLevel.httpsUpgrade(of: URL(string: "http://localhost:3000/")!) == nil,
+            "Local development servers must stay on plaintext"
+        )
+        var relaxed = stored
+        relaxed.protectionLevel = .off
+        try expect(!relaxed.contentBlockingEnabled, "Off protection must disable the content rules")
+        try expect(
+            relaxed.protectionLevel.httpsUpgrade(of: URL(string: "http://example.com/")!) == nil,
+            "Off protection must not touch navigation"
+        )
+        try settingsRepository.save(relaxed)
+        try expect(
+            try settingsRepository.load().protectionLevel == .off,
+            "The protection level must be the single blocking switch after a reload"
+        )
+
         let closedTabs = ClosedTabRepository(database: database, maximumEntries: 2)
         let space = BrowserSpace(name: "Personal")
         let session = BrowserSessionState(
             spaces: [space],
             tabs: [],
+            folders: [],
             activeSpaceID: space.id,
             activeTabID: nil
         )
@@ -843,7 +871,7 @@ struct HeadlessRunner {
             try String.fetchAll(database, sql: "SELECT name FROM sqlite_master WHERE type IN ('table', 'view')")
         }
         let required = Set([
-            "spaces", "tabs", "closed_tabs", "history_visits", "history_visits_fts",
+            "spaces", "tabs", "folders", "closed_tabs", "history_visits", "history_visits_fts",
             "bookmarks", "downloads", "site_permissions", "site_preferences",
             "ai_provider_settings", "ai_conversations", "ai_messages", "schema_metadata"
         ])
@@ -858,6 +886,7 @@ struct HeadlessRunner {
         let session = BrowserSessionState(
             spaces: [space],
             tabs: [tab],
+            folders: [],
             activeSpaceID: space.id,
             activeTabID: tab.id,
             isPrivate: true

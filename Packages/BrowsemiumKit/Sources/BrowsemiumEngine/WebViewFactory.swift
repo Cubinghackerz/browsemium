@@ -19,17 +19,33 @@ public struct WebViewFactory {
     /// profile switch isolates cookies, logins, and site storage.
     public static var dataStoreIdentifier: UUID?
 
+    /// The active profile's extension controller, when extensions are
+    /// available (macOS 15.4+). Every web view this factory builds attaches
+    /// it, so extensions inject into the same pages the user sees and see
+    /// the same tabs. Nil on older systems and when the profile has no host.
+    @available(macOS 15.4, *)
+    public static var extensionController: WKWebExtensionController?
+
+    public static var protectionLevel: ProtectionLevel = .standard
+
     public func makeConfiguration(store: Store) -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
         if let provider = Self.contentRuleListProvider {
             provider(configuration)
         }
+        Self.applyPrivacyDefaults(to: configuration)
         switch store {
         case .persistent:
             if let identifier = Self.dataStoreIdentifier {
                 configuration.websiteDataStore = WKWebsiteDataStore(forIdentifier: identifier)
             } else {
                 configuration.websiteDataStore = .default()
+            }
+            // Extensions run only on persistent views. A private window gets
+            // no extension code at all — the default browsers treat it the
+            // same way, and injected scripts would undermine the promise.
+            if #available(macOS 15.4, *), let controller = Self.extensionController {
+                configuration.webExtensionController = controller
             }
         case .ephemeral:
             configuration.websiteDataStore = .nonPersistent()
@@ -52,5 +68,17 @@ public struct WebViewFactory {
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsMagnification = true
         return webView
+    }
+
+    static func applyPrivacyDefaults(to configuration: WKWebViewConfiguration) {
+        guard let preferences = configuration.defaultWebpagePreferences else { return }
+        if #available(macOS 27.0, *) {
+            preferences.globalPrivacyControlEnabled = protectionLevel.sendsGlobalPrivacyControl
+        }
+        if #available(macOS 26.4, *) {
+            preferences.securityRestrictionMode = protectionLevel.hardensWebContent
+                ? .maximizeCompatibility
+                : .none
+        }
     }
 }

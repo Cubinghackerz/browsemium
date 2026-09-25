@@ -13,6 +13,7 @@
 #
 # Usage:
 #   Scripts/release/build-local-dmg.sh [version] [--universal]
+#   BROWSEMIUM_BUILD_DIR=/tmp/browsemium-release Scripts/release/build-local-dmg.sh 2.1.0
 #
 # Builds the host architecture by default because a universal build compiles
 # every dependency twice and takes several minutes. Pass --universal for a DMG
@@ -38,15 +39,26 @@ else
   ARCH_FLAGS=(ARCHS="$(uname -m)" ONLY_ACTIVE_ARCH=YES)
   ARCH_LABEL="$(uname -m)"
 fi
-BUILD_DIR="${ROOT}/build"
-APP_PATH="${BUILD_DIR}/local/Browsemium.app"
-DMG_PATH="${BUILD_DIR}/Browsemium-${VERSION}.dmg"
+BUILD_ROOT="${BROWSEMIUM_BUILD_DIR:-${ROOT}/build}"
+LOCAL_BUILD_DIR="${BUILD_ROOT}/local"
+APP_PATH="${LOCAL_BUILD_DIR}/Browsemium.app"
+DMG_PATH="${BUILD_ROOT}/Browsemium-${VERSION}.dmg"
 STAGING="$(mktemp -d)"
+VALIDATION_PROFILE_DIR=""
+PROFILE_PARENT="${HOME}/Library/Containers/com.browsemium.browser/Data/tmp"
+PROFILE_ARGS=()
 
-cleanup() { rm -rf "$STAGING"; }
+cleanup() {
+  rm -rf "$STAGING"
+  case "$VALIDATION_PROFILE_DIR" in
+    "${PROFILE_PARENT}/browsemium-release-validation."*)
+      rm -rf -- "$VALIDATION_PROFILE_DIR"
+      ;;
+  esac
+}
 trap cleanup EXIT
 
-mkdir -p "${BUILD_DIR}/local"
+mkdir -p "$LOCAL_BUILD_DIR"
 
 echo "Building Browsemium ${VERSION} (Release, ${ARCH_LABEL}, ad-hoc signed)…"
 rm -rf "$APP_PATH"
@@ -55,8 +67,8 @@ xcodebuild \
   -scheme Browsemium \
   -configuration Release \
   -destination "generic/platform=macOS" \
-  -derivedDataPath "${BUILD_DIR}/local/DerivedData" \
-  CONFIGURATION_BUILD_DIR="${BUILD_DIR}/local" \
+  -derivedDataPath "${LOCAL_BUILD_DIR}/DerivedData" \
+  CONFIGURATION_BUILD_DIR="${LOCAL_BUILD_DIR}" \
   "${ARCH_FLAGS[@]}" \
   CODE_SIGN_IDENTITY="-" \
   CODE_SIGN_STYLE=Manual \
@@ -64,12 +76,12 @@ xcodebuild \
   CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
   MARKETING_VERSION="$VERSION" \
   CURRENT_PROJECT_VERSION="$(echo "$VERSION" | tr -cd '0-9')" \
-  build > "${BUILD_DIR}/local/build.log" 2>&1 \
+  build > "${LOCAL_BUILD_DIR}/build.log" 2>&1 \
   || {
     echo "Build failed. Errors:" >&2
-    grep -E "error:" "${BUILD_DIR}/local/build.log" | head -30 >&2
+    grep -E "error:" "${LOCAL_BUILD_DIR}/build.log" | head -30 >&2
     echo "--- last 15 lines ---" >&2
-    tail -15 "${BUILD_DIR}/local/build.log" >&2
+    tail -15 "${LOCAL_BUILD_DIR}/build.log" >&2
     exit 1
   }
 
@@ -93,10 +105,15 @@ fi
 
 # A Release build once shipped that crashed on launch: optimisation exposed a
 # memory bug that Debug hid. The bundle has to prove it starts and stays up
-# before it is packaged, so nothing like that can be published again.
+# before it is packaged, so nothing like that can be published again. These
+# launches use a unique profile directory inside the app container so release
+# validation never opens, kills, or changes the user's real browsing session.
 echo "Launch test (10s)…"
-LOG="${BUILD_DIR}/local/launch-test.log"
-"$APP_PATH/Contents/MacOS/Browsemium" > "$LOG" 2>&1 &
+LOG="${LOCAL_BUILD_DIR}/launch-test.log"
+mkdir -p "$PROFILE_PARENT"
+VALIDATION_PROFILE_DIR="$(mktemp -d "${PROFILE_PARENT}/browsemium-release-validation.XXXXXX")"
+PROFILE_ARGS=("--profile-dir=${VALIDATION_PROFILE_DIR}")
+"$APP_PATH/Contents/MacOS/Browsemium" "${PROFILE_ARGS[@]}" > "$LOG" 2>&1 &
 LAUNCH_PID=$!
 sleep 10
 if ! kill -0 "$LAUNCH_PID" 2>/dev/null; then
@@ -118,15 +135,14 @@ echo "  launched and stayed up for 10s"
 # rows in its profile database are compared. A session that only survives a
 # clean quit is not crash recovery.
 echo "Crash-recovery test…"
-CONTAINER_DB="${HOME}/Library/Containers/com.browsemium.browser/Data/Library/Application Support/Browsemium"
-PROFILE_DB="$(ls -t "${CONTAINER_DB}"/profiles/*.sqlite 2>/dev/null | head -1 || true)"
+PROFILE_DB="$(ls -t "${VALIDATION_PROFILE_DIR}"/profiles/*.sqlite 2>/dev/null | head -1 || true)"
 # A marker file rather than a timestamp: `find -newermt "@epoch"` is not
 # portable across the BSD find versions on CI runners, and a failing find
 # inside a command substitution kills the script under `set -e` with no
 # message at all.
-CRASH_MARKER="${BUILD_DIR}/local/crash-marker"
+CRASH_MARKER="${LOCAL_BUILD_DIR}/crash-marker"
 touch "$CRASH_MARKER"
-"$APP_PATH/Contents/MacOS/Browsemium" > "${BUILD_DIR}/local/crash-test-1.log" 2>&1 &
+"$APP_PATH/Contents/MacOS/Browsemium" "${PROFILE_ARGS[@]}" > "${LOCAL_BUILD_DIR}/crash-test-1.log" 2>&1 &
 CRASH_PID=$!
 sleep 6
 kill -9 "$CRASH_PID" 2>/dev/null || true
@@ -136,12 +152,12 @@ if [ -n "$PROFILE_DB" ]; then
   TABS_BEFORE="$(sqlite3 "$PROFILE_DB" 'SELECT COUNT(*) FROM tabs' 2>/dev/null || true)"
 fi
 sleep 1
-"$APP_PATH/Contents/MacOS/Browsemium" > "${BUILD_DIR}/local/crash-test-2.log" 2>&1 &
+"$APP_PATH/Contents/MacOS/Browsemium" "${PROFILE_ARGS[@]}" > "${LOCAL_BUILD_DIR}/crash-test-2.log" 2>&1 &
 CRASH_PID=$!
 sleep 8
 if ! kill -0 "$CRASH_PID" 2>/dev/null; then
   echo "The app did not survive a relaunch after SIGKILL — refusing to package." >&2
-  tail -20 "${BUILD_DIR}/local/crash-test-2.log" >&2
+  tail -20 "${LOCAL_BUILD_DIR}/crash-test-2.log" >&2
   exit 1
 fi
 kill "$CRASH_PID" 2>/dev/null || true
@@ -163,6 +179,7 @@ if [ -n "$CRASH_LOGS" ] && [ "$CRASH_LOGS" -gt 0 ]; then
   exit 1
 fi
 
+mkdir -p "$BUILD_ROOT"
 cp -R "$APP_PATH" "$STAGING/"
 ln -s /Applications "$STAGING/Applications"
 

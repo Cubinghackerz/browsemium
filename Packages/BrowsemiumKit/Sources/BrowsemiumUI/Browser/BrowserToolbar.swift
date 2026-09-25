@@ -1,18 +1,29 @@
+import AppKit
 import BrowsemiumCore
+import BrowsemiumExtensions
 import SwiftUI
 import BrowsemiumEngineKit
 
 @MainActor
 struct BrowserToolbar: View {
     @Bindable var model: BrowserWindowModel
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismiss) private var dismiss
 
     @FocusState private var addressFocused: Bool
     @State private var isFieldHovering = false
-    @State private var isNamingProfile = false
-    @State private var newProfileName = ""
+    @State private var isSearchEnginePanelPresented = false
+    @State private var isOverflowPanelPresented = false
+    @State private var isCredentialPanelPresented = false
+    @State private var isSiteShieldPresented = false
+    @State private var actionPresenter: ExtensionActionPresenter?
 
     var body: some View {
         HStack(spacing: 4) {
+            if model.session.isPrivate {
+                privateBadge
+            }
+
             BrowsemiumIconButton(systemName: "chevron.left", label: "Go back", isDisabled: !model.canGoBack) {
                 model.goBack()
             }
@@ -40,7 +51,11 @@ struct BrowserToolbar: View {
 
             Spacer(minLength: 4)
 
+            siteShield
+
             downloadIndicator
+
+            extensionActionButtons
 
             credentialMenu
 
@@ -57,70 +72,102 @@ struct BrowserToolbar: View {
                 model.toggleAIDock()
             }
 
-            profileMenu
+            privateWindowButton
 
             overflowMenu
         }
         .padding(.horizontal, 8)
         .frame(height: BrowserMetrics.toolbarHeight)
         .frame(maxWidth: .infinity)
-        .alert("New Profile", isPresented: $isNamingProfile) {
-            TextField("Name", text: $newProfileName)
-            Button("Create") {
-                let name = newProfileName
-                newProfileName = ""
-                model.createProfile(named: name.isEmpty ? "Profile \(model.profiles.count + 1)" : name)
+        .onAppear {
+            if #available(macOS 15.4, *) {
+                let presenter = actionPresenter ?? ExtensionActionPresenter(model: model)
+                actionPresenter = presenter
+                model.registerExtensionActionPresenter(presenter)
             }
-            Button("Cancel", role: .cancel) { newProfileName = "" }
-        } message: {
-            Text("Each profile keeps its own tabs, bookmarks, history, and logins.")
+        }        .onDisappear {
+            if #available(macOS 15.4, *), let presenter = actionPresenter {
+                model.unregisterExtensionActionPresenter(presenter)
+            }
         }
     }
 
-    /// Profile switcher: shows the active profile's initials and switches the
-    /// whole window — cookies, logins, bookmarks, and tabs — between profiles.
-    private var profileMenu: some View {
-        Menu {
-            ForEach(model.profiles) { profile in
-                Button {
-                    model.switchProfile(to: profile)
-                } label: {
-                    if profile.id == model.activeProfile.id {
-                        Label(profile.name, systemImage: "checkmark")
-                    } else {
-                        Text(profile.name)
-                    }
-                }
-            }
-            Divider()
-            Button("New Profile…") {
-                newProfileName = ""
-                isNamingProfile = true
-            }
-            Button("Import from Another Browser…") { model.openPanel(.settings) }
-            Button("Manage Profiles…") { model.openPanel(.settings) }
-        } label: {
-            HStack(spacing: 5) {
-                ZStack {
-                    Circle()
-                        .fill(Color.browsemiumSelection)
-                    Text(model.activeProfile.initials)
-                        .font(.system(size: 8.5, weight: .semibold))
-                        .foregroundStyle(Color.browsemiumSecondary)
-                }
-                .frame(width: 18, height: 18)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 7, weight: .semibold))
-                    .foregroundStyle(Color.browsemiumTertiary)
-            }
-            .contentShape(Rectangle())
+    /// One button per extension action. Left-click runs the action (a popup
+    /// action opens its popover, anchored to the button); right-click shows
+    /// the extension's own menu items plus Browsemium's management entries.
+    @ViewBuilder
+    private var extensionActionButtons: some View {
+        ForEach(model.extensionActions) { action in
+            ExtensionActionButtonView(
+                model: model,
+                action: action,
+                presenter: actionPresenter
+            )
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help("Profile: \(model.activeProfile.name)")
-        .accessibilityLabel("Profile, \(model.activeProfile.name)")
     }
+
+    /// The incognito toggle. In a normal window it opens a private window
+    /// (⌘⇧N); in a private window it is lit and closes the window — a private
+    /// session is disposable by definition, so there is nothing to "switch
+    /// back" to and the user's normal tabs were never touched.
+    private var privateWindowButton: some View {
+        BrowsemiumIconButton(
+            systemName: model.session.isPrivate ? "theatermasks.fill" : "theatermasks",
+            label: model.session.isPrivate ? "Close Private Window" : "New Private Window",
+            isActive: model.session.isPrivate
+        ) {
+            BrowserHaptics.perform()
+            if model.session.isPrivate {
+                dismiss()
+            } else {
+                PrivateWindowRequest.shared.arm()
+                openWindow(id: "main")
+            }
+        }
+        .help(model.session.isPrivate ? "Close this private window (⌘W)" : "New Private Window (⇧⌘N)")
+    }
+
+    /// Always-visible proof of which mode the window is in — a private
+    /// session must be unmistakable at a glance.
+    private var siteShield: some View {
+        let paused = model.isBlockingPaused(for: model.activePageURL)
+        return BrowsemiumIconButton(
+            systemName: paused ? "shield.slash" : "shield",
+            label: paused ? "Blocking paused on this site" : "Site protection",
+            isActive: paused
+        ) {
+            isSiteShieldPresented = true
+        }
+        .popover(isPresented: $isSiteShieldPresented, arrowEdge: .bottom) {
+            SiteShieldPanel(model: model)
+            .presentationBackground(.clear)
+        }
+        .help(model.siteShieldStatus)
+    }
+
+    private var privateBadge: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "theatermasks.fill")
+                .font(.system(size: 9, weight: .semibold))
+            Text("Private")
+                .font(.system(size: 10, weight: .semibold))
+        }
+        .foregroundStyle(Self.privateTint)
+        .padding(.horizontal, 7)
+        .frame(height: 20)
+        .background(
+            Capsule().fill(Self.privateTint.opacity(0.14))
+        )
+        .overlay {
+            Capsule().stroke(Self.privateTint.opacity(0.35), lineWidth: 1)
+        }
+        .accessibilityLabel("Private browsing window")
+        .help("Nothing from this window is saved to disk")
+    }
+
+    /// The private-mode accent — a violet that reads clearly in both
+    /// appearances without colliding with the app accent.
+    static let privateTint = Color(red: 0.52, green: 0.36, blue: 0.92)
 
     private var addressField: some View {
         HStack(spacing: 6) {
@@ -216,7 +263,7 @@ struct BrowserToolbar: View {
                     if download.failureMessage != nil {
                         Text("\(download.filename) — failed")
                     } else if download.isFinished {
-                        Text("\(download.filename) — done")
+                        Text("\(download.filename) — Downloaded")
                     } else {
                         Text("\(download.filename) — \(download.percentText)")
                     }
@@ -248,7 +295,7 @@ struct BrowserToolbar: View {
             .fixedSize()
             .accessibilityLabel(
                 model.hasActiveDownloads
-                    ? "Downloading \(model.activeDownloads.count) file"
+                    ? "Downloading \(model.activeDownloads.count) \(model.activeDownloads.count == 1 ? "file" : "files")"
                     : "Downloads"
             )
         }
@@ -258,25 +305,12 @@ struct BrowserToolbar: View {
     /// becomes the default; typing "!d query" uses one engine for a single
     /// search without changing it.
     private var searchEngineMenu: some View {
-        Menu {
-            ForEach(SearchEnginePreset.all) { preset in
-                Button {
-                    model.selectSearchEngine(preset)
-                } label: {
-                    if model.activeSearchEngineName == preset.name {
-                        Label(preset.name, systemImage: "checkmark")
-                    } else {
-                        Text(preset.name)
-                    }
-                }
-            }
-            Divider()
-            Button("Other search engines…") { model.openPanel(.settings) }
+        Button {
+            BrowserHaptics.perform()
+            isSearchEnginePanelPresented = true
         } label: {
             HStack(spacing: 4) {
-                Text(searchEngineInitial)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.browsemiumSecondary)
+                SearchEngineMark(engineName: model.activeSearchEngineName, size: 16)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 7, weight: .semibold))
                     .foregroundStyle(Color.browsemiumTertiary)
@@ -284,32 +318,21 @@ struct BrowserToolbar: View {
             .frame(height: 20)
             .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
+        .buttonStyle(.plain)
+        .popover(isPresented: $isSearchEnginePanelPresented, arrowEdge: .bottom) {
+            SearchEngineMenuPanel(model: model) {
+                isSearchEnginePanelPresented = false
+            }
+                .presentationBackground(.clear)
+        }
         .help("Search engine: \(model.activeSearchEngineName). Type !g, !d, !b or !br for a one-off search.")
         .accessibilityLabel("Search engine, \(model.activeSearchEngineName)")
     }
 
-    private var searchEngineInitial: String {
-        let name = model.activeSearchEngineName
-        return name == "Custom" ? "…" : String(name.prefix(1))
-    }
-
     private var credentialMenu: some View {
-        Menu {
-            let credentials = model.credentialsForActiveSite()
-            if credentials.isEmpty {
-                Text("No saved passwords for this site")
-            } else {
-                ForEach(credentials) { credential in
-                    Button("Fill \(credential.username)") {
-                        model.fillCredential(credential)
-                    }
-                }
-            }
-            Divider()
-            Button("Manage Passwords…") { model.openPanel(.settings) }
+        Button {
+            BrowserHaptics.perform()
+            isCredentialPanelPresented = true
         } label: {
             Image(systemName: "key")
                 .font(.system(size: 12, weight: .regular))
@@ -321,30 +344,21 @@ struct BrowserToolbar: View {
                 .frame(width: 26, height: 26)
                 .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
+        .buttonStyle(.plain)
+        .popover(isPresented: $isCredentialPanelPresented, arrowEdge: .bottom) {
+            CredentialMenuPanel(model: model) {
+                isCredentialPanelPresented = false
+            }
+            .presentationBackground(.clear)
+        }
+        .help("Passwords")
         .accessibilityLabel("Passwords")
     }
 
     private var overflowMenu: some View {
-        Menu {
-            Button("New Tab") { model.newTab() }
-            Button("Reopen Closed Tab") { model.reopenClosedTab() }
-            Button("Recently Closed Tabs") { model.openPanel(.recentlyClosed) }
-            Divider()
-            Button("Save as PDF…") { model.savePageAsPDF() }
-            Button("Save Screenshot…") { model.savePageScreenshot() }
-            Button("Picture in Picture") { model.togglePictureInPicture() }
-            Divider()
-            Button("History") { model.openPanel(.history) }
-            Button("Bookmarks") { model.openPanel(.bookmarks) }
-            Button(model.isBookmarksBarVisible ? "Hide Bookmarks Bar" : "Show Bookmarks Bar") {
-                model.toggleBookmarksBar()
-            }
-            Button("Downloads") { model.openPanel(.downloads) }
-            Divider()
-            Button("Settings…") { model.openPanel(.settings) }
+        Button {
+            BrowserHaptics.perform()
+            isOverflowPanelPresented = true
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 13, weight: .regular))
@@ -352,9 +366,110 @@ struct BrowserToolbar: View {
                 .frame(width: 26, height: 26)
                 .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
+        .buttonStyle(.plain)
+        .popover(isPresented: $isOverflowPanelPresented, arrowEdge: .bottom) {
+            OverflowMenuPanel(model: model) {
+                isOverflowPanelPresented = false
+            }
+            .presentationBackground(.clear)
+        }
+        .help("More actions")
         .accessibilityLabel("More actions")
+    }
+}
+
+/// One extension's toolbar button: icon (or a puzzle piece when the
+/// extension ships no icon), badge, tooltip, and the management menu.
+@MainActor
+private struct ExtensionActionButtonView: View {
+    @Bindable var model: BrowserWindowModel
+    let action: BrowserWindowModel.ExtensionActionButton
+    let presenter: ExtensionActionPresenter?
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button {
+            BrowserHaptics.perform()
+            model.performExtensionAction(action.id)
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                Group {
+                    if let icon = action.icon {
+                        Image(nsImage: icon)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                    } else {
+                        Image(systemName: "puzzlepiece.extension")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.browsemiumSecondary)
+                    }
+                }
+                .frame(width: 16, height: 16)
+
+                if let badge = action.badgeText {
+                    Text(badge)
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 3)
+                        .padding(.vertical, 0.5)
+                        .background(
+                            Capsule().fill(action.hasUnreadBadgeText ? Color.browsemiumFocus : Color.browsemiumSecondary)
+                        )
+                        .offset(x: 5, y: -4)
+                }
+            }
+            .frame(width: 26, height: 26)
+            .background(
+                RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous)
+                    .fill(isHovering ? Color.browsemiumHover : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!action.isEnabled)
+        .opacity(action.isEnabled ? 1 : 0.5)
+        .onHover { isHovering = $0 }
+        .background(
+            ToolbarAnchorView { view in
+                if #available(macOS 15.4, *) {
+                    presenter?.register(view, for: action.id)
+                }
+            }
+        )
+        .contextMenu {
+            ExtensionMenuItemsView(items: model.extensionActionMenuItems(action.id))
+            if !model.extensionActionMenuItems(action.id).isEmpty {
+                Divider()
+            }
+            Button("Extension Options…") { model.openExtensionOptions(action.id) }
+            Button("Reload Extension") { model.reloadExtension(action.id) }
+            Divider()
+            Button("Remove “\(action.label)”", role: .destructive) {
+                model.removeExtension(action.id)
+            }
+        }
+        .help(action.label)
+        .accessibilityLabel("\(action.label) extension action")
+    }
+}
+
+/// Renders `NSMenuItem`s supplied by an extension inside a SwiftUI menu.
+@MainActor
+private struct ExtensionMenuItemsView: View {
+    let items: [NSMenuItem]
+
+    var body: some View {
+        ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+            if item.isSeparatorItem {
+                Divider()
+            } else {
+                Button(item.title) {
+                    guard let action = item.action else { return }
+                    NSApp.sendAction(action, to: item.target, from: item)
+                }
+                .disabled(!item.isEnabled)
+            }
+        }
     }
 }

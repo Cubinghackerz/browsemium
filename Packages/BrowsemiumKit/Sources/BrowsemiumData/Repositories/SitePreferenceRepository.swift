@@ -43,6 +43,21 @@ public final class SitePreferenceRepository: @unchecked Sendable {
         }
     }
 
+    public func origins(preference: String, value: String) throws -> Set<String> {
+        do {
+            return try database.databaseQueue.read { db in
+                let rows = try String.fetchAll(
+                    db,
+                    sql: "SELECT origin FROM site_preferences WHERE preference = ? AND value = ?",
+                    arguments: [preference, value]
+                )
+                return Set(rows)
+            }
+        } catch {
+            throw BrowsemiumError.databaseFailure(error.localizedDescription)
+        }
+    }
+
     public func remove(origin: String, preference: String) throws {
         do {
             try database.databaseQueue.write { db in

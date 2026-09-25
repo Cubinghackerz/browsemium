@@ -23,6 +23,43 @@ struct BrowserTabStrip: View {
         model.visibleTabs.filter { !$0.isPinned }
     }
 
+    /// The regular-tab run flattened for the strip: a collapsed folder is one
+    /// chip; an expanded folder renders its members as ordinary tabs (with a
+    /// folder badge) directly after the chip-less run.
+    private enum StripEntry: Identifiable {
+        case collapsedFolder(TabFolder, count: Int)
+        case tab(BrowserTab, inFolder: Bool)
+
+        var id: String {
+            switch self {
+            case .collapsedFolder(let folder, _): "folder-\(folder.id.rawValue.uuidString)"
+            case .tab(let tab, _): tab.id.rawValue.uuidString
+            }
+        }
+    }
+
+    private var stripEntries: [StripEntry] {
+        var entries: [StripEntry] = []
+        var lastFolderID: FolderID?
+        for tab in regularTabs {
+            guard let folderID = tab.folderID, let folder = model.folder(folderID) else {
+                entries.append(.tab(tab, inFolder: false))
+                lastFolderID = nil
+                continue
+            }
+            if lastFolderID != folderID {
+                if folder.isCollapsed {
+                    entries.append(.collapsedFolder(folder, count: model.tabs(inFolder: folderID).count))
+                }
+                lastFolderID = folderID
+            }
+            if !folder.isCollapsed {
+                entries.append(.tab(tab, inFolder: true))
+            }
+        }
+        return entries
+    }
+
     var body: some View {
         GeometryReader { geometry in
             HStack(spacing: 4) {
@@ -32,7 +69,7 @@ struct BrowserTabStrip: View {
                 groupPicker
 
                 ForEach(pinnedTabs) { tab in
-                    TabItem(model: model, tab: tab, width: 30)
+                    TabItem(model: model, tab: tab, width: 30, inFolder: false)
                 }
 
                 let regularWidth = width(for: geometry.size.width)
@@ -40,9 +77,14 @@ struct BrowserTabStrip: View {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 4) {
-                            ForEach(regularTabs) { tab in
-                                TabItem(model: model, tab: tab, width: regularWidth)
-                                    .id(tab.id)
+                            ForEach(stripEntries) { entry in
+                                switch entry {
+                                case .collapsedFolder(let folder, let count):
+                                    FolderChip(model: model, folder: folder, count: count)
+                                case .tab(let tab, let inFolder):
+                                    TabItem(model: model, tab: tab, width: regularWidth, inFolder: inFolder)
+                                        .id(tab.id)
+                                }
                             }
                         }
                         .padding(.horizontal, 1)
@@ -96,6 +138,8 @@ struct BrowserTabStrip: View {
                 } label: {
                     if space.id == model.session.activeSpaceID {
                         Label(space.name, systemImage: "checkmark")
+                    } else if space.isLocked {
+                        Label(space.name, systemImage: "lock.fill")
                     } else {
                         Text(space.name)
                     }
@@ -113,6 +157,19 @@ struct BrowserTabStrip: View {
                 }
                 Button("Delete “\(group.name)”", role: .destructive) {
                     model.deleteGroup(group.id)
+                }
+                Divider()
+                if group.isLocked {
+                    if model.isSpaceUnlocked(group.id) {
+                        Button("Lock “\(group.name)” Now") { model.lockSpaceNow(group.id) }
+                    }
+                    Button("Remove Lock from “\(group.name)”") {
+                        model.setSpaceLocked(group.id, locked: false)
+                    }
+                } else {
+                    Button("Lock “\(group.name)”…") {
+                        model.setSpaceLocked(group.id, locked: true)
+                    }
                 }
             }
         } label: {
@@ -150,9 +207,15 @@ struct BrowserTabStrip: View {
     }
 
     private func width(for available: CGFloat) -> CGFloat {
-        let reserved = BrowserMetrics.titlebarLeadingInset + CGFloat(pinnedTabs.count) * 34 + 48 + 90
+        let collapsedFolders = stripEntries.count { entry in
+            if case .collapsedFolder = entry { return true }
+            return false
+        }
+        let visibleTabs = stripEntries.count - collapsedFolders
+        let reserved = BrowserMetrics.titlebarLeadingInset + CGFloat(pinnedTabs.count) * 34
+            + CGFloat(collapsedFolders) * 114 + 48 + 90
         let usable = max(available - reserved, 60)
-        let count = max(regularTabs.count, 1)
+        let count = max(visibleTabs, 1)
         let even = usable / CGFloat(count) - 4
         return min(BrowserMetrics.tabWidth, max(BrowserMetrics.tabMinimumWidth, even))
     }
@@ -191,9 +254,13 @@ private struct TabItem: View {
     @Bindable var model: BrowserWindowModel
     let tab: BrowserTab
     let width: CGFloat
+    /// Members of an expanded folder get a small folder glyph.
+    let inFolder: Bool
 
     @State private var isHovering = false
     @State private var isShowingStats = false
+    @State private var isNamingFolder = false
+    @State private var newFolderName = ""
     @State private var hoverTask: Task<Void, Never>?
 
     private var isActive: Bool {
@@ -210,7 +277,22 @@ private struct TabItem: View {
 
     var body: some View {
         HStack(spacing: 6) {
+            if inFolder, !isCompact {
+                Image(systemName: "folder")
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundStyle(Color.browsemiumTertiary)
+                    .frame(width: 8)
+                    .accessibilityHidden(true)
+            }
+
             icon
+
+            if model.isTabInSplit(tab.id), !isCompact {
+                Image(systemName: "rectangle.split.2x1")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(Color.browsemiumFocus)
+                    .accessibilityHidden(true)
+            }
 
             if !isCompact {
                 Text(tab.title)
@@ -257,20 +339,32 @@ private struct TabItem: View {
             }
         }
         .popover(isPresented: $isShowingStats, arrowEdge: .bottom) {
-            TabStatsCard(tab: tab, stats: model.tabStats(for: tab))
+            TabPreviewCard(model: model, tab: tab, stats: model.tabStats(for: tab))
         }
         .contextMenu {
-            Button(tab.isPinned ? "Unpin Tab" : "Pin Tab") { model.togglePin(tab.id) }
-            Button(model.isKeptAwake(tab.id) ? "Allow This Tab to Sleep" : "Keep This Tab Loaded") {
-                model.toggleKeepAwake(tab.id)
+            TabMenuContent(model: model, tab: tab, afterLabel: "Close Tabs to the Right") {
+                newFolderName = ""
+                isNamingFolder = true
             }
-            Divider()
-            Button("Close Tab") { model.closeTab(tab.id) }
         }
-        .draggable(tab.id.rawValue.uuidString)
+        .alert("Move to New Folder", isPresented: $isNamingFolder) {
+            TextField("Name", text: $newFolderName)
+            Button("Create") {
+                let name = newFolderName
+                newFolderName = ""
+                let folderID = model.createFolder(named: name.isEmpty ? "New Folder" : name)
+                model.assignTab(tab.id, toFolder: folderID)
+            }
+            Button("Cancel", role: .cancel) { newFolderName = "" }
+        }
+        .onDrag {
+            model.beginTabDrag()
+            return NSItemProvider(object: tab.id.rawValue.uuidString as NSString)
+        }
         .dropDestination(for: String.self) { items, _ in
             guard let rawID = items.first,
                   let uuid = UUID(uuidString: rawID) else { return false }
+            model.endTabDrag()
             model.moveTab(TabID(rawValue: uuid), before: tab.id)
             return true
         }
@@ -357,7 +451,11 @@ private struct TabItem: View {
     private var accessibilityLabel: String {
         var label = "Tab, \(tab.title)"
         if tab.isPinned { label += ", pinned" }
+        if let folderID = tab.folderID, let folder = model.folder(folderID) {
+            label += ", in folder \(folder.name)"
+        }
         if isActive { label += ", active" }
+        if model.isTabInSplit(tab.id) { label += ", in split view" }
         if isAsleep { label += ", sleeping" }
         if tab.lifecycle == .loading { label += ", loading" }
         if tab.lifecycle == .crashed { label += ", stopped responding" }
@@ -365,5 +463,84 @@ private struct TabItem: View {
             label += audio.isMuted ? ", muted" : ", playing audio"
         }
         return label
+    }
+}
+
+/// A collapsed folder in the top strip: one chip standing in for all of its
+/// tabs. Clicking expands it; dragging a tab onto it files the tab.
+@MainActor
+private struct FolderChip: View {
+    @Bindable var model: BrowserWindowModel
+    let folder: TabFolder
+    let count: Int
+
+    @State private var isHovering = false
+    @State private var isRenaming = false
+    @State private var renameText = ""
+
+    private var accent: Color {
+        folder.color.flatMap { Color(browsemiumHex: $0) } ?? Color.browsemiumSecondary
+    }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "folder.fill")
+                .font(.system(size: 9))
+                .foregroundStyle(accent)
+            Text(folder.name)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.browsemiumSecondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Text("\(count)")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(Color.browsemiumTertiary)
+                .monospacedDigit()
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(Capsule().fill(Color.browsemiumField))
+        }
+        .padding(.horizontal, 8)
+        .frame(width: 110, height: 28)
+        .background(
+            RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous)
+                .fill(isHovering ? Color.browsemiumHover : Color.browsemiumField)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous)
+                .stroke(Color.browsemiumBorder, lineWidth: 1)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            BrowserHaptics.perform()
+            model.toggleFolderCollapsed(folder.id)
+        }
+        .onHover { isHovering = $0 }
+        .contextMenu {
+            Button("Expand Folder") { model.toggleFolderCollapsed(folder.id) }
+            Button("Rename…") {
+                renameText = folder.name
+                isRenaming = true
+            }
+            Divider()
+            Button("Ungroup Folder") { model.ungroupFolder(folder.id) }
+            Button("Close Folder", role: .destructive) { model.closeFolder(folder.id) }
+        }
+        .alert("Rename Folder", isPresented: $isRenaming) {
+            TextField("Name", text: $renameText)
+            Button("Rename") { model.renameFolder(folder.id, to: renameText) }
+            Button("Cancel", role: .cancel) {}
+        }
+        .draggable(folder.id.rawValue.uuidString)
+        .dropDestination(for: String.self) { items, _ in
+            guard let rawID = items.first,
+                  let uuid = UUID(uuidString: rawID) else { return false }
+            model.assignTab(TabID(rawValue: uuid), toFolder: folder.id)
+            return true
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Folder, \(folder.name), \(count) tabs, collapsed")
+        .accessibilityAddTraits(.isButton)
+        .transition(.opacity)
     }
 }

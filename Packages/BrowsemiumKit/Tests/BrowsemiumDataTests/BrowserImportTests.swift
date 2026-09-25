@@ -152,6 +152,28 @@ func historyOptionsRespectScopeAndRange() throws {
 }
 
 @Test
+func chromiumFamilyIncludesTheNewerBrowsersWithTheirOwnKeys() {
+    #expect(BrowserImportSource.dia.family == .chromium)
+    #expect(BrowserImportSource.helium.family == .chromium)
+    #expect(BrowserImportSource.opera.family == .chromium)
+
+    #expect(BrowserImportSource.dia.safeStorageService == "Dia Safe Storage")
+    #expect(BrowserImportSource.helium.safeStorageService == "Helium Safe Storage")
+    #expect(BrowserImportSource.opera.safeStorageService == "Opera Safe Storage")
+
+    // Every Chromium-family browser that stores a profile can have its
+    // passwords read, and every one names its own keychain item.
+    for source in BrowserImportSource.allCases where source.family == .chromium {
+        #expect(source.supportsPasswordImport)
+        #expect(source.profileRoot != nil)
+    }
+
+    // Helium's macOS profile lives under its bundle identifier.
+    #expect(BrowserImportSource.helium.profileRoot?.lastPathComponent == "net.imput.helium")
+    #expect(BrowserImportSource.dia.profileRoot?.lastPathComponent == "User Data")
+}
+
+@Test
 func importingAFolderThatIsNotAProfileFailsClearly() throws {
     let folder = FileManager.default.temporaryDirectory
         .appendingPathComponent("browsemium-not-a-profile-\(UUID().uuidString)", isDirectory: true)

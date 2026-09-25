@@ -25,7 +25,15 @@ public final class TabRuntime {
     private var progressObservation: NSKeyValueObservation?
     private var audioProxy: TabAudioMessageProxy?
     private var linkHoverProxy: LinkHoverMessageProxy?
+    /// Dedupes the double new-window report WebKit produces for one click:
+    /// `decidePolicyFor` (targetFrame == nil) fires first, then `createWebViewWith`.
+    /// Without this, one ⌘-click opens a peek, discards it, and reopens it —
+    /// and one plain click on a `target=_blank` link opens two tabs.
+    private var lastWindowRequest: (url: URL, isPeek: Bool, at: Date)?
     public private(set) var audioState = TabAudioState(isPlaying: false, isMuted: false)
+    public private(set) var protectionLevel: ProtectionLevel = .standard
+    var blockingPausedHosts: () -> Set<String> = { [] }
+    private var contentRulesSuppressed = false
 
     public var onEvent: ((TabRuntimeEvent) -> Void)?
 
@@ -104,6 +112,7 @@ public final class TabRuntime {
             }
         }
         webView = view
+        applyProtection(protectionLevel)
         return view
     }
 
@@ -196,10 +205,30 @@ public final class TabRuntime {
     /// Adds the compiled content rules to this tab's existing web view so the
     /// next navigation is filtered without recreating the tab.
     public func applyContentRules() {
-        guard let webView, let ruleList = contentRules?.compiledRuleList else { return }
+        guard let webView else { return }
         let controller = webView.configuration.userContentController
         controller.removeAllContentRuleLists()
+        guard !contentRulesSuppressed, protectionLevel.blocksContentRules,
+              let ruleList = contentRules?.compiledRuleList else { return }
         controller.add(ruleList)
+    }
+
+    public func setContentRulesSuppressed(_ suppressed: Bool) {
+        contentRulesSuppressed = suppressed
+        applyContentRules()
+    }
+
+    func applyBlockingPause(forHost host: String) {
+        let paused = !isPrivate && blockingPausedHosts().contains(host.lowercased())
+        setContentRulesSuppressed(paused)
+    }
+
+    public func applyProtection(_ level: ProtectionLevel) {
+        protectionLevel = level
+        navigationDelegate.protectionLevel = level
+        guard let webView else { return }
+        WebViewFactory.applyPrivacyDefaults(to: webView.configuration)
+        applyContentRules()
     }
 
     /// Clears the find highlight WebKit leaves behind.
@@ -334,6 +363,10 @@ public final class TabRuntime {
     /// it; it is also public so a host can report state it observed itself.
     public func report(_ event: TabRuntimeEvent) {
         switch event {
+        case .requestedPeek(let url):
+            if isDuplicateWindowRequest(url: url, isPeek: true) { return }
+        case .requestedNewWindow(let url):
+            if isDuplicateWindowRequest(url: url, isPeek: false) { return }
         case .startedLoading:
             setLifecycle(.loading)
         case .committed(let url):
@@ -353,10 +386,24 @@ public final class TabRuntime {
             break
         case .crashed:
             setLifecycle(.crashed)
-        case .progressChanged, .requestedNewWindow, .requestedExternalScheme, .downloadStarted, .downloadFinished, .downloadFailed, .audioStateChanged, .requestedAISelection, .lifecycleChanged, .linkHovered:
+        case .progressChanged, .requestedExternalScheme, .downloadStarted, .downloadFinished, .downloadFailed, .audioStateChanged, .requestedAISelection, .lifecycleChanged, .linkHovered:
             break
         }
         onEvent?(event)
+    }
+
+    /// True when the same window/peek request arrived again within the
+    /// dedupe window — WebKit's double report for a single user click.
+    private func isDuplicateWindowRequest(url: URL, isPeek: Bool) -> Bool {
+        let now = Date()
+        if let last = lastWindowRequest,
+           last.isPeek == isPeek,
+           last.url == url,
+           now.timeIntervalSince(last.at) < 0.15 {
+            return true
+        }
+        lastWindowRequest = (url, isPeek, now)
+        return false
     }
 
     /// The only place `lifecycle` is assigned, so every change reaches the

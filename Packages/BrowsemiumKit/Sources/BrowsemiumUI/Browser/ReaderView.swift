@@ -1,6 +1,9 @@
 import BrowsemiumCore
 import SwiftUI
 import BrowsemiumEngineKit
+#if canImport(Translation)
+import Translation
+#endif
 
 /// Reading view: the page's article as text, styled for reading. Nothing from
 /// the original page is rendered here, so no page CSS or script can affect it.
@@ -31,6 +34,10 @@ struct ReaderView: View {
                         }
                         Text("·")
                         Text("\(article.estimatedReadingMinutes) min read")
+                        if let note = model.readerTranslationNote {
+                            Text("·")
+                            Text(note)
+                        }
                     }
                     .font(.system(size: 11.5))
                     .foregroundStyle(Color.browsemiumTertiary)
@@ -64,6 +71,11 @@ struct ReaderView: View {
 
             Spacer(minLength: 10)
 
+            BrowsemiumTextButton(model.isTranslating ? "Translating…" : "Translate") {
+                model.requestReaderTranslation()
+            }
+            .disabled(model.isTranslating)
+
             BrowsemiumIconButton(systemName: "textformat.size.smaller", label: "Decrease text size") {
                 fontSize = max(12, fontSize - 1)
             }
@@ -82,6 +94,7 @@ struct ReaderView: View {
         }
         .padding(.horizontal, 12)
         .frame(height: BrowserMetrics.toolbarHeight)
+        .readerTranslation(model: model)
     }
 
     private var alwaysBinding: Binding<Bool> {
@@ -91,3 +104,64 @@ struct ReaderView: View {
         )
     }
 }
+
+private extension View {
+    @ViewBuilder
+    func readerTranslation(model: BrowserWindowModel) -> some View {
+        #if canImport(Translation)
+        if #available(macOS 15.0, *) {
+            modifier(ReaderTranslationModifier(model: model))
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
+    }
+}
+
+#if canImport(Translation)
+@available(macOS 15.0, *)
+private struct ReaderTranslationModifier: ViewModifier {
+    @Bindable var model: BrowserWindowModel
+    @State private var configuration: TranslationSession.Configuration?
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { beginIfRequested() }
+            .onChange(of: model.readerTranslationRequested) { _, _ in
+                beginIfRequested()
+            }
+            .translationTask(configuration) { session in
+                let paragraphs = model.readerArticle?.paragraphs ?? []
+                guard !paragraphs.isEmpty else {
+                    model.failTranslation("This page has no article text to translate.")
+                    return
+                }
+                model.isTranslating = true
+                defer { model.isTranslating = false }
+                nonisolated(unsafe) let session = session
+                do {
+                    try await session.prepareTranslation()
+                    var translated: [String] = []
+                    translated.reserveCapacity(paragraphs.count)
+                    for paragraph in paragraphs {
+                        let response = try await session.translate(String(paragraph.prefix(4_000)))
+                        translated.append(response.targetText)
+                    }
+                    model.applyTranslatedArticle(translated.joined(separator: "\n"))
+                } catch {
+                    model.failTranslation(error.localizedDescription)
+                }
+            }
+    }
+
+    private func beginIfRequested() {
+        guard model.readerTranslationRequested else { return }
+        model.readerTranslationRequested = false
+        var next = TranslationSession.Configuration(target: Locale.current.language)
+        next.invalidate()
+        configuration = next
+    }
+}
+#endif

@@ -125,3 +125,22 @@ func groupsPersistAcrossReloads() async throws {
     #expect(session.spaces.contains { $0.name == "Work" })
     #expect(session.tabs.contains { $0.lastCommittedURL?.absoluteString == "https://work.example" })
 }
+
+@Test @MainActor
+func selectingASpecificTabInAnotherSpaceActivatesThatTab() {
+    let model = BrowserWindowModel()
+    let personal = model.session.activeSpaceID
+    _ = model.createGroup(named: "Work")
+    let olderWorkTab = model.session.activeTabID!
+    model.newTab(url: URL(string: "https://newer.example"))
+    let newerWorkTab = model.session.activeTabID!
+    model.switchGroup(personal)
+
+    // The palette offers every tab; picking the older Work tab must land on
+    // it — not on whatever Work happened to show most recently.
+    model.selectTab(olderWorkTab)
+
+    #expect(model.session.activeSpaceID != personal)
+    #expect(model.session.activeTabID == olderWorkTab)
+    #expect(model.session.activeTabID != newerWorkTab)
+}

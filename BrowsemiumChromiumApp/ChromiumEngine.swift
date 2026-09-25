@@ -284,6 +284,10 @@ final class ChromiumEngine: NSObject, BrowserEngine {
 
     func removeAllData(dataStoreIdentifier: UUID) async {}
 
+    func removeProfileDataStore(dataStoreIdentifier: UUID) async throws {
+        throw ProfileDataStoreRemovalError.unsupported
+    }
+
     // MARK: - Internals
 
     private func tab(for tabID: TabID) -> ChromiumTab {

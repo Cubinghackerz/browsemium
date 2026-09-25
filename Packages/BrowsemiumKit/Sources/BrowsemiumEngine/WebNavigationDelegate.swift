@@ -2,14 +2,29 @@ import BrowsemiumCore
 import Foundation
 import WebKit
 
+extension WKNavigationAction {
+    /// ⌘-click on a link asks for the peek overlay instead of a background
+    /// tab. Only `linkActivated` navigations count — a page's scripted
+    /// navigation must never be read as a user gesture.
+    var requestsPeek: Bool {
+        navigationType == .linkActivated && modifierFlags.contains(.command)
+    }
+}
+
 @MainActor
 final class WebNavigationDelegate: NSObject, WKNavigationDelegate {
     weak var runtime: TabRuntime?
+    var protectionLevel: ProtectionLevel = .standard
+    var preferredLanguages: () -> [String] = { Locale.preferredLanguages }
 
-    func webView(
-        _ webView: WKWebView,
-        decidePolicyFor navigationAction: WKNavigationAction
-    ) async -> WKNavigationActionPolicy {
+    private enum Decision {
+        case allow
+        case cancel
+        case download
+        case replace(URL)
+    }
+
+    private func decision(for navigationAction: WKNavigationAction) -> Decision {
         guard let url = navigationAction.request.url else {
             return .cancel
         }
@@ -32,11 +47,78 @@ final class WebNavigationDelegate: NSObject, WKNavigationDelegate {
         }
 
         if navigationAction.targetFrame == nil {
-            runtime?.report(.requestedNewWindow(url))
+            runtime?.report(navigationAction.requestsPeek ? .requestedPeek(url) : .requestedNewWindow(url))
             return .cancel
         }
 
+        if navigationAction.requestsPeek {
+            runtime?.report(.requestedPeek(url))
+            return .cancel
+        }
+
+        if navigationAction.targetFrame?.isMainFrame == true {
+            runtime?.applyBlockingPause(forHost: url.host?.lowercased() ?? "")
+        }
+
+        if scheme == "http", navigationAction.targetFrame?.isMainFrame == true,
+           let secure = protectionLevel.httpsUpgrade(of: url) {
+            return .replace(secure)
+        }
+
+        if navigationAction.targetFrame?.isMainFrame == true,
+           let localized = NavigationCompatibility.chromeWebStoreURL(
+               from: url,
+               preferredLanguages: preferredLanguages()
+           ) {
+            return .replace(localized)
+        }
+
         return .allow
+    }
+
+    private func applyPrivacy(to preferences: WKWebpagePreferences) {
+        if #available(macOS 27.0, *) {
+            preferences.globalPrivacyControlEnabled = protectionLevel.sendsGlobalPrivacyControl
+        }
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction
+    ) async -> WKNavigationActionPolicy {
+        switch decision(for: navigationAction) {
+        case .allow: .allow
+        case .cancel, .replace: .cancel
+        case .download: .download
+        }
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        preferences: WKWebpagePreferences
+    ) async -> (WKNavigationActionPolicy, WKWebpagePreferences) {
+        switch decision(for: navigationAction) {
+        case .allow:
+            applyPrivacy(to: preferences)
+            return (.allow, preferences)
+        case .cancel:
+            return (.cancel, preferences)
+        case .download:
+            return (.download, preferences)
+        case .replace(let url):
+            if #available(macOS 27.0, *) {
+                var request = navigationAction.request
+                request.url = url
+                preferences.alternateRequest = request
+                applyPrivacy(to: preferences)
+                return (.allow, preferences)
+            }
+            Task { @MainActor [weak self] in
+                self?.runtime?.load(url)
+            }
+            return (.cancel, preferences)
+        }
     }
 
     func webView(
