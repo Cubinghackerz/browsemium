@@ -1,0 +1,10 @@
+{
+  "version": "2.1.0",
+  "tag": "v2.1.0",
+  "file": "Browsemium-2.1.0.dmg",
+  "sha256": "01dec61a71943366a561e32fd3199484b986d25df7ac00d6d84f588d40938afa",
+  "signing": "adhoc",
+  "bundleId": "com.browsemium.browser",
+  "teamId": "",
+  "minimumMacOS": "14.0"
+}

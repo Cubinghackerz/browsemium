@@ -391,8 +391,59 @@ no autonomy) is the AI surface that remains.
 
 ### Phase 5 — Distribution & trust
 
+Current distribution state (2.1.0): **command-first preview.** The Terminal
+installer is the only promoted install path; preview builds are ad-hoc signed
+and not notarized, and every public surface says so. The installer checks the
+release manifest (`Site/release.json`: version, filename, SHA-256, signing
+mode), DMG integrity, the app signature, bundle id and version, the sandbox
+entitlement, absence of `get-task-allow`, and both architectures — and keeps
+the existing Developer ID / notarization checks for when the manifest flips
+to `notarized`. It never removes quarantine attributes or bypasses
+Gatekeeper. Sparkle, the Homebrew cask, and direct-DMG promotion stay off
+until signing credentials exist.
+
 - Keep `MEGAPLAN.md` and release notes current. Keep refusing: accounts,
   telemetry, autonomous agents, invented metrics.
+- Remaining milestone: Developer ID signing + notarization, then re-enable
+  Sparkle updates and the Homebrew cask (the CI release workflow already
+  encodes that path).
+
+### 2.2 — Per-site element hiding — NEXT
+
+- `⌘⇧H` enters element-selection mode: on-page highlight, click to pick,
+  confirmation step before saving.
+- Cosmetic rules persist scoped to the hostname, per profile; applied at
+  document start without reloading unrelated sites.
+- Undo, enable/disable, and rule management live in the site shield panel.
+- Private windows can use temporary rules but never persist them.
+
+### 2.3 — Smart space routing — NEXT
+
+- Route domains (e.g. github.com, company tools) into a chosen space.
+- Configure rules from the tab context menu and Settings.
+- Never route private-window navigation; never silently unlock a locked
+  space — the user is asked.
+- A reversible notice appears when a navigation moves to another space.
+
+### 2.4 — Advanced blocking controls — NEXT
+
+- Import user-selected ABP/AdGuard lists from a local file or HTTPS source.
+- Lists compile in the background; on failure the last working version stays
+  active and the error is shown.
+- Report compilation state honestly — no blocked-request counts (WebKit does
+  not expose them).
+- Per-site extension enablement alongside the existing host-permission
+  controls.
+
+### Later
+
+- Markdown import/export for saved AI skills.
+- Opt-in `browsemium-ctl` CLI and token-authenticated localhost MCP, scoped to
+  reads and explicit user commands.
+- Research spikes for passkeys and per-space WebKit data isolation before
+  either is promised publicly.
+- The corrected memory benchmark stays a release gate: no comparative claim
+  until the 20% target passes.
 
 ## Verification
 

@@ -206,6 +206,15 @@ SPARKLE_BIN=<sparkle bin> DOWNLOAD_URL_PREFIX=https://… Scripts/release/genera
 Signing and notarization credentials live in the keychain or CI secrets; never in
 the repository or in build logs.
 
+**Ad-hoc preview releases.** While Developer ID credentials are unavailable,
+releases ship ad-hoc signed via `Scripts/release/publish-adhoc.sh <version>`
+(gates → universal DMG → `Site/release.json`/`checksum.txt` → GitHub release).
+`Site/release.json` is the installer's security contract: version, filename,
+SHA-256, and `signing` (`adhoc` now, `notarized` later — `install.sh` runs the
+full Developer ID/notarization battery automatically when it flips). Ad-hoc
+releases skip Sparkle, the appcast, and the Homebrew cask, and the site must
+say "not notarized" wherever it describes installation.
+
 After each published release:
 
 1. Update `Site/checksum.txt` with the DMG's SHA-256 — `Site/install.sh`

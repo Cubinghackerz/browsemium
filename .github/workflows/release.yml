@@ -37,6 +37,21 @@ jobs:
           test -f "ReleaseNotes/$VERSION.md"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Check release credentials before burning CI time
+        env:
+          DEVELOPER_ID_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
+          SPARKLE_ED25519_KEY: ${{ secrets.SPARKLE_ED25519_KEY }}
+          NOTARY_KEY_BASE64: ${{ secrets.NOTARY_KEY_BASE64 }}
+        run: |
+          if [[ -z "$DEVELOPER_ID_P12_BASE64" || -z "$DEVELOPMENT_TEAM" \
+                || -z "$SPARKLE_ED25519_KEY" || -z "$NOTARY_KEY_BASE64" ]]; then
+            echo "::error::Signing secrets are not configured. This workflow" \
+              "only runs the notarized release path — publish ad-hoc previews" \
+              "with Scripts/release/publish-adhoc.sh." >&2
+            exit 1
+          fi
+
       - name: Select Xcode and install XcodeGen
         run: |
           set -euo pipefail

@@ -6,7 +6,9 @@ brief and the shipped code; assumptions are labelled.
 ## What it is
 
 A native macOS browser for people who use AI all day. WebKit-based, built in
-Swift, distributed as a signed and notarized DMG.
+Swift, distributed as a DMG — currently ad-hoc signed preview builds verified
+by checksum and bundle integrity, with Developer ID signing and notarization
+planned for the stable release path.
 
 ## Who it is for
 
@@ -52,9 +54,13 @@ that require an account.
 
 - macOS 14 or newer, Apple silicon and Intel
 - WebKit, Swift 6, SwiftUI and AppKit
-- Release path: Developer ID signing, notarization, DMG, Sparkle updates
+- Release path: Terminal installer + DMG. Preview releases are ad-hoc signed
+  (checksum-, signature-, and bundle-verified, not notarized); Developer ID
+  signing, notarization, and Sparkle updates resume once signing credentials
+  are available
 - Local development runs ad-hoc signed, which is why the WebCrypto keychain
-  prompt can appear during development and never for end users
+  prompt can appear during development. Signed, notarized builds do not show
+  it for end users
 
 ## Voice
 
@@ -66,6 +72,6 @@ markets a benchmark it has not measured. Sentence case. No exclamation marks.
 - **Domain:** the landing page is written for a `browsemium.app` style domain,
   but every link is relative or points at GitHub, so it works anywhere.
 - **Download target:** GitHub Releases for this repository, because that is
-  where the signed build will be published.
+  where release builds are published.
 - **Audience device:** the page is read on the same Mac the browser runs on,
   often in a wide window; it is still fully responsive for sharing.

@@ -46,21 +46,27 @@ Chromium edition is parked for power users who need it.
 - **Memory saver.** Background tabs unload after a configurable idle period
   with a ceiling on live tabs — the in-app copy states the trade-off.
 
-## Download and install
+## Install
 
-Download the latest published macOS release from
-[GitHub Releases](https://github.com/Cubinghackerz/browsemium/releases/latest),
-or install/update it from Terminal:
+Install or update from Terminal:
 
 ```sh
 curl -fsSL https://browsemium.vercel.app/install.sh | bash
 ```
 
-The installer fetches the latest published DMG and checks its SHA-256, Developer
-ID signature, and Apple notarization before installing Browsemium in
-`/Applications`. Updating leaves your profiles, tabs, and browsing data in
-place. The installer source is available at [`Site/install.sh`](Site/install.sh)
-for review before running it.
+The installer fetches the latest published DMG and checks the release manifest,
+SHA-256 checksum, DMG integrity, and the app's signature, sandbox entitlement,
+and architectures before installing Browsemium in `/Applications`. Updating
+leaves your profiles, tabs, and browsing data in place. The installer source is
+available at [`Site/install.sh`](Site/install.sh) for review before running it.
+
+Current releases are **preview builds: ad-hoc signed, not notarized by Apple
+yet**. macOS may block the first launch; allow it once in System Settings →
+Privacy & Security → **Open Anyway**. The installer never removes quarantine
+attributes or bypasses Gatekeeper. Developer ID signing, notarization, Sparkle
+updates, and the Homebrew cask return with the stable release. Individual
+builds can be browsed on
+[GitHub Releases](https://github.com/Cubinghackerz/browsemium/releases/latest).
 
 ## Requirements and build
 
