@@ -30,7 +30,7 @@ review completes, the app must fall back to text labels.
 
 | Resource | Source | License | Notes |
 |---|---|---|---|
-| DM Sans variable Latin WOFF2 | Google Fonts / DM Sans Project | SIL Open Font License 1.1 | Self-hosted by `Site/`; license text is in `Site/fonts/OFL.txt` |
+| Archivo variable Latin WOFF2 | Google Fonts / The Archivo Project Authors (Omnibus-Type) | SIL Open Font License 1.1 | Self-hosted by `Site/`; license text is in `Site/fonts/Archivo-OFL.txt` |
 
 ## Content-filter lists
 

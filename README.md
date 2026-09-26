@@ -140,6 +140,7 @@ authoritative notices file and ships inside the app bundle.
 | `Readability.js` | [mozilla/readability](https://github.com/mozilla/readability), commit `ab4027a8b37669745016869a37a504727992b2ba` | Apache-2.0 | Reader mode and page-text capture, only on explicit user request |
 | Search engine marks (Google, DuckDuckGo, Brave) | [Simple Icons](https://github.com/simple-icons/simple-icons) | CC0-1.0 | Address-bar engine picker. The marks remain their owners' trademarks; use here is nominative, to identify the engine |
 | Bing mark | Bing's own favicon (`www.bing.com/sa/simg/favicon-2x.ico`) | — | Nominative use only. Simple Icons removed the Microsoft Bing mark in 2024 at Microsoft's request, so it is not taken from that set |
+| Archivo (landing page typeface) | [Omnibus-Type / Google Fonts](https://fonts.google.com/specimen/Archivo) | SIL Open Font License 1.1 | Self-hosted by `Site/fonts/Archivo-Variable-Latin.woff2`; license text ships beside it |
 
 ### Engines and platform
 

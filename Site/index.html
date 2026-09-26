@@ -1,379 +1,419 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" id="top">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Browsemium — a focused browser for macOS</title>
-<meta name="description" content="Browsemium is a private macOS browser with built-in AI, profiles, Chrome migration, tracker blocking, and a memory saver that unloads tabs you are not using.">
+<meta name="description" content="Browsemium is a native Mac browser that unloads idle tabs, keeps profiles separate, and puts your AI beside the page. No account, no telemetry, no cloud sync.">
 <meta property="og:title" content="Browsemium — a focused browser for macOS">
 <meta property="og:description" content="A native Mac browser with profiles, built-in AI, and memory controls that stay in your hands.">
 <meta property="og:type" content="website">
-<meta name="theme-color" content="#0b0d11">
-<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f6f7f9">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 4 28 26H4z' fill='none' stroke='%238fb2ff' stroke-width='2.5' stroke-linejoin='round'/%3E%3C/svg%3E">
-<link rel="preload" href="/fonts/DM-Sans-Latin.woff2" as="font" type="font/woff2" crossorigin>
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#ffffff">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 4 28 26H4z' fill='none' stroke='%231d4ed8' stroke-width='2.5' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preload" href="/fonts/Archivo-Variable-Latin.woff2" as="font" type="font/woff2" crossorigin>
 <style>
   @font-face {
-    font-family: "DM Sans";
-    src: url("/fonts/DM-Sans-Latin.woff2") format("woff2");
+    font-family: "Archivo";
+    src: url("/fonts/Archivo-Variable-Latin.woff2") format("woff2");
     font-style: normal;
-    font-weight: 400 700;
+    font-weight: 100 900;
+    font-stretch: 62.5% 125%;
     font-display: swap;
   }
+
   :root {
-    color-scheme: dark light;
-    --ink: #f2f4f8;
-    --ink-soft: #c3c9d4;
-    --ink-muted: #89919f;
-    --ink-faint: #89919f;
-    --canvas: #0b0d11;
-    --canvas-raised: #11151c;
-    --canvas-high: #171c24;
-    --line: rgba(235, 241, 255, .11);
-    --line-strong: rgba(235, 241, 255, .19);
-    --blue: #8fb2ff;
-    --blue-strong: #5b8def;
-    --blue-ink: #08101e;
-    --mint: #89d5ae;
+    color-scheme: light;
+    --paper: #ffffff;
+    --ink: #101010;
+    --ink-2: #525252;
+    --ink-3: #6f6f6f;
+    --rule: #e8e8e8;
+    --rule-2: #d6d6d6;
+    --accent: #1d4ed8;
     --shell: 1120px;
-    --radius: 14px;
-    --radius-large: 16px;
-    --font: "DM Sans", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: "Archivo", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --ease: cubic-bezier(.19, 1, .22, 1);
   }
-  @media (prefers-color-scheme: light) {
-    :root {
-      color-scheme: light;
-      --ink: #11161f;
-      --ink-soft: #45505f;
-      --ink-muted: #697384;
-      --ink-faint: #697384;
-      --canvas: #f6f7f9;
-      --canvas-raised: #ffffff;
-      --canvas-high: #eef1f5;
-      --line: rgba(17, 22, 31, .11);
-      --line-strong: rgba(17, 22, 31, .2);
-      --blue: #315fc8;
-      --blue-strong: #315fc8;
-      --blue-ink: #ffffff;
-      --mint: #247a4c;
-    }
-  }
+
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    caret-color: var(--accent);
+    scrollbar-color: #c9c9c9 var(--paper);
+  }
+  ::selection { background: var(--accent); color: #fff; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: var(--paper); }
+  ::-webkit-scrollbar-thumb { border: 3px solid var(--paper); border-radius: 99px; background: #c9c9c9; }
+  a { color: inherit; text-decoration: none; }
+  a:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+  .shell { width: min(var(--shell), calc(100% - 48px)); margin-inline: auto; }
+  @media (max-width: 640px) { .shell { width: calc(100% - 40px); } }
+  .skip {
+    position: absolute; left: 16px; top: -64px; z-index: 40;
+    padding: 10px 14px; background: var(--ink); color: #fff; font-size: 13px;
+    transition: top .2s var(--ease);
+  }
+  .skip:focus { top: 16px; }
+
+  /* Nav */
+  .nav {
+    position: sticky; top: 0; z-index: 20;
+    background: rgba(255, 255, 255, .88);
+    background: color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter: saturate(140%) blur(14px);
+    -webkit-backdrop-filter: saturate(140%) blur(14px);
+  }
+  .nav::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+    background: var(--rule); transform-origin: left;
+  }
+  .js .nav::after { transform: scaleX(0); animation: draw .9s .1s var(--ease) forwards; }
+  .nav .shell { min-height: 64px; display: flex; align-items: center; gap: 28px; }
+  .wordmark { display: inline-flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+  .wordmark svg { flex: none; display: block; }
+  .wordmark path { stroke: var(--accent); }
+  .js .wordmark path { stroke-dasharray: 80; stroke-dashoffset: 80; animation: drawStroke 1.1s .2s var(--ease) forwards; }
+  .nav-links { margin-left: auto; display: flex; align-items: center; gap: 26px; }
+  .nav-links a { font-size: 14px; color: var(--ink-2); }
+  .nav-links a:not(.nav-cta) {
+    background-image: linear-gradient(currentColor, currentColor);
+    background-size: 0% 1px; background-repeat: no-repeat; background-position: 0 100%;
+    padding-bottom: 2px;
+    transition: background-size .35s var(--ease), color .2s ease;
+  }
+  .nav-links a:not(.nav-cta):hover { color: var(--ink); background-size: 100% 1px; }
+  .nav-cta {
+    padding: 8px 15px; background: var(--ink); color: #fff !important;
+    font-weight: 550; border-radius: 2px;
+    transition: background .18s ease;
+  }
+  .nav-cta:hover { background: var(--accent); }
+  @media (max-width: 760px) {
+    .nav-links { gap: 18px; }
+    .nav-links a:not(.nav-cta):not(.nav-github) { display: none; }
+  }
+
+  /* Hero */
+  .hero { padding: clamp(88px, 17vh, 190px) 0 clamp(64px, 10vh, 120px); }
+  h1 {
+    margin: 0 0 30px; max-width: 13ch;
+    font-size: clamp(2.75rem, 8vw, 6rem);
+    line-height: .97; letter-spacing: -.03em; font-weight: 620;
+    text-wrap: balance;
+  }
+  .hero .line { display: block; }
+  .hero .line > span { display: block; }
+  .js .hero .line { overflow: hidden; }
+  .js .hero .line > span { transform: translateY(112%); animation: heroRise 1s var(--ease) forwards; }
+  .js .hero .line:nth-child(2) > span { animation-delay: .09s; }
+  .lede {
+    max-width: 46ch; margin: 0 0 44px;
+    color: var(--ink-2); font-size: clamp(1.125rem, 1.9vw, 1.3125rem); line-height: 1.5;
+    text-wrap: pretty;
+  }
+  .js .lede { opacity: 0; animation: rise .9s .34s var(--ease) forwards; }
+
+  .command {
+    display: flex; align-items: center; gap: 14px;
+    max-width: 640px; padding: 15px 16px;
+    border: 1px solid var(--rule-2); border-radius: 2px;
+    transition: border-color .25s ease;
+  }
+  .command:hover, .command:focus-within { border-color: var(--ink); }
+  .command .prompt { flex: none; color: var(--ink-3); font-family: var(--mono); font-size: 13px; }
+  .command code {
+    flex: 1; min-width: 0; overflow-x: auto; padding: 1px 0;
+    font-family: var(--mono); font-size: .84375rem; color: var(--ink);
+    white-space: nowrap; scrollbar-width: none;
+  }
+  .command code::-webkit-scrollbar { display: none; }
+  .copy {
+    flex: none; padding: 8px 13px; border: 1px solid #8f8f8f; border-radius: 2px;
+    background: transparent; color: var(--ink); font: inherit; font-size: 13px; font-weight: 550;
+    cursor: pointer; min-width: 68px;
+    transition: background .18s ease, border-color .18s ease, color .18s ease;
+  }
+  .copy:hover:not(:disabled) { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .copy:disabled { cursor: default; }
+  .copy.copied { border-color: var(--accent); color: var(--accent); background: transparent; }
+  .js .hero .command { opacity: 0; animation: rise .9s .46s var(--ease) forwards; }
+
+  .hero-notes { max-width: 62ch; margin-top: 26px; display: grid; gap: 8px; }
+  .hero-notes p { margin: 0; font-size: .8125rem; line-height: 1.55; color: var(--ink-3); }
+  .hero-notes b { color: var(--ink-2); font-weight: 550; }
+  .js .hero-notes { opacity: 0; animation: rise .9s .58s var(--ease) forwards; }
+
+  /* Spec table */
+  .spec { padding: 0 0 clamp(72px, 11vw, 128px); }
+  .spec-table { display: grid; }
+  .spec-row {
+    position: relative; display: grid; grid-template-columns: minmax(150px, 230px) 1fr;
+    gap: 6px 40px; padding: 19px 0; align-items: baseline;
+  }
+  .spec-row::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: var(--rule); transform-origin: left;
+  }
+  .js .spec-row::before { transform: scaleX(0); }
+  .js .spec-table.in .spec-row::before { animation: draw .65s var(--ease) forwards; }
+  .js .spec-table.in .spec-row:nth-child(2)::before { animation-delay: .05s; }
+  .js .spec-table.in .spec-row:nth-child(3)::before { animation-delay: .1s; }
+  .js .spec-table.in .spec-row:nth-child(4)::before { animation-delay: .15s; }
+  .js .spec-table.in .spec-row:nth-child(5)::before { animation-delay: .2s; }
+  .js .spec-table.in .spec-row:nth-child(6)::before { animation-delay: .25s; }
+  .js .spec-table.in .spec-row:nth-child(7)::before { animation-delay: .3s; }
+  .js .spec-table.in .spec-row:nth-child(8)::before { animation-delay: .35s; }
+  .js .spec-table.in .spec-row:nth-child(9)::before { animation-delay: .4s; }
+  .spec-table::after {
+    content: ""; display: block; height: 1px; background: var(--rule);
+    transform-origin: left;
+  }
+  .js .spec-table::after { transform: scaleX(0); }
+  .js .spec-table.in::after { animation: draw .65s .45s var(--ease) forwards; }
+  .spec-row dt { color: var(--ink-3); font-size: .8125rem; }
+  .spec-row dd { margin: 0; color: var(--ink); font-size: .9375rem; line-height: 1.55; text-wrap: pretty; }
+
+  /* Sections */
+  .section { padding: clamp(72px, 11vw, 128px) 0; border-top: 1px solid var(--rule); }
+  .story { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr); gap: clamp(36px, 6vw, 88px); align-items: start; }
+  h2 {
+    margin: 0; max-width: 19ch;
+    font-size: clamp(1.875rem, 4vw, 3.125rem);
+    line-height: 1.05; letter-spacing: -.025em; font-weight: 600;
+    text-wrap: balance;
+  }
+  .story-body { display: grid; gap: 22px; max-width: 64ch; }
+  .story-body p { margin: 0; color: var(--ink-2); }
+  .story-body p:first-child { color: var(--ink); }
+  @media (max-width: 880px) {
+    .story { grid-template-columns: 1fr; gap: 26px; }
+    h2 { max-width: 24ch; }
+  }
+
+  /* Ruled lists */
+  .ruled { display: grid; margin: 6px 0 0; }
+  .ruled-row {
+    position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 32px; padding: 13px 0; align-items: baseline;
+  }
+  .ruled-row::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: var(--rule); }
+  .ruled-row:last-child::after { content: ""; position: absolute; bottom: 0; left: 0; right: 0; height: 1px; background: var(--rule); }
+  .ruled-row dt { color: var(--ink-2); font-size: .9375rem; }
+  .ruled-row dd { margin: 0; color: var(--ink-3); font-size: .8125rem; text-align: right; white-space: nowrap; }
+  @media (max-width: 560px) {
+    .ruled-row { grid-template-columns: 1fr; }
+    .ruled-row dd { text-align: left; white-space: normal; }
+  }
+
+  /* Memory saver demonstration */
+  .tabs { display: grid; max-width: 560px; margin-top: 8px; }
+  .tab-row {
+    position: relative; display: flex; align-items: baseline; justify-content: space-between; gap: 24px;
+    padding: 13px 0; font-size: .875rem;
+  }
+  .tab-row::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: var(--rule); }
+  .tab-row:last-child::after { content: ""; position: absolute; bottom: 0; left: 0; right: 0; height: 1px; background: var(--rule); }
+  .tab-name { color: var(--ink-2); transition: opacity .6s ease; }
+  .tab-state { position: relative; flex: none; min-width: 66px; text-align: right; font-size: .8125rem; color: var(--ink-3); }
+  .tab-state span { position: absolute; right: 0; top: 0; transition: opacity .6s ease; }
+  .tab-state .s-sleep { opacity: 0; }
+  .tab-row.sleeping .tab-name { opacity: .35; }
+  .tab-row.sleeping .s-live { opacity: 0; }
+  .tab-row.sleeping .s-sleep { opacity: 1; }
+  .tabs.running .tab-row.sleeping .tab-name { animation: tabDim 9s ease-in-out infinite; }
+  .tabs.running .tab-row.sleeping .s-live { animation: tabLive 9s ease-in-out infinite; }
+  .tabs.running .tab-row.sleeping .s-sleep { animation: tabSleep 9s ease-in-out infinite; }
+  .tabs.running .tab-row.sleeping .tab-name,
+  .tabs.running .tab-row.sleeping .s-live,
+  .tabs.running .tab-row.sleeping .s-sleep { animation-play-state: paused; }
+  .tabs.running.in-view .tab-row.sleeping .tab-name,
+  .tabs.running.in-view .tab-row.sleeping .s-live,
+  .tabs.running.in-view .tab-row.sleeping .s-sleep { animation-play-state: running; }
+
+  /* Install */
+  .install .story-body { gap: 26px; }
+  .install .command { max-width: 680px; }
+  .install-detail {
+    display: flex; flex-wrap: wrap; gap: 6px 14px;
+    margin: 0; color: var(--ink-3); font-size: .8125rem;
+  }
+  .install-detail code { font-family: var(--mono); font-size: .75rem; color: var(--ink-2); overflow-wrap: anywhere; }
+  .install-warning {
+    margin: 0; padding-top: 20px; border-top: 1px solid var(--rule);
+    color: var(--ink-2); font-size: .875rem; max-width: 62ch;
+  }
+  .install-warning b { color: var(--ink); font-weight: 550; }
+
+  /* FAQ */
+  .faq h2 { margin-bottom: 34px; }
+  .faq details { border-top: 1px solid var(--rule); }
+  .faq details:last-of-type { border-bottom: 1px solid var(--rule); }
+  .faq summary {
+    display: flex; align-items: center; justify-content: space-between; gap: 28px;
+    padding: 22px 0; cursor: pointer; list-style: none;
+    font-size: 1rem; font-weight: 550; letter-spacing: -.005em;
+  }
+  .faq summary::-webkit-details-marker { display: none; }
+  .plus { position: relative; width: 14px; height: 14px; flex: none; }
+  .plus::before, .plus::after { content: ""; position: absolute; background: var(--ink-3); transition: transform .4s var(--ease), background .2s ease; }
+  .plus::before { top: 6.5px; left: 0; width: 14px; height: 1px; }
+  .plus::after { top: 0; left: 6.5px; width: 1px; height: 14px; transform-origin: center; }
+  .faq details[open] .plus::before { background: var(--ink); }
+  .faq details[open] .plus::after { transform: scaleY(0); }
+  .answer { max-width: 72ch; padding: 0 0 24px; color: var(--ink-2); font-size: .9375rem; }
+  .answer p { margin: 0; }
+  .answer p + p { margin-top: 10px; }
+  .js .faq details[open] .answer { animation: rise .45s var(--ease); }
+
+  /* Footer */
+  footer { border-top: 1px solid var(--rule); padding: 30px 0 54px; font-size: .8125rem; color: var(--ink-3); }
+  footer .shell { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; }
+  footer .links { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-left: auto; }
+  footer a { color: var(--ink-2); }
+  footer a:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+
+  /* Motion */
+  @keyframes heroRise { from { transform: translateY(112%); } to { transform: translateY(0); } }
+  @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes draw { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  @keyframes drawStroke { to { stroke-dashoffset: 0; } }
+  @keyframes tabDim { 0%, 16% { opacity: 1; } 30%, 72% { opacity: .35; } 86%, 100% { opacity: 1; } }
+  @keyframes tabLive { 0%, 16% { opacity: 1; } 30%, 72% { opacity: 0; } 86%, 100% { opacity: 1; } }
+  @keyframes tabSleep { 0%, 16% { opacity: 0; } 30%, 72% { opacity: 1; } 86%, 100% { opacity: 0; } }
+
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
     *, *::before, *::after { animation: none !important; transition: none !important; }
+    .js .hero .line > span { transform: none; }
+    .js .hero .line, .js .hero .lede, .js .hero .command, .js .hero-notes { opacity: 1; }
+    .js .spec-row::before, .js .spec-table::after { transform: none; }
+    .js .nav::after { transform: none; }
   }
-  body {
-    margin: 0;
-    background: var(--canvas);
-    color: var(--ink);
-    font-family: var(--font);
-    font-size: 16px;
-    line-height: 1.6;
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
-    caret-color: var(--blue);
-  }
-  body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    background: radial-gradient(ellipse 72rem 38rem at 82% 0%, color-mix(in srgb, var(--blue) 9%, transparent), transparent 72%);
-    mask-image: linear-gradient(to bottom, #000 0%, transparent 72%);
-  }
-  ::selection { background: var(--blue-strong); color: var(--blue-ink); }
-  ::-webkit-scrollbar { width: 10px; height: 10px; }
-  ::-webkit-scrollbar-track { background: var(--canvas); }
-  ::-webkit-scrollbar-thumb { border: 3px solid var(--canvas); border-radius: 99px; background: var(--ink-faint); }
-  * { scrollbar-color: var(--ink-faint) var(--canvas); scrollbar-width: thin; }
-  a { color: inherit; }
-  a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 7px; }
-  .shell { width: min(var(--shell), calc(100% - 56px)); margin-inline: auto; }
-  @media (max-width: 640px) { .shell { width: calc(100% - 32px); } }
-
-  .nav { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--canvas) 86%, transparent); backdrop-filter: saturate(150%) blur(16px); -webkit-backdrop-filter: saturate(150%) blur(16px); }
-  .nav .shell { min-height: 62px; display: flex; align-items: center; gap: 20px; }
-  .wordmark { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; font-size: 15px; font-weight: 650; letter-spacing: -.02em; }
-  .wordmark svg { flex: none; }
-  .nav-links { margin-left: auto; display: flex; align-items: center; gap: 3px; }
-  .nav-links a { padding: 7px 10px; border-radius: 8px; text-decoration: none; color: var(--ink-muted); font-size: 13px; }
-  .nav-links a:hover { color: var(--ink); background: var(--canvas-high); }
-  .nav-links .nav-cta { margin-left: 5px; color: var(--blue-ink); background: var(--ink); font-weight: 600; }
-  .nav-links .nav-cta:hover { color: var(--blue-ink); background: var(--ink); opacity: .86; }
-  @media (max-width: 700px) { .nav-links a:not(.nav-cta) { display: none; } .nav-links .nav-cta { margin-left: 0; } }
-
-  .hero { padding: 92px 0 40px; }
-  .hero-grid { display: grid; grid-template-columns: minmax(0, .86fr) minmax(420px, 1.14fr); gap: 66px; align-items: center; }
-  h1 { max-width: 10ch; margin: 0 0 23px; font-size: clamp(48px, 7.4vw, 86px); line-height: .98; letter-spacing: -.035em; font-weight: 700; text-wrap: balance; }
-  .hero-copy { max-width: 540px; }
-  .lede { max-width: 50ch; margin: 0 0 30px; color: var(--ink-soft); font-size: clamp(17px, 2vw, 20px); line-height: 1.46; text-wrap: pretty; }
-  .lede strong { color: var(--ink); font-weight: 600; }
-  .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-  .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 43px; padding: 10px 16px; border: 1px solid transparent; border-radius: 10px; text-decoration: none; font-size: 14px; font-weight: 600; transition: transform .18s ease, background .18s ease, border-color .18s ease; }
-  .button:hover { transform: translateY(-1px); }
-  .button:active { transform: translateY(0); }
-  .button-primary { color: var(--blue-ink); background: var(--blue); }
-  .button-primary:hover { background: var(--blue-strong); }
-  .button-secondary { color: var(--ink); border-color: var(--line-strong); background: var(--canvas-raised); }
-  .button-secondary:hover { border-color: var(--blue); background: var(--canvas-high); }
-  .hero-note { margin: 14px 0 0; color: var(--ink-faint); font-size: 12px; }
-  .hero-note code, code { font-family: var(--mono); }
-
-  .hero-device { position: relative; }
-  .window { position: relative; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius-large); background: var(--canvas-raised); }
-  .window-top { display: flex; align-items: center; gap: 10px; padding: 10px 13px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--canvas-high) 64%, var(--canvas-raised)); }
-  .lights { display: flex; gap: 6px; margin-right: 5px; }
-  .lights i { width: 10px; height: 10px; border: 1px solid var(--line); border-radius: 50%; background: var(--canvas); }
-  .tab { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 6px 10px; border: 1px solid transparent; border-radius: 8px; color: var(--ink-muted); font-size: 11px; white-space: nowrap; }
-  .tab-active { color: var(--ink); border-color: var(--line); background: var(--canvas-high); }
-  .tab-icon { width: 12px; height: 12px; flex: none; border-radius: 4px; background: var(--blue-strong); }
-  .tab-label { overflow: hidden; text-overflow: ellipsis; }
-  .tab-more { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; padding: 6px; }
-  .tab-more i { width: 2px; height: 2px; border-radius: 50%; background: var(--ink-faint); }
-  .window-bar { display: flex; align-items: center; gap: 9px; padding: 10px 13px; border-bottom: 1px solid var(--line); }
-  .window-nav { display: inline-flex; gap: 6px; color: var(--ink-faint); }
-  .address { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--canvas-high); color: var(--ink-muted); font-size: 11px; }
-  .address svg { flex: none; color: var(--ink-soft); }
-  .address .url { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .profile-chip { display: inline-flex; align-items: center; gap: 6px; flex: none; padding: 5px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink-soft); font-size: 10px; }
-  .profile-dot { width: 14px; height: 14px; display: inline-grid; place-items: center; border-radius: 50%; color: var(--blue-ink); background: var(--blue); font-size: 8px; font-weight: 700; }
-  .window-body { display: grid; grid-template-columns: minmax(0, 1fr) 230px; min-height: 296px; }
-  .page-surface { padding: 25px 26px; background: var(--canvas-raised); }
-  .page-surface .page-kicker { color: var(--blue); font-size: 10px; font-weight: 650; }
-  .page-surface h2 { margin: 8px 0 13px; font-size: 25px; letter-spacing: -.025em; }
-  .page-surface p { max-width: 34ch; margin: 0; color: var(--ink-muted); font-size: 11.5px; }
-  .page-topics { display: grid; margin-top: 22px; border-top: 1px solid var(--line); }
-  .page-topics span { padding: 9px 0; border-bottom: 1px solid var(--line); color: var(--ink-soft); font-size: 11px; }
-  .assistant { display: flex; flex-direction: column; border-left: 1px solid var(--line); background: color-mix(in srgb, var(--canvas) 48%, var(--canvas-raised)); }
-  .assistant-head { display: flex; align-items: center; gap: 8px; padding: 12px 13px; border-bottom: 1px solid var(--line); }
-  .assistant-head .spark { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 6px; color: var(--blue-ink); background: var(--blue); }
-  .assistant-head strong { font-size: 11px; }
-  .assistant-head .mode { margin-left: auto; padding: 4px 7px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-muted); font-size: 9px; }
-  .context-pill { display: flex; align-items: center; gap: 7px; margin: 13px 13px 0; padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink-soft); font-size: 10px; }
-  .assistant-copy { margin: auto 13px 13px; padding: 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--canvas-raised); }
-  .assistant-copy p { margin: 0; color: var(--ink-muted); font-size: 10px; }
-  .assistant-copy .send-row { display: flex; align-items: center; gap: 6px; margin-top: 13px; color: var(--ink-faint); font-size: 9px; }
-  .assistant-copy .send-button { width: 22px; height: 22px; display: grid; place-items: center; margin-left: auto; border-radius: 7px; color: var(--blue-ink); background: var(--blue); }
-  .window-status { display: flex; align-items: center; gap: 7px; padding: 8px 13px; border-top: 1px solid var(--line); color: var(--ink-muted); font-size: 9px; }
-  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--mint); }
-  @media (max-width: 900px) { .hero { padding-top: 68px; } .hero-grid { grid-template-columns: minmax(0, 1fr); gap: 48px; } .hero-grid > * { min-width: 0; } h1 { max-width: 11ch; } .hero-device { max-width: 720px; } }
-  @media (max-width: 560px) {
-    .hero { padding-top: 52px; }
-    .hero-grid { gap: 34px; }
-    h1 { max-width: 11ch; font-size: clamp(45px, 14vw, 66px); }
-    .hero-actions .button-primary { width: 100%; }
-    .window-body { grid-template-columns: 1fr; }
-    .assistant { border-top: 1px solid var(--line); border-left: 0; min-height: 160px; }
-    .window-top .tab:nth-of-type(2) { display: none; }
-    .profile-chip { display: none; }
-  }
-
-  .signal-rail { padding: 22px 0 70px; }
-  .signals { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-  .signal { min-height: 106px; padding: 20px 22px; border-right: 1px solid var(--line); }
-  .signal:last-child { border-right: 0; }
-  .signal strong { display: block; margin-bottom: 4px; font-size: 15px; font-weight: 650; letter-spacing: -.02em; }
-  .signal span { display: block; color: var(--ink-muted); font-size: 12px; }
-  @media (max-width: 720px) { .signals { grid-template-columns: repeat(2, 1fr); } .signal:nth-child(2) { border-right: 0; } .signal:nth-child(-n+2) { border-bottom: 1px solid var(--line); } }
-  @media (max-width: 420px) { .signal { padding-inline: 14px; } .signal strong { font-size: 15px; } }
-
-  .section { padding: 86px 0; border-top: 1px solid var(--line); }
-  .section-intro { display: grid; grid-template-columns: 1fr 1fr; gap: 72px; align-items: start; margin-bottom: 36px; }
-  h2 { margin: 0; max-width: 17ch; font-size: clamp(29px, 4vw, 47px); line-height: 1.05; letter-spacing: -.035em; font-weight: 700; text-wrap: balance; }
-  .section-intro p { max-width: 54ch; margin: 0; color: var(--ink-soft); font-size: 16px; }
-  @media (max-width: 760px) { .section { padding: 64px 0; } .section-intro { grid-template-columns: 1fr; gap: 16px; margin-bottom: 28px; } }
-
-  .proof-grid { display: grid; grid-template-columns: repeat(3, 1fr); border-block: 1px solid var(--line); }
-  .proof { min-width: 0; padding: 24px 24px 24px 0; }
-  .proof + .proof { padding-left: 24px; border-left: 1px solid var(--line); }
-  .proof h3 { margin: 0 0 10px; font-size: 17px; font-weight: 650; letter-spacing: -.02em; }
-  .proof p { margin: 0; color: var(--ink-muted); font-size: 13.5px; }
-  @media (max-width: 760px) { .proof-grid { grid-template-columns: 1fr; } .proof, .proof + .proof { padding: 20px 0; border-left: 0; } .proof + .proof { border-top: 1px solid var(--line); } }
-
-  .story-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 68px; align-items: center; }
-  .story-grid.reverse .story-copy { order: 2; }
-  .story-copy h3 { max-width: 15ch; margin: 0 0 15px; font-size: clamp(25px, 3vw, 35px); line-height: 1.08; letter-spacing: -.03em; }
-  .story-copy p { max-width: 52ch; margin: 0 0 13px; color: var(--ink-soft); }
-  .story-copy p:last-child { margin-bottom: 0; }
-  .check-list { display: grid; gap: 10px; margin: 20px 0 0; padding: 0; list-style: none; }
-  .check-list li { display: flex; gap: 9px; color: var(--ink-soft); font-size: 14px; }
-  .check-list svg { flex: none; margin-top: 4px; color: var(--mint); }
-  .check-list b { color: var(--ink); font-weight: 600; }
-  .mini-panel { overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius-large); background: var(--canvas-raised); }
-  .mini-panel-head { display: flex; align-items: center; gap: 9px; padding: 12px 15px; border-bottom: 1px solid var(--line); color: var(--ink-muted); font-size: 11px; }
-  .mini-panel-head strong { color: var(--ink); font-size: 12px; }
-  .mini-panel-body { display: grid; gap: 8px; padding: 15px; }
-  .mini-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; min-width: 0; min-height: 40px; padding: 9px 0; border-bottom: 1px solid var(--line); color: var(--ink-soft); font-size: 12px; }
-  .mini-row .circle { width: 21px; height: 21px; display: grid; place-items: center; flex: none; border-radius: 50%; background: var(--canvas-high); color: var(--ink-muted); font-size: 9px; font-weight: 700; }
-  .mini-row .circle.live { background: var(--blue); color: var(--blue-ink); }
-  .mini-row .circle svg { width: 11px; height: 11px; }
-  .mini-row .state { margin-left: auto; color: var(--ink-muted); font-size: 10px; white-space: nowrap; }
-  .mini-row .state.good { color: var(--mint); }
-  .mini-row.dim { opacity: .56; }
-  .panel-note { padding-top: 12px; color: var(--ink-muted); font-size: 11px; }
-  @media (max-width: 820px) { .story-grid { grid-template-columns: 1fr; gap: 28px; } .story-grid.reverse .story-copy { order: 0; } }
-
-  .install-section { padding: 86px 0; border-top: 1px solid var(--line); }
-  .install-layout { display: grid; grid-template-columns: .75fr 1.25fr; gap: 60px; align-items: start; }
-  .install-copy p { max-width: 44ch; margin: 15px 0 0; color: var(--ink-soft); }
-  .install-box { display: grid; gap: 12px; }
-  .command { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 13px 14px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--canvas-raised); }
-  .command svg { flex: none; color: var(--ink-muted); }
-  .command code { flex: 1; min-width: 0; overflow-x: auto; padding: 2px 0; color: var(--ink); font-size: 12.5px; white-space: nowrap; scrollbar-width: none; }
-  .command code::-webkit-scrollbar { display: none; }
-  .copy-button { flex: none; padding: 6px 10px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: var(--canvas-high); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
-  .copy-button:hover:not(:disabled) { border-color: var(--line-strong); }
-  .copy-button:active:not(:disabled) { background: var(--blue); color: var(--blue-ink); }
-  .copy-button:disabled { color: var(--ink-muted); cursor: wait; }
-  .install-detail { display: flex; flex-wrap: wrap; gap: 7px 15px; margin: 2px 0 0; color: var(--ink-faint); font-size: 11px; }
-  .install-detail code { color: var(--ink-muted); overflow-wrap: anywhere; }
-  .install-warning { display: flex; gap: 10px; align-items: flex-start; margin: 0; padding: 11px 13px; border: 1px solid var(--line-strong); border-radius: var(--radius); color: var(--ink-soft); font-size: 12px; }
-  .install-warning svg { flex: none; margin-top: 2px; color: var(--ink-muted); }
-  .install-warning b { color: var(--ink); font-weight: 600; }
-  @media (max-width: 800px) { .install-layout { grid-template-columns: 1fr; gap: 28px; } }
-  @media (max-width: 560px) {
-    .command { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 10px; }
-    .command svg { grid-column: 1; grid-row: 1; }
-    .command code { grid-column: 1 / -1; grid-row: 2; white-space: normal; overflow-wrap: anywhere; }
-    .copy-button { grid-column: 3; grid-row: 1; }
-    footer .links { margin-left: 0; }
-  }
-
-  .faq { padding: 0 0 86px; }
-  .faq h2 { margin-bottom: 24px; }
-  details { border-top: 1px solid var(--line); }
-  details:last-child { border-bottom: 1px solid var(--line); }
-  summary { display: flex; align-items: center; gap: 14px; padding: 18px 2px; cursor: pointer; list-style: none; font-size: 15px; font-weight: 600; }
-  summary::-webkit-details-marker { display: none; }
-  summary .plus { position: relative; width: 16px; height: 16px; flex: none; margin-left: auto; color: var(--ink-muted); transition: transform .18s ease; }
-  summary .plus::before, summary .plus::after { content: ""; position: absolute; top: 7px; left: 3px; width: 10px; height: 1.5px; border-radius: 2px; background: currentColor; }
-  summary .plus::after { transform: rotate(90deg); }
-  details[open] summary .plus { transform: rotate(45deg); }
-  .answer { max-width: 72ch; padding: 0 2px 20px; color: var(--ink-soft); font-size: 14px; }
-  .answer p { margin: 0 0 10px; }
-  .answer p:last-child { margin-bottom: 0; }
-
-  footer { padding: 30px 0 54px; border-top: 1px solid var(--line); color: var(--ink-faint); font-size: 12px; }
-  footer .shell { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 24px; }
-  footer .links { display: flex; flex-wrap: wrap; gap: 6px 17px; margin-left: auto; }
-  footer a { color: var(--ink-muted); text-decoration: none; }
-  footer a:hover { color: var(--ink); }
 </style>
 </head>
-<body id="top">
+<body>
+<a class="skip" href="#main">Skip to content</a>
 <header class="nav">
   <div class="shell">
-    <a class="wordmark" href="#top" aria-label="Browsemium home"><svg width="18" height="18" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4 28 26H4z" fill="none" stroke="var(--blue)" stroke-width="2.7" stroke-linejoin="round"/></svg>Browsemium</a>
-    <nav class="nav-links" aria-label="Main navigation"><a href="#why">Why Browsemium</a><a href="#ai">AI</a><a href="#move">Move from Chrome</a><a href="https://github.com/Cubinghackerz/browsemium">GitHub</a><a class="nav-cta" href="#install">Install</a></nav>
+    <a class="wordmark" href="#top" aria-label="Browsemium home"><svg width="17" height="17" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4 28 26H4z" fill="none" stroke-width="2.7" stroke-linejoin="round"/></svg>Browsemium</a>
+    <nav class="nav-links" aria-label="Main navigation"><a href="#why">Why Browsemium</a><a href="#ai">AI</a><a href="#move">Move from Chrome</a><a class="nav-github" href="https://github.com/Cubinghackerz/browsemium">GitHub</a><a class="nav-cta" href="#install">Install</a></nav>
   </div>
 </header>
 
-<main>
+<main id="main">
   <section class="hero">
-    <div class="shell hero-grid">
-      <div class="hero-copy">
-        <h1>Keep the web. Lose the weight.</h1>
-        <p class="lede">Browsemium brings your tabs, profiles, and the AI you already use into one native Mac browser. Turn on memory saver to unload background tabs on a schedule you control.</p>
-        <div class="hero-actions"><a class="button button-primary" href="#install">Get install command <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h10M8 3l5 5-5 5"/></svg></a><a class="button button-secondary" href="#why">See how it works</a></div>
-        <p class="hero-note">macOS 14+ · Apple silicon + Intel · no account · no telemetry</p>
+    <div class="shell">
+      <h1><span class="line"><span>Keep the web.</span></span><span class="line"><span>Lose the weight.</span></span></h1>
+      <p class="lede">A native Mac browser that unloads the tabs you are not using, keeps profiles separate, and puts the AI you already use beside the page. No account, no telemetry, nothing sent anywhere you did not send it.</p>
+      <div class="command">
+        <span class="prompt" aria-hidden="true">$</span>
+        <code id="install-command">curl -fsSL https://browsemium.vercel.app/install.sh | bash</code>
+        <button class="copy" type="button" data-copy="#install-command" aria-live="polite">Copy</button>
       </div>
-      <div class="hero-device">
-        <div class="window" role="img" aria-label="Browsemium browser window with tabs, a work profile, and an AI assistant beside a Swift documentation page.">
-          <div class="window-top"><div class="lights" aria-hidden="true"><i></i><i></i><i></i></div><span class="tab tab-active"><span class="tab-icon" aria-hidden="true"></span><span class="tab-label">Swift concurrency</span></span><span class="tab"><span class="tab-icon" aria-hidden="true"></span><span class="tab-label">Pull requests</span></span><span class="tab-more" aria-hidden="true"><i></i><i></i><i></i></span></div>
-          <div class="window-bar"><span class="window-nav" aria-hidden="true"><svg width="24" height="14" viewBox="0 0 24 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 2-5 5 5 5M15 2l5 5-5 5"/></svg></span><span class="address"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><span class="url">swift.org/documentation</span></span><span class="profile-chip"><span class="profile-dot">W</span> Work</span></div>
-          <div class="window-body"><div class="page-surface"><span class="page-kicker">Swift documentation</span><h2>Concurrency</h2><p>Write asynchronous code that is clear, safe, and efficient.</p><div class="page-topics" aria-hidden="true"><span>Tasks and task groups</span><span>Actor isolation</span><span>Cancellation</span></div></div><aside class="assistant"><div class="assistant-head"><span class="spark" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="m8 1 1.5 5.5L15 8l-5.5 1.5L8 15l-1.5-5.5L1 8l5.5-1.5L8 1Z"/></svg></span><strong>Assistant</strong><span class="mode">Web</span></div><div class="context-pill">Page context · included when enabled</div><div class="assistant-copy"><p>Ask about the page you are reading.</p><div class="send-row"><span>ChatGPT</span><span class="send-button" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10M8 3l5 5-5 5"/></svg></span></div></div></aside></div>
-          <div class="window-status"><span class="status-dot" aria-hidden="true"></span> Memory saver · tab limit set by you</div>
-        </div>
+      <div class="hero-notes">
+        <p>Verified before it is copied: release manifest, SHA-256 checksum, DMG integrity, signature, sandbox, and both architectures.</p>
+        <p><b>Preview build:</b> ad-hoc signed, not notarized by Apple yet. If macOS blocks the first launch, allow it once in System Settings → Privacy &amp; Security → Open Anyway.</p>
       </div>
     </div>
   </section>
 
-  <section class="signal-rail" aria-label="Browsemium at a glance"><div class="shell signals"><div class="signal"><strong>Native on Mac</strong><span>built with WebKit</span></div><div class="signal"><strong>Your tab limits</strong><span>choose when background pages sleep</span></div><div class="signal"><strong>Your AI choices</strong><span>web providers or local Ollama</span></div><div class="signal"><strong>Local by default</strong><span>no account, telemetry, or cloud sync</span></div></div></section>
+  <section class="spec" aria-label="Browsemium specification">
+    <div class="shell">
+      <dl class="spec-table">
+        <div class="spec-row"><dt>Engine</dt><dd>WebKit, through Apple's frameworks</dd></div>
+        <div class="spec-row"><dt>Platform</dt><dd>macOS 14 or newer; Apple silicon and Intel</dd></div>
+        <div class="spec-row"><dt>Memory</dt><dd>Background tabs unload on a schedule you set, and reload when you return</dd></div>
+        <div class="spec-row"><dt>AI</dt><dd>Your provider, or a local Ollama model; keys stay in the macOS keychain</dd></div>
+        <div class="spec-row"><dt>Blocking</dt><dd>WebKit content rules. Rule state only, never an invented count</dd></div>
+        <div class="spec-row"><dt>Profiles</dt><dd>Cookies, logins, history, and site data stay in separate lanes</dd></div>
+        <div class="spec-row"><dt>Extensions</dt><dd>Chrome and Firefox style, through WebKit's extension APIs (beta, macOS 15.4+)</dd></div>
+        <div class="spec-row"><dt>Imports</dt><dd>Chrome, Brave, Edge, Vivaldi, Arc, Firefox, and Safari</dd></div>
+        <div class="spec-row"><dt>Account and telemetry</dt><dd>None, and no cloud sync</dd></div>
+      </dl>
+    </div>
+  </section>
 
-  <section class="section" id="why"><div class="shell"><div class="section-intro"><h2>Good browser design is mostly knowing what not to keep alive.</h2><div><p>Most browsers keep every tab ready whether you looked at it five seconds ago or five days ago. Browsemium lets you choose the live-tab limit and sleep schedule; sleeping tabs reload when you return.</p></div></div><div class="proof-grid"><article class="proof"><h3>Memory saver, on your terms</h3><p>Choose how long background tabs stay live and how many pages to keep loaded. A tab may reload when you come back.</p></article><article class="proof"><h3>WebKit, used deliberately</h3><p>Inactive WebViews are released when tabs sleep, profiles change, or macOS reports memory pressure.</p></article><article class="proof"><h3>Numbers we can stand behind</h3><p>Browsemium reports the memory it can measure. It does not invent per-tab WebKit usage or blocked-request counts.</p></article></div></div></section>
+  <section class="section" id="why">
+    <div class="shell story">
+      <h2>Good browser design is mostly knowing what not to keep alive.</h2>
+      <div class="story-body">
+        <p>Most browsers keep every tab ready whether you looked at it five seconds ago or five days ago. Browsemium lets you set how long background tabs stay live and how many stay loaded.</p>
+        <div class="tabs" id="tab-sleep" aria-hidden="true">
+          <div class="tab-row"><span class="tab-name">docs.swift.org</span><span class="tab-state"><span class="s-live">live</span></span></div>
+          <div class="tab-row"><span class="tab-name">github.com/pulls</span><span class="tab-state"><span class="s-live">live</span></span></div>
+          <div class="tab-row sleeping"><span class="tab-name">news.ycombinator.com</span><span class="tab-state"><span class="s-live">live</span><span class="s-sleep">sleeping</span></span></div>
+          <div class="tab-row"><span class="tab-name">mail.google.com</span><span class="tab-state"><span class="s-live">live</span></span></div>
+        </div>
+        <p>Inactive WebViews are released when tabs sleep, when profiles change, or when macOS reports memory pressure. Browsemium reports the memory it can measure. WebKit does not expose per-tab memory, so it never shows a number it cannot verify.</p>
+      </div>
+    </div>
+  </section>
 
   <section class="section" id="ai">
-    <div class="shell story-grid">
-      <div class="story-copy">
-        <h3>The assistant works beside the page. You stay in control.</h3>
-        <p>Use ChatGPT, Claude, Gemini, Grok, or Ollama beside the page you are reading. When enabled, Browsemium can prepare a sanitized URL and bounded page text for your message. Screenshots, selections, and files are attached only when you choose them.</p>
-        <ul class="check-list">
-          <li><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8.5 3.2 3.2L13 4.8"/></svg><span><b>One composer.</b> No duplicate input bar under the provider.</span></li>
-          <li><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8.5 3.2 3.2L13 4.8"/></svg><span><b>Your send stays yours.</b> Browsemium never clicks, types, or submits for you.</span></li>
-          <li><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8.5 3.2 3.2L13 4.8"/></svg><span><b>Context is bounded.</b> Page text can be disabled; extra material stays a per-message choice.</span></li>
-          <li><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8.5 3.2 3.2L13 4.8"/></svg><span><b>Useful page actions.</b> Summarize, extract key points, or explain a selection.</span></li>
-        </ul>
-      </div>
-      <div class="mini-panel" aria-hidden="true">
-        <div class="mini-panel-head"><span class="profile-dot">AI</span><strong>Context for this message</strong><span style="margin-left:auto">Web</span></div>
-        <div class="mini-panel-body">
-          <div class="mini-row"><span class="circle live"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8.5 3.2 3.2L13 4.8"/></svg></span> Page title + safe URL <span class="state good">when enabled</span></div>
-          <div class="mini-row"><span class="circle live"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8.5 3.2 3.2L13 4.8"/></svg></span> Readable page <span class="state good">at send</span></div>
-          <div class="mini-row"><span class="circle"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></span> Screenshot <span class="state">only when chosen</span></div>
-          <div class="mini-row"><span class="circle"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></span> Selection or file <span class="state">only when chosen</span></div>
-          <div class="panel-note">You decide what to send to the provider.</div>
-        </div>
+    <div class="shell story">
+      <h2>The assistant works beside the page. You stay in control.</h2>
+      <div class="story-body">
+        <p>Use ChatGPT, Claude, Gemini, Grok, or a local Ollama model beside the page you are reading, with the web subscription you already have or an optional API key. Context is a choice, not a default:</p>
+        <dl class="ruled">
+          <div class="ruled-row"><dt>Page title and a sanitized URL</dt><dd>when enabled</dd></div>
+          <div class="ruled-row"><dt>Readable page text</dt><dd>prepared at send, bounded</dd></div>
+          <div class="ruled-row"><dt>A screenshot</dt><dd>only when you choose one</dd></div>
+          <div class="ruled-row"><dt>A selection or a file</dt><dd>only when you choose one</dd></div>
+        </dl>
+        <p>Everything is reviewed in a sheet before it is sent. The assistant never clicks, types, or submits.</p>
       </div>
     </div>
   </section>
 
   <section class="section" id="move">
-    <div class="shell story-grid reverse">
-      <div class="story-copy">
-        <h3>Bring your browser setup with you, not your browser baggage.</h3>
-        <p>The migration assistant finds compatible browsers and profiles, then previews what is ready before anything is written. Bookmarks, history, passwords, search settings, and recoverable sessions appear in clear categories.</p>
-        <p>Cookies, extensions, and engine-specific site storage stay behind. The source browser is never quit or silently changed.</p>
+    <div class="shell story">
+      <h2>Bring your browser setup with you, not your browser baggage.</h2>
+      <div class="story-body">
+        <p>The migration assistant finds compatible browsers and profiles, then previews what is ready before anything is written.</p>
+        <dl class="ruled">
+          <div class="ruled-row"><dt>Bookmarks and folders</dt><dd>previewed first</dd></div>
+          <div class="ruled-row"><dt>Recent history</dt><dd>previewed first</dd></div>
+          <div class="ruled-row"><dt>Passwords, where the source allows</dt><dd>Chromium-family only</dd></div>
+          <div class="ruled-row"><dt>Search settings and sessions</dt><dd>restored, not rewritten</dd></div>
+          <div class="ruled-row"><dt>Cookies, extensions, site storage</dt><dd>stay behind</dd></div>
+        </dl>
+        <p>The source browser is never quit or silently changed. Firefox and Safari passwords are not importable, and the app says why.</p>
       </div>
-      <div class="mini-panel" aria-hidden="true">
-        <div class="mini-panel-head"><span class="profile-dot">C</span><strong>Import preview</strong><span style="margin-left:auto; color:var(--mint)">review first</span></div>
-        <div class="mini-panel-body">
-          <div class="mini-row"><span class="circle live"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8.5 3.2 3.2L13 4.8"/></svg></span> Personal profile <span class="state good">found</span></div>
-          <div class="mini-row"><span class="circle live"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8.5 3.2 3.2L13 4.8"/></svg></span> Bookmarks + folders <span class="state good">preview</span></div>
-          <div class="mini-row"><span class="circle live"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8.5 3.2 3.2L13 4.8"/></svg></span> Recent history <span class="state good">preview</span></div>
-          <div class="mini-row"><span class="circle"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8.5 3.2 3.2L13 4.8"/></svg></span> Passwords <span class="state">review</span></div>
-          <div class="mini-row dim"><span class="circle">—</span> Cookies + extensions <span class="state">not copied</span></div>
+    </div>
+  </section>
+
+  <section class="section install" id="install">
+    <div class="shell story">
+      <h2>Install Browsemium.</h2>
+      <div class="story-body">
+        <p>One command in Terminal. The installer checks the release manifest, SHA-256 checksum, DMG integrity, the app's signature, sandbox, and architectures before copying anything. Updates leave your profiles and tabs in place.</p>
+        <div class="command">
+          <span class="prompt" aria-hidden="true">$</span>
+          <code id="install-command-bottom">curl -fsSL https://browsemium.vercel.app/install.sh | bash</code>
+          <button class="copy" type="button" data-copy="#install-command-bottom" aria-live="polite">Copy</button>
         </div>
+        <p class="install-detail"><span>Universal Mac app, Apple silicon and Intel</span><span>macOS 14+</span><span>Ad-hoc signed, not notarized yet</span><span>SHA-256 <code data-release-checksum>01dec61a71943366a561e32fd3199484b986d25df7ac00d6d84f588d40938afa</code></span></p>
+        <p class="install-warning"><b>Preview build.</b> macOS may block the first launch; allow it once in System Settings → Privacy &amp; Security → Open Anyway. The installer never removes quarantine attributes, and the choice to open stays yours.</p>
       </div>
     </div>
   </section>
 
-  <section class="section">
-    <div class="shell story-grid">
-      <div class="story-copy">
-        <h3>Keep the parts of life that should be separate, separate.</h3>
-        <p>Profiles keep cookies, logins, history, bookmarks, tabs, passwords, and WebKit data in their own lanes. Work can stay work without a second Mac account or a maze of private windows.</p>
-        <p>Tab groups, Reader, local history, tracker blocking, per-site zoom, recently closed tabs, PDF export, Picture in Picture, and keyboard commands cover the everyday browser work.</p>
-      </div>
-      <div class="mini-panel" aria-hidden="true">
-        <div class="mini-panel-head"><span class="profile-dot">P</span><strong>Profiles</strong><span style="margin-left:auto">separate</span></div>
-        <div class="mini-panel-body">
-          <div class="mini-row"><span class="circle live">W</span> Work <span class="state good">active</span></div>
-          <div class="mini-row"><span class="circle">P</span> Personal <span class="state">switch</span></div>
-          <div class="mini-row"><span class="circle">R</span> Research <span class="state">switch</span></div>
-          <div class="panel-note">Cookies and site data stay with their profile.</div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="install-section" id="install">
-    <div class="shell install-layout">
-      <div class="install-copy">
-        <h2>Install Browsemium.</h2>
-        <p>One command in Terminal. The installer checks the release manifest, SHA-256 checksum, DMG integrity, and the app's signature, sandbox, and architectures before copying anything; updates leave your profiles and tabs in place.</p>
-      </div>
-      <div class="install-box">
-        <div class="command"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2.5 4.5 3 3.5-3 3.5M7.5 11.5h6"/></svg><code id="install-command">curl -fsSL https://browsemium.vercel.app/install.sh | bash</code><button class="copy-button" type="button" data-copy="#install-command" aria-live="polite">Copy</button></div>
-        <p class="install-warning"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 1.8 14.8 13H1.2L8 1.8Z"/><path d="M8 6v3.4"/><path d="M8 11.2v.3"/></svg><span><b>Preview build.</b> Browsemium is ad-hoc signed and not notarized by Apple yet, so macOS may block the first launch. If it does: System Settings → Privacy &amp; Security → <b>Open Anyway</b>.</span></p>
-        <p class="install-detail"><span>Universal Mac app — Apple silicon + Intel</span><span>macOS 14+</span><span>Ad-hoc signed, not notarized yet</span><span>SHA-256 <code data-release-checksum>01dec61a71943366a561e32fd3199484b986d25df7ac00d6d84f588d40938afa</code></span></p>
-      </div>
-    </div>
-  </section>
-
-  <section class="faq" id="faq">
+  <section class="section faq" id="faq">
     <div class="shell">
       <h2>Questions, answered plainly.</h2>
       <details><summary>Is Browsemium faster than Chrome?<span class="plus" aria-hidden="true"></span></summary><div class="answer"><p>Browsemium does not claim to render pages faster. It brings your browsing and AI workflows into one place, and lets you unload idle background tabs on a schedule you choose.</p></div></details>
@@ -381,7 +421,7 @@
       <details><summary>What can the AI receive?<span class="plus" aria-hidden="true"></span></summary><div class="answer"><p>When enabled, a message can include the page title, a sanitized URL, and bounded readable page text. Screenshots, selections, and files are never attached automatically: you choose them for a message and review them before sending.</p></div></details>
       <details><summary>What comes over when I switch browsers?<span class="plus" aria-hidden="true"></span></summary><div class="answer"><p>The importer previews compatible profiles, bookmarks, history, passwords, search settings, and sessions before writing anything. Cookies, extensions, and engine-specific site data are not copied.</p></div></details>
       <details><summary>Do I need an API key?<span class="plus" aria-hidden="true"></span></summary><div class="answer"><p>No. Use ChatGPT, Claude, Gemini, or Grok with the web subscriptions you already have. API keys are optional and stored in the macOS keychain. Ollama can run locally on this Mac.</p></div></details>
-      <details><summary>macOS says Browsemium can't be opened — now what?<span class="plus" aria-hidden="true"></span></summary><div class="answer"><p>Preview builds are ad-hoc signed and not notarized by Apple yet, so Gatekeeper may block the first launch. Open System Settings → Privacy &amp; Security and choose <b>Open Anyway</b> next to Browsemium. The installer verifies the checksum, signature, sandbox, and architectures before anything is copied, and it never removes quarantine attributes — the choice to open stays yours. Developer ID signing and notarization return with the stable release.</p></div></details>
+      <details><summary>macOS says Browsemium can't be opened. Now what?<span class="plus" aria-hidden="true"></span></summary><div class="answer"><p>Preview builds are ad-hoc signed and not notarized by Apple yet, so Gatekeeper may block the first launch. Open System Settings → Privacy &amp; Security and choose <b>Open Anyway</b> next to Browsemium. The installer verifies the checksum, signature, sandbox, and architectures before anything is copied, and it never removes quarantine attributes. Developer ID signing and notarization return with the stable release.</p></div></details>
     </div>
   </section>
 </main>
@@ -389,6 +429,8 @@
 <footer><div class="shell"><span>Browsemium <span data-release-version>2.1.0</span> · WebKit · macOS 14+</span><span>No account and no telemetry.</span><span class="links"><a href="https://github.com/Cubinghackerz/browsemium">Source</a><a href="https://github.com/Cubinghackerz/browsemium/releases">Releases</a><a href="https://github.com/Cubinghackerz/browsemium/issues">Issues</a></span></div></footer>
 
 <script>
+  document.documentElement.classList.add("js");
+
   // Progressive enhancement only. The page remains usable without JavaScript.
   document.addEventListener("click", function (event) {
     var button = event.target.closest("[data-copy]");
@@ -398,9 +440,11 @@
     var original = button.textContent;
     function showFeedback(message) {
       button.textContent = message;
+      button.classList.add("copied");
       button.disabled = true;
       setTimeout(function () {
         button.textContent = original;
+        button.classList.remove("copied");
         button.disabled = false;
       }, 1800);
     }
@@ -421,6 +465,30 @@
       showFeedback("Copy failed");
     });
   });
+
+  if ("IntersectionObserver" in window) {
+    var spec = document.querySelector(".spec-table");
+    if (spec) {
+      var specObserver = new IntersectionObserver(function (entries) {
+        if (!entries[0].isIntersecting) return;
+        entries[0].target.classList.add("in");
+        specObserver.unobserve(entries[0].target);
+      }, { threshold: 0.2 });
+      specObserver.observe(spec);
+    }
+    var tabs = document.getElementById("tab-sleep");
+    if (tabs) {
+      // The memory-saver loop runs only while it is on screen.
+      var tabObserver = new IntersectionObserver(function (entries) {
+        tabs.classList.add("running");
+        tabs.classList.toggle("in-view", entries[0].isIntersecting);
+      }, { threshold: 0.3 });
+      tabObserver.observe(tabs);
+    }
+  } else {
+    var specFallback = document.querySelector(".spec-table");
+    if (specFallback) specFallback.classList.add("in");
+  }
 </script>
 </body>
 </html>
