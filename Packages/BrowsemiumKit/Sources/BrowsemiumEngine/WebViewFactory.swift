@@ -72,13 +72,21 @@ public struct WebViewFactory {
 
     static func applyPrivacyDefaults(to configuration: WKWebViewConfiguration) {
         guard let preferences = configuration.defaultWebpagePreferences else { return }
+        // Each compile-time gate keeps SDKs that predate the API building
+        // (Xcode 26.4 ships Swift 6.3 with the macOS 26.4 SDK, Xcode 27 ships
+        // Swift 6.4 with the macOS 27 SDK); the runtime check keeps the
+        // feature off below the OS version that provides it.
+        #if compiler(>=6.4)
         if #available(macOS 27.0, *) {
             preferences.globalPrivacyControlEnabled = protectionLevel.sendsGlobalPrivacyControl
         }
+        #endif
+        #if compiler(>=6.3)
         if #available(macOS 26.4, *) {
             preferences.securityRestrictionMode = protectionLevel.hardensWebContent
                 ? .maximizeCompatibility
                 : .none
         }
+        #endif
     }
 }

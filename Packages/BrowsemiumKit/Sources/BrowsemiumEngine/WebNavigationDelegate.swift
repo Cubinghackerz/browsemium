@@ -77,9 +77,12 @@ final class WebNavigationDelegate: NSObject, WKNavigationDelegate {
     }
 
     private func applyPrivacy(to preferences: WKWebpagePreferences) {
+        // Compile-time gate: only SDKs from Xcode 27 (Swift 6.4) declare this.
+        #if compiler(>=6.4)
         if #available(macOS 27.0, *) {
             preferences.globalPrivacyControlEnabled = protectionLevel.sendsGlobalPrivacyControl
         }
+        #endif
     }
 
     func webView(
@@ -107,6 +110,8 @@ final class WebNavigationDelegate: NSObject, WKNavigationDelegate {
         case .download:
             return (.download, preferences)
         case .replace(let url):
+            // Compile-time gate: only SDKs from Xcode 27 (Swift 6.4) declare this.
+            #if compiler(>=6.4)
             if #available(macOS 27.0, *) {
                 var request = navigationAction.request
                 request.url = url
@@ -114,6 +119,7 @@ final class WebNavigationDelegate: NSObject, WKNavigationDelegate {
                 applyPrivacy(to: preferences)
                 return (.allow, preferences)
             }
+            #endif
             Task { @MainActor [weak self] in
                 self?.runtime?.load(url)
             }

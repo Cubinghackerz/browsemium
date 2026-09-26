@@ -22,6 +22,23 @@ swift build --package-path Packages/BrowsemiumKit
 swift test --package-path Packages/BrowsemiumKit
 ```
 
+CI builds with whatever Xcode the runner ships (currently Xcode 26.3 / Swift
+6.2.3), so code that uses an API added in a newer SDK must carry a
+compile-time gate beside its runtime `#available` check:
+
+```swift
+#if compiler(>=6.3)   // Xcode 26.4+ ships Swift 6.3 with the macOS 26.4 SDK
+if #available(macOS 26.4, *) { ... }
+#endif
+#if compiler(>=6.4)   // Xcode 27 ships Swift 6.4 with the macOS 27 SDK
+if #available(macOS 27.0, *) { ... }
+#endif
+```
+
+A bare `#available` still fails to compile on older SDKs because the member
+does not exist there; the `#if compiler` gate is what keeps CI green.
+Tests that assert on such APIs need the same gate.
+
 Generate the Xcode project from the repository root only when full Xcode and XcodeGen are available:
 
 ```sh

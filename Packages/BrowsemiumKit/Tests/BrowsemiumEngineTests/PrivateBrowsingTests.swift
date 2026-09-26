@@ -88,14 +88,20 @@ func strictProtectionHardensNewWebViews() throws {
     let balancedPreferences = try #require(balanced.defaultWebpagePreferences)
     let strictPreferences = try #require(strict.defaultWebpagePreferences)
 
+    // Compile-time gates mirror the engine: these SDK members only exist in
+    // toolchains from Xcode 26.4 (Swift 6.3) and Xcode 27 (Swift 6.4).
+    #if compiler(>=6.3)
     if #available(macOS 26.4, *) {
         #expect(balancedPreferences.securityRestrictionMode == WKSecurityRestrictionMode.none)
         #expect(strictPreferences.securityRestrictionMode == .maximizeCompatibility)
     }
+    #endif
+    #if compiler(>=6.4)
     if #available(macOS 27.0, *) {
         #expect(balancedPreferences.globalPrivacyControlEnabled == false)
         #expect(strictPreferences.globalPrivacyControlEnabled == true)
     }
+    #endif
 }
 
 @Test @MainActor
@@ -111,17 +117,21 @@ func changingTheLevelUpdatesTabsThatAreAlreadyOpen() {
     controller.apply(BrowserSettings(protectionLevel: .strict))
 
     #expect(runtime.protectionLevel == .strict)
+    #if compiler(>=6.3)
     if #available(macOS 26.4, *) {
         #expect(webView.configuration.defaultWebpagePreferences?.securityRestrictionMode == .maximizeCompatibility)
     }
+    #endif
 
     controller.apply(BrowserSettings(protectionLevel: .standard))
 
     #expect(runtime.protectionLevel == .standard)
+    #if compiler(>=6.3)
     if #available(macOS 26.4, *) {
         let mode = webView.configuration.defaultWebpagePreferences?.securityRestrictionMode
         #expect(mode == WKSecurityRestrictionMode.none)
     }
+    #endif
 }
 
 @Test @MainActor
@@ -133,16 +143,20 @@ func newTabsFollowTheProtectionLevelInEffect() {
     controller.apply(BrowserSettings(protectionLevel: .strict))
     let strictView = controller.runtime(for: TabID()).ensureWebView()
 
+    #if compiler(>=6.3)
     if #available(macOS 26.4, *) {
         #expect(strictView.configuration.defaultWebpagePreferences?.securityRestrictionMode == .maximizeCompatibility)
     }
+    #endif
 
     controller.apply(BrowserSettings(protectionLevel: .standard))
     let balancedView = controller.runtime(for: TabID()).ensureWebView()
+    #if compiler(>=6.3)
     if #available(macOS 26.4, *) {
         let mode = balancedView.configuration.defaultWebpagePreferences?.securityRestrictionMode
         #expect(mode == WKSecurityRestrictionMode.none)
     }
+    #endif
 }
 
 @Test @MainActor
