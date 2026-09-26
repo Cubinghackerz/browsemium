@@ -25,6 +25,10 @@ public final class TabRuntime {
     private var progressObservation: NSKeyValueObservation?
     private var audioProxy: TabAudioMessageProxy?
     private var linkHoverProxy: LinkHoverMessageProxy?
+    private var pickerProxy: ElementPickerMessageProxy?
+    /// Per-host cosmetic CSS, pushed by the runtime controller. Baked into a
+    /// document-start script so saved rules apply before first paint.
+    private var cosmeticRulesByHost: [String: String] = [:]
     /// Dedupes the double new-window report WebKit produces for one click:
     /// `decidePolicyFor` (targetFrame == nil) fires first, then `createWebViewWith`.
     /// Without this, one ⌘-click opens a peek, discards it, and reopens it —
@@ -96,16 +100,19 @@ public final class TabRuntime {
         let view = (isPrivate ? nil : warmPool?.take()) ?? factory.makeWebView(store: store)
         view.navigationDelegate = navigationDelegate
         view.uiDelegate = uiDelegate
-        // Audio state is reported by an injected script. The handler is added
-        // before the first real navigation, so nothing is missed.
+        // Audio state, link hover, and element picking are reported by
+        // injected scripts. The handlers are added before the first real
+        // navigation, so nothing is missed.
         let proxy = TabAudioMessageProxy(runtime: self)
-        view.configuration.userContentController.addUserScript(TabAudioMonitor.makeUserScript())
         view.configuration.userContentController.add(proxy, name: TabAudioMonitor.messageHandlerName)
         audioProxy = proxy
         let hoverProxy = LinkHoverMessageProxy(runtime: self)
-        view.configuration.userContentController.addUserScript(LinkHoverMonitor.makeUserScript())
         view.configuration.userContentController.add(hoverProxy, name: LinkHoverMonitor.messageHandlerName)
         linkHoverProxy = hoverProxy
+        let picker = ElementPickerMessageProxy(runtime: self)
+        view.configuration.userContentController.add(picker, name: ElementPicker.messageHandlerName)
+        pickerProxy = picker
+        installUserScripts(on: view)
         progressObservation = view.observe(\.estimatedProgress, options: [.new]) { [weak self] webView, _ in
             Task { @MainActor [weak self] in
                 self?.report(.progressChanged(webView.estimatedProgress))
@@ -127,6 +134,52 @@ public final class TabRuntime {
         report(.audioStateChanged(audioState))
         guard let webView else { return }
         webView.evaluateJavaScript("window.__browsemiumSetMuted && window.__browsemiumSetMuted(\(muted ? "true" : "false"))")
+    }
+
+    /// Rebuilds the injected script set. `removeAllUserScripts` is the only
+    /// removal API WebKit offers, so every script is re-added together.
+    private func installUserScripts(on view: WKWebView) {
+        let controller = view.configuration.userContentController
+        controller.removeAllUserScripts()
+        controller.addUserScript(TabAudioMonitor.makeUserScript())
+        controller.addUserScript(LinkHoverMonitor.makeUserScript())
+        controller.addUserScript(ElementPicker.makeUserScript())
+        controller.addUserScript(CosmeticRulesScript.makeUserScript(rulesByHost: cosmeticRulesByHost))
+    }
+
+    /// Applies the per-host cosmetic rules: future navigations get them at
+    /// document start, and the page on screen is updated in place so no tab
+    /// reloads for a rule change.
+    public func applyCosmeticRules(_ rulesByHost: [String: String]) {
+        cosmeticRulesByHost = rulesByHost
+        guard let view = webView else { return }
+        installUserScripts(on: view)
+        let host = (view.url?.host ?? "").lowercased()
+        let css = rulesByHost[host] ?? ""
+        view.evaluateJavaScript(
+            "window.__browsemiumApplyCosmeticRules && window.__browsemiumApplyCosmeticRules(\(CosmeticRulesScript.jsLiteral(css)))"
+        )
+    }
+
+    public func beginElementPicking() {
+        guard let view = webView else { return }
+        view.evaluateJavaScript("window.__browsemiumElementPicker && window.__browsemiumElementPicker.start()")
+    }
+
+    public func cancelElementPicking() {
+        webView?.evaluateJavaScript("window.__browsemiumElementPicker && window.__browsemiumElementPicker.stop()")
+    }
+
+    func updatePickedElement(selector: String, label: String, matchCount: Int) {
+        report(.elementPicked(ElementPick(selector: selector, label: label, matchCount: matchCount)))
+    }
+
+    func updateElementPickCancelled() {
+        report(.elementPickCancelled)
+    }
+
+    func updateElementPickFailed() {
+        report(.elementPickFailed)
     }
 
     func updateAudioState(isPlaying: Bool, isMuted: Bool, isCapturingMedia: Bool = false) {
@@ -386,7 +439,7 @@ public final class TabRuntime {
             break
         case .crashed:
             setLifecycle(.crashed)
-        case .progressChanged, .requestedExternalScheme, .downloadStarted, .downloadFinished, .downloadFailed, .audioStateChanged, .requestedAISelection, .lifecycleChanged, .linkHovered:
+        case .progressChanged, .requestedExternalScheme, .downloadStarted, .downloadFinished, .downloadFailed, .audioStateChanged, .requestedAISelection, .lifecycleChanged, .linkHovered, .elementPicked, .elementPickCancelled, .elementPickFailed:
             break
         }
         onEvent?(event)

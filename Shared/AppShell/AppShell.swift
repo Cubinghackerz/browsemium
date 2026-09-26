@@ -216,6 +216,9 @@ struct BrowserCommands: Commands {
                 .keyboardShortcut("f", modifiers: .command)
                 .disabled(model == nil)
             Divider()
+            Button("Hide Element…") { model?.beginElementHiding() }
+                .keyboardShortcut("h", modifiers: [.command, .shift])
+                .disabled(model == nil)
             Button("Show Reader") { model?.toggleReaderMode() }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
                 .disabled(model == nil)

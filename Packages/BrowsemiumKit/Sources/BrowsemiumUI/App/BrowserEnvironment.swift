@@ -26,6 +26,7 @@ public final class BrowserEnvironment {
     public private(set) var closedTabRepository: ClosedTabRepository
     public private(set) var savedCredentialRepository: SavedCredentialRepository
     public private(set) var sitePreferenceRepository: SitePreferenceRepository
+    public private(set) var cosmeticRuleRepository: CosmeticRuleRepository
     public private(set) var conversationRepository: AIConversationRepository
     public private(set) var aiSkillRepository: AISkillRepository
     public private(set) var extensionRepository: ExtensionRepository
@@ -71,6 +72,7 @@ public final class BrowserEnvironment {
         closedTabRepository = ClosedTabRepository(database: database)
         savedCredentialRepository = SavedCredentialRepository(database: database)
         sitePreferenceRepository = SitePreferenceRepository(database: database)
+        cosmeticRuleRepository = CosmeticRuleRepository(database: database)
         conversationRepository = AIConversationRepository(database: database)
         aiSkillRepository = AISkillRepository(database: database)
         extensionRepository = ExtensionRepository(database: database)
@@ -179,6 +181,7 @@ public final class BrowserEnvironment {
         closedTabRepository = ClosedTabRepository(database: database)
         savedCredentialRepository = SavedCredentialRepository(database: database)
         sitePreferenceRepository = SitePreferenceRepository(database: database)
+        cosmeticRuleRepository = CosmeticRuleRepository(database: database)
         conversationRepository = AIConversationRepository(database: database)
         aiSkillRepository = AISkillRepository(database: database)
         extensionRepository = ExtensionRepository(database: database)

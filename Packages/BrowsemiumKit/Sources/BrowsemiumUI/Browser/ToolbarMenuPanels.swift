@@ -1,4 +1,5 @@
 import BrowsemiumCore
+import BrowsemiumData
 import SwiftUI
 
 /// The shared look for the toolbar's custom menus: a floating card with
@@ -325,6 +326,30 @@ struct SiteShieldPanel: View {
                 .foregroundStyle(Color.browsemiumSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            if let pick = model.pendingElementPick {
+                Divider()
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Hide this element?")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.browsemiumPrimary)
+                    Text(pick.matchCount > 1
+                        ? "\(pick.label), matching \(pick.matchCount) elements"
+                        : pick.label)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.browsemiumSecondary)
+                        .lineLimit(2)
+                    Text(pick.selector)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(Color.browsemiumTertiary)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                    HStack(spacing: 8) {
+                        BrowsemiumPrimaryButton("Hide") { model.confirmElementHiding() }
+                        BrowsemiumTextButton("Cancel") { model.cancelElementHiding() }
+                    }
+                }
+            }
+
             Toggle("Pause blocking on this site", isOn: pauseBinding)
                 .toggleStyle(.switch)
                 .controlSize(.small)
@@ -355,9 +380,56 @@ struct SiteShieldPanel: View {
                 BrowsemiumIconButton(systemName: "plus", label: "Zoom in") { model.zoomIn() }
                 BrowsemiumTextButton("Reset") { model.resetZoom() }
             }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Hidden elements")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.browsemiumPrimary)
+                    Spacer(minLength: 0)
+                    Text("⌘⇧H to hide one")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(Color.browsemiumTertiary)
+                }
+                if hiddenRules.isEmpty {
+                    Text(model.session.isPrivate
+                        ? "Elements hidden in this private window are forgotten when it closes."
+                        : "Nothing hidden on this site yet.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.browsemiumTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    ForEach(hiddenRules) { rule in
+                        HStack(spacing: 6) {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(rule.label)
+                                    .font(.system(size: 11.5))
+                                    .foregroundStyle(Color.browsemiumSecondary)
+                                    .lineLimit(1)
+                                Text(rule.selector)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(Color.browsemiumTertiary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                            Spacer(minLength: 0)
+                            Toggle("", isOn: enabledBinding(rule))
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                                .controlSize(.mini)
+                                .help(rule.isEnabled ? "Turn this rule off" : "Turn this rule back on")
+                            BrowsemiumIconButton(systemName: "arrow.uturn.backward", label: "Show this element again") {
+                                model.removeCosmeticRule(rule)
+                            }
+                        }
+                    }
+                }
+            }
         }
         .padding(12)
-        .frame(width: 280, alignment: .leading)
+        .frame(width: 300, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: BrowserMetrics.overlayRadius, style: .continuous)
                 .fill(Color.browsemiumRaised)
@@ -396,6 +468,18 @@ struct SiteShieldPanel: View {
         Binding(
             get: { model.prefersReader(for: model.activePageURL) },
             set: { model.setReaderPreference(always: $0) }
+        )
+    }
+
+    private var hiddenRules: [CosmeticRule] {
+        guard let host = model.activePageHost else { return [] }
+        return model.cosmeticRules(for: host)
+    }
+
+    private func enabledBinding(_ rule: CosmeticRule) -> Binding<Bool> {
+        Binding(
+            get: { rule.isEnabled },
+            set: { model.setCosmeticRuleEnabled(rule, enabled: $0) }
         )
     }
 }

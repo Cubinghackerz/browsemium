@@ -15,7 +15,6 @@ struct BrowserToolbar: View {
     @State private var isSearchEnginePanelPresented = false
     @State private var isOverflowPanelPresented = false
     @State private var isCredentialPanelPresented = false
-    @State private var isSiteShieldPresented = false
     @State private var actionPresenter: ExtensionActionPresenter?
 
     var body: some View {
@@ -134,11 +133,13 @@ struct BrowserToolbar: View {
         return BrowsemiumIconButton(
             systemName: paused ? "shield.slash" : "shield",
             label: paused ? "Blocking paused on this site" : "Site protection",
-            isActive: paused
+            isActive: paused || model.pendingElementPick != nil
         ) {
-            isSiteShieldPresented = true
+            model.isSiteShieldPresented = true
         }
-        .popover(isPresented: $isSiteShieldPresented, arrowEdge: .bottom) {
+        // The picker opens this panel for its confirmation step, so the
+        // presentation state lives on the model rather than in the toolbar.
+        .popover(isPresented: $model.isSiteShieldPresented, arrowEdge: .bottom) {
             SiteShieldPanel(model: model)
             .presentationBackground(.clear)
         }

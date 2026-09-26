@@ -18,6 +18,7 @@ public final class BrowserRuntimeController: BrowserRuntime, BrowserEngine {
     public private(set) var protectionLevel: ProtectionLevel = .standard
     private var appliedBlocking: Bool?
     private var pausedBlockingHosts: Set<String> = []
+    private var cosmeticRulesByHost: [String: String] = [:]
 
     /// Answers camera and microphone requests. Set by the window that owns the
     /// prompt; every runtime in this controller asks it.
@@ -199,6 +200,7 @@ public final class BrowserRuntimeController: BrowserRuntime, BrowserEngine {
                 observer(tabID, event)
             }
         }
+        runtime.applyCosmeticRules(cosmeticRulesByHost)
         runtimes[tabID] = runtime
         return runtime
     }
@@ -242,6 +244,21 @@ public final class BrowserRuntimeController: BrowserRuntime, BrowserEngine {
 
     public func isBlockingPaused(host: String) -> Bool {
         pausedBlockingHosts.contains(host.lowercased())
+    }
+
+    public func beginElementPicking(tabID: TabID) {
+        runtimes[tabID]?.beginElementPicking()
+    }
+
+    public func cancelElementPicking(tabID: TabID) {
+        runtimes[tabID]?.cancelElementPicking()
+    }
+
+    public func replaceCosmeticRules(_ rulesByHost: [String: String]) {
+        cosmeticRulesByHost = rulesByHost
+        for runtime in runtimes.values {
+            runtime.applyCosmeticRules(rulesByHost)
+        }
     }
 
     public func activate(tabID: TabID, in pane: PaneID) async {

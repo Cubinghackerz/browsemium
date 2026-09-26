@@ -108,6 +108,22 @@ final class StubEngine: BrowserEngine {
         pausedHosts = hosts
     }
 
+    var pickingTabs: [TabID] = []
+    var cancelledPickingTabs: [TabID] = []
+    var cosmeticRules: [String: String] = [:]
+
+    func beginElementPicking(tabID: TabID) {
+        pickingTabs.append(tabID)
+    }
+
+    func cancelElementPicking(tabID: TabID) {
+        cancelledPickingTabs.append(tabID)
+    }
+
+    func replaceCosmeticRules(_ rulesByHost: [String: String]) {
+        cosmeticRules = rulesByHost
+    }
+
     func apply(_ settings: BrowserSettings) {}
     var permissionPrompter: (any PermissionPrompting)?
     func applySleepPolicy(tabs: [BrowserTab], signals: [TabID: TabSleepSignals], now: Date) async {}

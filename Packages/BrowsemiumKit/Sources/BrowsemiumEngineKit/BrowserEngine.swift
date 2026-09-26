@@ -95,6 +95,17 @@ public protocol BrowserEngine: AnyObject {
     /// next page is not loaded under the previous site's exception.
     func replacePausedBlockingHosts(_ hosts: Set<String>)
 
+    // MARK: - Element hiding
+
+    /// Starts the element picker on a tab's page. Engines that cannot run an
+    /// in-page picker keep the default, which does nothing.
+    func beginElementPicking(tabID: TabID)
+    /// Cancels an in-progress pick without saving anything.
+    func cancelElementPicking(tabID: TabID)
+    /// Replaces the per-host cosmetic CSS, keyed by lowercase hostname. The
+    /// engine applies it at document start and to the current page.
+    func replaceCosmeticRules(_ rulesByHost: [String: String])
+
     // MARK: - Settings, permissions, memory
 
     func apply(_ settings: BrowserSettings)
@@ -125,6 +136,12 @@ public extension BrowserEngine {
     func setContentRulesPaused(tabID: TabID, paused: Bool) {}
 
     func replacePausedBlockingHosts(_ hosts: Set<String>) {}
+
+    func beginElementPicking(tabID: TabID) {}
+
+    func cancelElementPicking(tabID: TabID) {}
+
+    func replaceCosmeticRules(_ rulesByHost: [String: String]) {}
 }
 
 /// Download progress, reported to every window.

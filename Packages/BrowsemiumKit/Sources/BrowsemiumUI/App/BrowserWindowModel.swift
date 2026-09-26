@@ -252,6 +252,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         }
         environment.engine.apply(storedSettings)
         refreshPausedBlockingHosts()
+        refreshCosmeticRules()
         applyAppearanceToApp()
         paneOrder = [paneID]
         paneTabIDs[paneID] = session.activeTabID
@@ -1902,6 +1903,21 @@ public final class BrowserWindowModel: PermissionPrompting {
         return Int((environment.engine.currentZoom(tabID: tabID) * 100).rounded())
     }
 
+    /// The site shield popover. Shared so the picker can open it for the
+    /// confirmation step instead of inventing a second surface.
+    public var isSiteShieldPresented = false
+    /// Set while the element picker is armed on the active tab.
+    public private(set) var isPickingElement = false
+    /// A picked element waiting for the user to confirm hiding it, and the
+    /// host it was picked on — confirming after a tab switch must still save
+    /// the rule against the site it came from.
+    public private(set) var pendingElementPick: ElementPick?
+    private var pendingElementPickHost: String?
+    /// Bumped whenever the rule set changes so views re-read the lists.
+    private var cosmeticRulesRevision = 0
+    /// Rules created in a private window. Session-scoped: never persisted.
+    private var privateCosmeticRules: [String: [CosmeticRule]] = [:]
+
     public func isBlockingPaused(for url: URL?) -> Bool {
         guard !session.isPrivate, let host = Self.zoomHost(of: url) else { return false }
         let stored = try? environment.sitePreferenceRepository.value(
@@ -1966,6 +1982,121 @@ public final class BrowserWindowModel: PermissionPrompting {
             value: ProtectionLevel.blockingPausedValue
         )) ?? []
         environment.engine.replacePausedBlockingHosts(hosts)
+    }
+
+    // MARK: - Element hiding
+
+    /// Arms the picker (⌘⇧H) on the active tab.
+    public func beginElementHiding() {
+        guard let tabID = session.activeTabID, activePageURL != nil else {
+            statusMessage = "No page to pick an element from."
+            return
+        }
+        guard environment.engine.isLive(tabID: tabID) else {
+            statusMessage = "This tab is not loaded yet."
+            return
+        }
+        guard !isReaderModeActive else {
+            statusMessage = "Element hiding works on the page, not in Reader."
+            return
+        }
+        environment.engine.beginElementPicking(tabID: tabID)
+        isPickingElement = true
+        statusMessage = "Click the element to hide. Esc cancels."
+    }
+
+    /// Saves the picked element's rule and applies it to the open page.
+    public func confirmElementHiding() {
+        guard let pick = pendingElementPick, let host = pendingElementPickHost else { return }
+        pendingElementPick = nil
+        pendingElementPickHost = nil
+        if session.isPrivate {
+            var rules = privateCosmeticRules[host] ?? []
+            rules.append(CosmeticRule(host: host, selector: pick.selector, label: pick.label))
+            privateCosmeticRules[host] = rules
+            statusMessage = "Element hidden for this private window"
+        } else {
+            do {
+                try environment.cosmeticRuleRepository.add(host: host, selector: pick.selector, label: pick.label)
+                statusMessage = "Element hidden on \(host)"
+            } catch {
+                statusMessage = error.localizedDescription
+                return
+            }
+        }
+        refreshCosmeticRules()
+    }
+
+    public func cancelElementHiding() {
+        if isPickingElement, let tabID = session.activeTabID {
+            environment.engine.cancelElementPicking(tabID: tabID)
+        }
+        isPickingElement = false
+        pendingElementPick = nil
+        pendingElementPickHost = nil
+        statusMessage = nil
+    }
+
+    /// Rules that apply to a host: saved ones, plus this private window's
+    /// temporary ones.
+    public func cosmeticRules(for host: String) -> [CosmeticRule] {
+        _ = cosmeticRulesRevision
+        var rules = (try? environment.cosmeticRuleRepository.rules(host: host)) ?? []
+        rules.append(contentsOf: privateCosmeticRules[host.lowercased()] ?? [])
+        return rules
+    }
+
+    public func setCosmeticRuleEnabled(_ rule: CosmeticRule, enabled: Bool) {
+        if let temporary = privateCosmeticRules[rule.host], temporary.contains(where: { $0.id == rule.id }) {
+            privateCosmeticRules[rule.host] = temporary.map { existing in
+                var copy = existing
+                if copy.id == rule.id { copy.isEnabled = enabled }
+                return copy
+            }
+        } else {
+            do {
+                try environment.cosmeticRuleRepository.setEnabled(enabled, id: rule.id)
+            } catch {
+                statusMessage = error.localizedDescription
+                return
+            }
+        }
+        refreshCosmeticRules()
+        statusMessage = enabled ? "Rule turned back on" : "Rule turned off"
+    }
+
+    /// The undo for hiding: the rule is deleted and the element returns.
+    public func removeCosmeticRule(_ rule: CosmeticRule) {
+        if let temporary = privateCosmeticRules[rule.host], temporary.contains(where: { $0.id == rule.id }) {
+            privateCosmeticRules[rule.host] = temporary.filter { $0.id != rule.id }
+        } else {
+            do {
+                try environment.cosmeticRuleRepository.remove(id: rule.id)
+            } catch {
+                statusMessage = error.localizedDescription
+                return
+            }
+        }
+        refreshCosmeticRules()
+        statusMessage = "Element shown again"
+    }
+
+    /// Rebuilds the per-host CSS the engine injects. Called at launch, after
+    /// a profile switch, and after any rule change.
+    private func refreshCosmeticRules() {
+        var rulesByHost: [String: String] = [:]
+        for host in (try? environment.cosmeticRuleRepository.hosts()) ?? [] {
+            let rules = (try? environment.cosmeticRuleRepository.rules(host: host)) ?? []
+            let css = CosmeticRuleRepository.css(for: rules)
+            if !css.isEmpty { rulesByHost[host] = css }
+        }
+        for (host, rules) in privateCosmeticRules {
+            let css = CosmeticRuleRepository.css(for: rules)
+            guard !css.isEmpty else { continue }
+            rulesByHost[host] = rulesByHost[host].map { $0 + "\n" + css } ?? css
+        }
+        environment.engine.replaceCosmeticRules(rulesByHost)
+        cosmeticRulesRevision += 1
     }
 
     public func setReaderPreference(always: Bool) {
@@ -3073,6 +3204,23 @@ public final class BrowserWindowModel: PermissionPrompting {
                 hoveredLinkURL = url
                 updateHoverPeek(for: url)
             }
+        case .elementPicked(let pick):
+            guard session.activeTabID == tabID else { return }
+            isPickingElement = false
+            pendingElementPick = pick
+            // Remember the site the pick came from: the user may switch tabs
+            // before confirming, and the rule belongs to the picked page.
+            pendingElementPickHost = Self.zoomHost(of: tabURLs[tabID])
+            statusMessage = nil
+            isSiteShieldPresented = true
+        case .elementPickCancelled:
+            guard session.activeTabID == tabID else { return }
+            isPickingElement = false
+            statusMessage = nil
+        case .elementPickFailed:
+            guard session.activeTabID == tabID else { return }
+            isPickingElement = false
+            statusMessage = "That element has no stable selector to save."
         case .audioStateChanged(let state):
             if state.isPlaying || state.isMuted {
                 tabAudio[tabID] = state
@@ -3092,6 +3240,10 @@ public final class BrowserWindowModel: PermissionPrompting {
                 loadingProgress = 0.05
                 statusMessage = nil
                 hoveredLinkURL = nil
+                // A navigation replaces the document the picker was armed on.
+                isPickingElement = false
+                pendingElementPick = nil
+                pendingElementPickHost = nil
             }
             if peek?.tabID != tabID {
                 updateTab(tabID) { tab in
@@ -3456,6 +3608,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         // host has no bridge, loads nothing, and every extension API call —
         // tab creation, permission prompts, action popups — silently dies.
         refreshPausedBlockingHosts()
+        refreshCosmeticRules()
         refreshExtensions()
         reloadExtensions()
         refreshAISkills()

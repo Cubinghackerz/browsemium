@@ -90,8 +90,9 @@ Things that are true by design, and must stay true:
 
 Known gaps that are deliberately honest errors, not stubs: screenshots and
 reader mode (need the DevTools protocol path), credential filling, per-profile
-site-data clearing, request-interception blocking, and Chrome extensions
-(which require Chrome-style windows, still unproven).
+site-data clearing, request-interception blocking, element hiding (the picker
+is an injected WebKit script), and Chrome extensions (which require
+Chrome-style windows, still unproven).
 
 ## Benchmarks
 

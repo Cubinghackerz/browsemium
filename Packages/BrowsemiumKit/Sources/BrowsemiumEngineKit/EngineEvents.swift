@@ -49,4 +49,26 @@ public enum TabRuntimeEvent: Sendable {
     /// The pointer entered or left a link in the page. `nil` clears the
     /// status bar; only the active tab's events should be displayed.
     case linkHovered(URL?)
+    /// The element picker resolved a page element the user clicked. The
+    /// selector was verified against the live document before it left the
+    /// page; `matchCount` is how many elements it matches there.
+    case elementPicked(ElementPick)
+    /// The user pressed Esc (or the page went away) during element picking.
+    case elementPickCancelled
+    /// The clicked element had no durable selector, so nothing was picked.
+    case elementPickFailed
+}
+
+/// One element the user chose to hide. `selector` round-trips to the element
+/// in the document it was picked from.
+public struct ElementPick: Sendable, Equatable {
+    public let selector: String
+    public let label: String
+    public let matchCount: Int
+
+    public init(selector: String, label: String, matchCount: Int) {
+        self.selector = selector
+        self.label = label
+        self.matchCount = matchCount
+    }
 }

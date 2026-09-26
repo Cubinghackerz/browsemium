@@ -408,14 +408,22 @@ until signing credentials exist.
   Sparkle updates and the Homebrew cask (the CI release workflow already
   encodes that path).
 
-### 2.2 — Per-site element hiding — NEXT
+### 2.2 — Per-site element hiding — SHIPPED
 
-- `⌘⇧H` enters element-selection mode: on-page highlight, click to pick,
-  confirmation step before saving.
-- Cosmetic rules persist scoped to the hostname, per profile; applied at
-  document start without reloading unrelated sites.
-- Undo, enable/disable, and rule management live in the site shield panel.
-- Private windows can use temporary rules but never persist them.
+- `⌘⇧H` enters element-selection mode: the page draws a highlight and a
+  tag/id/class badge under the pointer; a click reports a selector that was
+  verified against the live document (unique id, else an exact child path),
+  and the site shield panel asks for confirmation before saving. Esc cancels.
+- Cosmetic rules persist scoped to the hostname, per profile
+  (`cosmetic_rules` table, profile schema v10); the whole host→CSS map is
+  injected at document start, so matching happens in the page and a rule
+  change never rebuilds per-navigation state.
+- Rule changes update the open page in place — no reload — and the site
+  shield lists each rule with an enable toggle and a "show again" undo.
+- Private windows can hide elements but never persist the rules; they live
+  for the window's lifetime only.
+- The picker is WebKit-only: the Chromium edition keeps the engine default
+  (a no-op), listed with the other CEF gaps in AGENTS.md.
 
 ### 2.3 — Smart space routing — NEXT
 

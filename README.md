@@ -41,6 +41,9 @@ Chromium edition is parked for power users who need it.
 - **Privacy defaults.** `WKContentRuleList` ad/tracker blocking, per-site
   permissions, clear-on-quit, address-bar suggestions sourced from local
   history and bookmarks only.
+- **Element hiding.** ⌘⇧H picks an element on the page (verified selector,
+  confirmation before saving); the rule is scoped to the host and managed —
+  toggled, undone — from the site shield.
 - **Downloads.** See live progress, tell completed files from failed or
   interrupted transfers, and reveal downloaded files in Finder.
 - **Memory saver.** Background tabs unload after a configurable idle period

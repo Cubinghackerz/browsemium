@@ -164,6 +164,22 @@ public final class AppDatabase: @unchecked Sendable {
                 )
                 """)
         }
+        migrator.registerMigration("profile-v10-cosmetic-rules") { database in
+            // Elements the user chose to hide, scoped to a host. Cosmetic
+            // only: each rule is a selector matched by injected CSS at
+            // document start, never a network rule.
+            try database.execute(sql: """
+                CREATE TABLE cosmetic_rules (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    host TEXT NOT NULL,
+                    selector TEXT NOT NULL,
+                    label TEXT NOT NULL,
+                    is_enabled INTEGER NOT NULL DEFAULT 1,
+                    created_at DATETIME NOT NULL
+                )
+                """)
+            try database.execute(sql: "CREATE INDEX cosmetic_rules_host ON cosmetic_rules (host)")
+        }
         return migrator
     }
 
