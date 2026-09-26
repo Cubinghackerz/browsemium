@@ -44,6 +44,9 @@ jobs:
           bash -n Benchmarks/benchmark-memory.sh
           python3 -c "import ast; [ast.parse(open(p).read()) for p in ['Benchmarks/generate-fixtures.py','Benchmarks/serve-fixtures.py','Scripts/generate-content-rules.py']]"
 
+      - name: Installer fixture tests
+        run: Scripts/tests/installer/run.sh
+
   app:
     name: Xcode app build and tests
     runs-on: macos-15
