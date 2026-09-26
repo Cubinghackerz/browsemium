@@ -3,6 +3,11 @@ options:
   minimumXcodeGenVersion: 2.41.0
   deploymentTarget:
     macOS: "14.0"
+  # Generate without XcodeGen's bundled setting presets so the committed
+  # project is byte-identical whether or not an install ships its
+  # share/xcodegen/SettingPresets data (CI's Homebrew install does; a bare
+  # binary copy does not). Scripts/verify-project.sh enforces that equality.
+  settingPresets: none
 packages:
   BrowsemiumKit:
     path: Packages/BrowsemiumKit
