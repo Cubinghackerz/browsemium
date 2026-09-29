@@ -6,6 +6,7 @@ import BrowsemiumEngineKit
 struct NewTabView: View {
     @Bindable var model: BrowserWindowModel
     @State private var topSites: [TopSite] = []
+    @AppStorage("browsemium.importOfferDismissed") private var importOfferDismissed = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -15,13 +16,10 @@ struct NewTabView: View {
                 if model.session.isPrivate {
                     privateHeader
                 } else {
-                    BrowsemiumLogo(size: 68)
-                        .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
-                        .padding(.bottom, 18)
+                    BrowsemiumWatermark(size: 220)
+                        .padding(.bottom, 8)
 
-                    Text("Browsemium")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(Color.browsemiumPrimary)
+                    BrowsemiumWordmark(size: 17)
 
                     Text("Search or type an address — ⌘L jumps straight to it.")
                         .font(.system(size: 12.5))
@@ -34,12 +32,24 @@ struct NewTabView: View {
                         hint("⇧⌘A", "Assistant")
                     }
                     .padding(.top, 26)
+
+                    if !importOfferDismissed {
+                        HStack(spacing: 10) {
+                            Button("Move from another browser") {
+                                importOfferDismissed = true
+                                model.openPanel(.importWizard)
+                            }
+                            Button("Dismiss") { importOfferDismissed = true }
+                                .foregroundStyle(Color.browsemiumTertiary)
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11.5))
+                        .padding(.top, 28)
+                    }
                 }
             }
-            // The header is one accessibility element; combining the whole
-            // page would swallow the site tiles below.
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("New tab. Command L focuses the address bar, Command K opens commands, Shift Command A opens the assistant.")
+            // Keep the import and dismissal buttons as separate accessibility
+            // actions; combining this stack would hide them from VoiceOver.
 
             if !topSites.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {

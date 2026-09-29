@@ -10,7 +10,7 @@ import BrowsemiumEngineKit
 struct FirstRunView: View {
     @Bindable var model: BrowserWindowModel
     let onFinish: () -> Void
-    let onMoveFromChrome: () -> Void
+    let onImportBrowser: () -> Void
 
     @State private var step = 0
     @State private var searchTemplate = SearchEnginePreset.google.template
@@ -85,7 +85,6 @@ struct FirstRunView: View {
         VStack(spacing: 14) {
             Spacer()
             BrowsemiumLogo(size: 76)
-                .shadow(color: .black.opacity(0.14), radius: 16, y: 6)
 
             Text("Welcome to Browsemium")
                 .font(.system(size: 22, weight: .semibold))
@@ -96,8 +95,8 @@ struct FirstRunView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
-            BrowsemiumTextButton("Moving from Chrome?") {
-                onMoveFromChrome()
+            BrowsemiumTextButton("Moving from another browser?") {
+                onImportBrowser()
             }
 
             Spacer()

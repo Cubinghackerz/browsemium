@@ -14,6 +14,15 @@ struct ImportPreviewSheet: View {
     let onCancel: () -> Void
     let onImport: () -> Void
 
+    private var hasSelectedData: Bool {
+        (options.includesBookmarks && preview.bookmarkCount > 0)
+            || (options.includesHistory && preview.historyCount > 0)
+            || (options.includesPasswords && preview.credentialCount > 0)
+            || (options.includesCookies && preview.cookieCount > 0)
+            || (options.includesExtensions && !preview.extensionIDs.isEmpty)
+            || (options.includesSearchEngine && preview.searchEngine != nil)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
@@ -59,8 +68,29 @@ struct ImportPreviewSheet: View {
             if preview.credentialCount > 0 {
                 scopeRow(
                     title: "Passwords",
-                    detail: "\(preview.credentialCount) saved logins. macOS will ask to read Chrome's key; they are stored in your keychain.",
+                    detail: "\(preview.credentialCount) saved logins. macOS may ask to read \(preview.source.safeStorageService ?? "the source browser's key"); imported logins go to your keychain.",
                     isOn: $options.includesPasswords
+                )
+            }
+
+            if preview.cookieCount > 0 {
+                scopeRow(
+                    title: "Cookies and sign-ins",
+                    detail: "\(preview.cookieCount) cookies. They can grant account access. Import only into a profile you control; some sites may still ask you to sign in.",
+                    isOn: $options.includesCookies
+                )
+                if options.includesCookies, let service = preview.source.safeStorageService {
+                    Text("macOS may ask to unlock \(service) before importing.")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(Color.browsemiumWarning)
+                }
+            }
+
+            if !preview.extensionIDs.isEmpty {
+                scopeRow(
+                    title: "Extensions",
+                    detail: "\(preview.extensionIDs.count) installed. You will confirm reinstall separately; each starts disabled.",
+                    isOn: $options.includesExtensions
                 )
             }
 
@@ -73,7 +103,7 @@ struct ImportPreviewSheet: View {
             }
 
             if preview.isEmpty {
-                Text("No bookmarks, history, or passwords were found in this profile.")
+                Text("No supported data was found in this profile.")
                     .font(.system(size: 12))
                     .foregroundStyle(Color.browsemiumWarning)
             }
@@ -89,13 +119,19 @@ struct ImportPreviewSheet: View {
                 }
             }
 
+            if isImporting {
+                ProgressView("Importing into Browsemium…")
+                    .controlSize(.small)
+            }
+
             HStack {
                 BrowsemiumTextButton("Cancel", action: onCancel)
+                    .disabled(isImporting)
                     .keyboardShortcut(.cancelAction)
                 Spacer()
                 BrowsemiumPrimaryButton(
                     isImporting ? "Importing…" : importButtonTitle,
-                    isDisabled: isImporting || preview.isEmpty || (!options.includesBookmarks && !options.includesHistory),
+                    isDisabled: isImporting || !hasSelectedData,
                     action: onImport
                 )
                 .keyboardShortcut(.defaultAction)
@@ -142,11 +178,13 @@ struct ImportPreviewSheet: View {
     }
 
     private var summary: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             summaryTile("\(preview.bookmarkCount)", "Bookmarks")
             summaryTile("\(preview.historyCount)", "History entries")
             summaryTile("\(preview.folders.count)", "Folders")
             summaryTile("\(preview.credentialCount)", "Passwords")
+            summaryTile("\(preview.cookieCount)", "Cookies")
+            if !preview.extensionIDs.isEmpty { summaryTile("\(preview.extensionIDs.count)", "Extensions") }
         }
     }
 

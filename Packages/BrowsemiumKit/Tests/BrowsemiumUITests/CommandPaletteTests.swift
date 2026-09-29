@@ -6,6 +6,14 @@ import Testing
 import BrowsemiumEngineKit
 
 @Test @MainActor
+func paletteOpensTheImportGuide() {
+    let model = BrowserWindowModel(environment: .inMemory())
+    #expect(model.filteredCommands(query: "import browser").contains { $0.command == .openImportWizard })
+    model.perform(.openImportWizard)
+    #expect(model.activePanel == .importWizard)
+}
+
+@Test @MainActor
 func paletteFindsTabsWithFuzzyMatching() {
     let model = BrowserWindowModel()
     model.newTab(url: URL(string: "https://github.com/pulls")!)

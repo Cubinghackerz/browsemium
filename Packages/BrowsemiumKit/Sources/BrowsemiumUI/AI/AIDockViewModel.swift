@@ -163,7 +163,7 @@ public final class AIDockViewModel {
             hasStoredCredential = true
             return
         }
-        hasStoredCredential = (try? environment.keychain.hasSecret(account: credentialAccount)) ?? false
+        hasStoredCredential = environment.hasProviderCredential(provider)
     }
 
     /// Resets provider-scoped UI and cancels work that belongs to the old
@@ -270,7 +270,7 @@ public final class AIDockViewModel {
             }
             return
         }
-        let account = environment.providerCredentialAccount(requestedProvider)
+        let account = environment.providerCredentialAccountForUse(requestedProvider)
         guard let credential = try? environment.keychain.secret(account: account), !credential.isEmpty else {
             refreshCredentialState()
             return
@@ -295,6 +295,7 @@ public final class AIDockViewModel {
 
     public func disconnect() {
         try? environment.keychain.deleteSecret(account: credentialAccount)
+        try? environment.keychain.deleteSecret(account: "provider.\(provider.rawValue)")
         hasStoredCredential = false
         models = []
         selectedModelID = nil
@@ -1005,7 +1006,8 @@ public final class AIDockViewModel {
         if provider.isLocal {
             credential = ""
         } else {
-            guard let stored = try? environment.keychain.secret(account: credentialAccount), !stored.isEmpty else {
+            let account = environment.providerCredentialAccountForUse(provider)
+            guard let stored = try? environment.keychain.secret(account: account), !stored.isEmpty else {
                 errorMessage = "Connect an API key for \(descriptor.displayName) first."
                 return
             }

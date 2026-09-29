@@ -148,6 +148,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         BrowserPaletteCommand(id: "bookmarks", title: "Open Bookmarks", shortcut: "⌥⌘B", command: .openBookmarks),
         BrowserPaletteCommand(id: "downloads", title: "Open Downloads", shortcut: "⇧⌘J", command: .openDownloads),
         BrowserPaletteCommand(id: "settings", title: "Open Settings", shortcut: "⌘,", command: .openSettings),
+        BrowserPaletteCommand(id: "import", title: "Import from Another Browser", shortcut: "", command: .openImportWizard),
         BrowserPaletteCommand(id: "toggle-ai", title: "Toggle Assistant", shortcut: "⇧⌘A", command: .toggleAIDock),
         BrowserPaletteCommand(id: "ai-summarize", title: "AI: Summarize This Page", shortcut: "", command: .aiQuickAction(.summarizePage)),
         BrowserPaletteCommand(id: "ai-keypoints", title: "AI: Extract Key Points", shortcut: "", command: .aiQuickAction(.keyPoints)),
@@ -2243,11 +2244,41 @@ public final class BrowserWindowModel: PermissionPrompting {
         Task {
             do {
                 let data = try await environment.engine.pageScreenshot(tabID: tabID)
-                saveExport(data: data, baseName: baseName, extension: "png")
+                let output = UserDefaults.standard.bool(forKey: "browsemium.screenshotWatermark")
+                    ? (Self.watermarkedScreenshot(data) ?? data) : data
+                saveExport(data: output, baseName: baseName, extension: "png")
             } catch {
                 statusMessage = "This page could not be captured."
             }
         }
+    }
+
+    private static func watermarkedScreenshot(_ data: Data) -> Data? {
+        guard let image = NSImage(data: data),
+              let tiff = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff),
+              let context = NSGraphicsContext(bitmapImageRep: bitmap) else { return nil }
+        let prior = NSGraphicsContext.current
+        NSGraphicsContext.current = context
+        defer { NSGraphicsContext.current = prior }
+        let label = "Browsemium" as NSString
+        let font = NSFont.systemFont(ofSize: max(11, min(17, CGFloat(bitmap.pixelsWide) * 0.018)), weight: .medium)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.white
+        ]
+        let textSize = label.size(withAttributes: attributes)
+        let padding: CGFloat = 12
+        let width = CGFloat(bitmap.pixelsWide)
+        let pill = NSRect(x: width - textSize.width - padding * 3,
+                          y: padding,
+                          width: textSize.width + padding * 2,
+                          height: textSize.height + padding)
+        NSColor.black.withAlphaComponent(0.65).setFill()
+        NSBezierPath(roundedRect: pill, xRadius: 6, yRadius: 6).fill()
+        label.draw(at: NSPoint(x: pill.minX + padding, y: pill.minY + padding / 2), withAttributes: attributes)
+        context.flushGraphics()
+        return bitmap.representation(using: .png, properties: [:])
     }
 
     private static func exportBaseName(for tab: BrowserTab?) -> String {
@@ -2686,6 +2717,8 @@ public final class BrowserWindowModel: PermissionPrompting {
             openPanel(.downloads)
         case .openSettings:
             openPanel(.settings)
+        case .openImportWizard:
+            openPanel(.importWizard)
         case .clearBrowsingData:
             clearBrowsingData()
         case .aiQuickAction(let action):
@@ -2919,14 +2952,38 @@ public final class BrowserWindowModel: PermissionPrompting {
         savedCredentials = (try? environment.savedCredentialRepository.all()) ?? []
     }
 
-    public func saveCredential(host: String, username: String, password: String) {
+    @discardableResult
+    public func saveCredential(
+        host: String,
+        username: String,
+        password: String,
+        profile targetProfile: BrowserProfile? = nil
+    ) -> Bool {
+        let targetProfile = targetProfile ?? environment.activeProfile
+        var created: SavedCredential?
         do {
-            let credential = try environment.savedCredentialRepository.save(host: host, username: username)
+            let repository: SavedCredentialRepository
+            if targetProfile.id == environment.activeProfile.id {
+                repository = environment.savedCredentialRepository
+            } else {
+                let database = try environment.profileStore.database(for: targetProfile)
+                repository = SavedCredentialRepository(database: database)
+            }
+            let existing = try repository.credentials(for: host)
+                .first { $0.username == username.trimmingCharacters(in: .whitespacesAndNewlines) }
+            let credential = try repository.save(host: host, username: username)
+            if existing == nil { created = credential }
             try environment.keychain.setSecret(password, account: credential.keychainAccount)
-            refreshSavedCredentials()
+            if targetProfile.id == environment.activeProfile.id { refreshSavedCredentials() }
             statusMessage = "Password saved securely in Keychain"
+            return true
         } catch {
+            if let created {
+                let database = try? environment.profileStore.database(for: targetProfile)
+                if let database { _ = try? SavedCredentialRepository(database: database).remove(id: created.id) }
+            }
             statusMessage = error.localizedDescription
+            return false
         }
     }
 
@@ -3827,6 +3884,36 @@ public final class BrowserWindowModel: PermissionPrompting {
                 statusMessage = error.localizedDescription
             }
         }
+    }
+
+    /// Only called after the import guide's separate reinstall confirmation.
+    /// New items remain disabled until the user enables and grants permissions.
+    public func reinstallImportedExtensions(_ ids: [String]) async -> (installed: Int, skipped: Int) {
+        guard extensionsUnavailableReason == nil, !isInstallingFromWebStore else {
+            return (0, ids.count)
+        }
+        isInstallingFromWebStore = true
+        defer { isInstallingFromWebStore = false }
+        var installed = 0
+        for id in ids {
+            guard let reference = try? ChromeWebStoreReference(extensionID: id) else { continue }
+            do {
+                let package = try await environment.chromeWebStore.downloadPackage(for: reference.extensionID)
+                defer { try? FileManager.default.removeItem(at: package) }
+                let item = try environment.extensionStore.install(from: package, identifier: reference.extensionID)
+                try environment.extensionRepository.upsert(
+                    id: item.id, name: item.name, version: item.version,
+                    enabledByDefault: false, installedAt: item.installedAt
+                )
+                installed += 1
+            } catch {
+                // The caller reports the skipped count. Never log a source
+                // profile path or reveal an extension's private data.
+                continue
+            }
+        }
+        refreshExtensions()
+        return (installed, ids.count - installed)
     }
 
     /// Installs an extension from a folder, .zip, .crx, or .appex. New

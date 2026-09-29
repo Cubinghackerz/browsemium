@@ -20,7 +20,12 @@ public struct SystemKeychain: KeychainAPI {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
-        SecItemDelete(query as CFDictionary)
+        // Updating in place preserves an existing password if the write is
+        // denied. Delete-then-add could erase it before the replacement lands.
+        let update: [String: Any] = [kSecValueData as String: data]
+        let updateStatus = SecItemUpdate(query as CFDictionary, update as CFDictionary)
+        if updateStatus == errSecSuccess { return errSecSuccess }
+        if updateStatus != errSecItemNotFound { return updateStatus }
 
         var attributes = query
         attributes[kSecValueData as String] = data

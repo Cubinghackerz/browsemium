@@ -126,6 +126,27 @@ func importingTwiceDoesNotDuplicateAnything() throws {
 }
 
 @Test
+func previewIncludesUncheckpointedHistoryWALFromARunningBrowser() throws {
+    let profile = try FakeChromeProfile(bookmarks: [], visits: [])
+    defer { profile.cleanUp() }
+    let historyURL = profile.folder.appendingPathComponent("History")
+    var configuration = Configuration()
+    configuration.journalMode = .wal
+    let live = try DatabaseQueue(path: historyURL.path, configuration: configuration)
+    try live.write { db in
+        try db.execute(sql: "PRAGMA wal_autocheckpoint = 0")
+        try db.execute(sql: "INSERT INTO urls (url, title, last_visit_time) VALUES (?, ?, ?)",
+                       arguments: ["https://wal.example", "Uncheckpointed", chromeMicros(Date())])
+    }
+    #expect(FileManager.default.fileExists(atPath: historyURL.path + "-wal"))
+
+    let (importer, _, _, _) = try makeImporter()
+    let preview = try importer.preview(at: profile.folder, source: .chrome)
+    #expect(preview.visits.contains { $0.url.host == "wal.example" })
+    withExtendedLifetime(live) {}
+}
+
+@Test
 func historyOptionsRespectScopeAndRange() throws {
     let now = Date()
     let profile = try FakeChromeProfile(
@@ -270,6 +291,142 @@ private struct StubKeyProvider: BrowserCredentialKeyProviding {
 }
 
 @Test
+func encryptedCookiesRequireConsentAndTheSourceKeyBeforeAnyWrite() throws {
+    let profile = try FakeChromeProfile(
+        bookmarks: [["type": "url", "name": "Example", "url": "https://example.com"]],
+        visits: []
+    )
+    defer { profile.cleanUp() }
+    let network = profile.folder.appendingPathComponent("Network", isDirectory: true)
+    try FileManager.default.createDirectory(at: network, withIntermediateDirectories: true)
+    let key = try ChromeCredentialCrypto.derivedKey(safeStoragePassword: "fixture-only")
+    let encrypted = try ChromeCredentialCrypto.encryptForTesting("session-token", key: key)
+    let queue = try DatabaseQueue(path: network.appendingPathComponent("Cookies").path)
+    try queue.write { db in
+        try db.execute(sql: """
+            CREATE TABLE cookies (
+                host_key TEXT, name TEXT, value TEXT, encrypted_value BLOB,
+                path TEXT, expires_utc INTEGER, is_secure INTEGER, is_httponly INTEGER
+            )
+            """)
+        try db.execute(
+            sql: "INSERT INTO cookies VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            arguments: [".example.com", "session", "", encrypted, "/", chromeMicros(Date().addingTimeInterval(3600)), 1, 1]
+        )
+    }
+
+    let (importer, bookmarks, _, _) = try makeImporter()
+    let preview = try importer.preview(at: profile.folder, source: .chrome)
+    #expect(preview.cookieCount == 1)
+    #expect(BrowserImportOptions().includesCookies == false)
+    var options = BrowserImportOptions()
+    options.includesCookies = true
+    #expect(throws: BrowserDataImporter.ImportError.self) {
+        _ = try importer.apply(preview, options: options, profile: profile.folder)
+    }
+    #expect(try bookmarks.all().isEmpty, "No source key must mean no partial import")
+
+    let result = try importer.apply(preview, options: options,
+                                    keyProvider: StubKeyProvider(key: key), profile: profile.folder)
+    #expect(result.cookies.count == 1)
+    #expect(result.cookies.first?.value == "session-token")
+    #expect(result.cookies.first?.isSecure == true)
+    #expect(result.cookies.first?.isHTTPOnly == true)
+}
+
+@Test
+func safariBinaryCookiesParserReadsAValidRecordAndRejectsTruncation() {
+    func le32(_ value: UInt32) -> Data {
+        Data((0..<4).map { UInt8((value >> ($0 * 8)) & 0xff) })
+    }
+    func be32(_ value: UInt32) -> Data {
+        Data((0..<4).reversed().map { UInt8((value >> ($0 * 8)) & 0xff) })
+    }
+    var cookie = Data(repeating: 0, count: 56)
+    let values = [".example.com", "session", "/", "fixture-value"]
+    for (index, value) in values.enumerated() {
+        let offset = UInt32(cookie.count)
+        cookie.replaceSubrange((16 + index * 4)..<(20 + index * 4), with: le32(offset))
+        cookie.append(contentsOf: value.utf8)
+        cookie.append(0)
+    }
+    cookie.replaceSubrange(0..<4, with: le32(UInt32(cookie.count)))
+    cookie.replaceSubrange(8..<12, with: le32(5))
+    let expiry = Date().addingTimeInterval(3600).timeIntervalSinceReferenceDate.bitPattern
+    cookie.replaceSubrange(40..<48, with: Data((0..<8).map { UInt8((expiry >> ($0 * 8)) & 0xff) }))
+    var page = Data([0, 0, 1, 0])
+    page.append(le32(1))
+    page.append(le32(16))
+    page.append(le32(0))
+    page.append(cookie)
+    var file = Data("cook".utf8)
+    file.append(be32(1))
+    file.append(be32(UInt32(page.count)))
+    file.append(page)
+
+    let parsed = SafariBinaryCookieReader.parse(file)
+    #expect(parsed.count == 1)
+    #expect(parsed.first?.domain == ".example.com")
+    #expect(parsed.first?.value == "fixture-value")
+    #expect(parsed.first?.isHTTPOnly == true)
+    #expect(SafariBinaryCookieReader.parse(file.dropLast(4)).isEmpty)
+}
+
+@Test
+func firefoxProfileNamesComeFromProfilesIniBesideProfilesDirectory() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("browsemium-firefox-\(UUID().uuidString)", isDirectory: true)
+    let profile = root.appendingPathComponent("Profiles/abc.default-release", isDirectory: true)
+    let custom = root.appendingPathComponent("Profiles/xyz.work", isDirectory: true)
+    try FileManager.default.createDirectory(at: profile, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: custom, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try Data("[Profile0]\nName=Research\nPath=Profiles/abc.default-release\n[Profile1]\nName=Work\nPath=Profiles/xyz.work\n".utf8)
+        .write(to: root.appendingPathComponent("profiles.ini"))
+    try Data().write(to: profile.appendingPathComponent("places.sqlite"))
+    try Data().write(to: custom.appendingPathComponent("places.sqlite"))
+    let candidates = BrowserProfileLocator.profiles(insideBrowserRoot: root, source: .firefox)
+    #expect(candidates.count == 2)
+    #expect(candidates.contains { $0.profileName == "Research" && $0.label == "Firefox — Research" })
+    #expect(candidates.contains { $0.profileName == "Work" && $0.label == "Firefox — Work" })
+}
+
+@Test
+func passwordCSVMapsCommonManagersWithoutPersistingPlaintext() throws {
+    let fixtures: [(headers: String, row: String)] = [
+        ("Title,URL,Username,Password,Notes", "Example,https://example.com,alice,fixture-secret,note"),
+        ("title,website,username,password,notes", "Example,https://example.com,alice,fixture-secret,note"),
+        ("folder,type,name,login_uri,login_username,login_password", "Work,login,Example,https://example.com,alice,fixture-secret"),
+        ("url,username,password,extra,name", "https://example.com,alice,fixture-secret,,Example"),
+        ("title,url,login,password,category", "Example,https://example.com,alice,fixture-secret,Work")
+    ]
+    for fixture in fixtures {
+        let csv = try BrowserPasswordCSV(data: Data("\(fixture.headers)\r\n\(fixture.row)\r\n".utf8))
+        let map = try #require(csv.suggestedMap)
+        let credentials = try csv.credentials(using: map)
+        #expect(credentials.count == 1)
+        #expect(credentials.first?.url.host == "example.com")
+        #expect(credentials.first?.username == "alice")
+        #expect(credentials.first?.password == "fixture-secret")
+    }
+}
+
+@Test
+func passwordCSVQuotedFieldsRoundTripAndRejectsBadMapping() throws {
+    let original = ChromeLogin(url: URL(string: "https://example.com")!,
+                               username: "alice, work", password: "quoted \"secret\"\nline")
+    let csv = try BrowserPasswordCSV(data: BrowserPasswordCSV.export([original]))
+    let map = try #require(csv.suggestedMap)
+    #expect(try csv.credentials(using: map) == [original])
+    #expect(throws: BrowserPasswordCSV.CSVError.self) {
+        _ = try csv.credentials(using: .init(site: 0, username: 0, password: 2))
+    }
+    #expect(throws: BrowserPasswordCSV.CSVError.self) {
+        _ = try BrowserPasswordCSV(data: Data("url,username,password\nhttps://example.com,\"alice\"tail,secret\n".utf8))
+    }
+}
+
+@Test
 func choosingTheParentFolderFindsTheProfileInside() throws {
     let profile = try FakeChromeProfile(
         bookmarks: [["type": "url", "name": "Swift", "url": "https://swift.org"]],
@@ -313,7 +470,8 @@ func aFolderWithNoBrowserDataExplainsWhatToPick() throws {
 func sourceDetectionIdentifiesEachBrowserFromItsFiles() throws {
     let profile = try FakeChromeProfile(bookmarks: [], visits: [])
     defer { profile.cleanUp() }
-    #expect(BrowserImportSourceDetector.detect(in: profile.folder) == .chrome)
+    #expect(BrowserImportSourceDetector.detect(in: profile.folder) == nil,
+            "A moved Chromium profile cannot safely be assumed to use Chrome's encryption key")
 
     let firefox = FileManager.default.temporaryDirectory
         .appendingPathComponent("browsemium-ff-\(UUID().uuidString)", isDirectory: true)

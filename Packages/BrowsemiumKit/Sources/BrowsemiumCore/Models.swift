@@ -421,6 +421,7 @@ public enum BrowserCommand: Hashable, Sendable {
     case openBookmarks
     case openDownloads
     case openSettings
+    case openImportWizard
     case clearBrowsingData
     case aiQuickAction(AIQuickAction)
     case zoomIn
@@ -540,6 +541,7 @@ public enum BrowserPanel: Hashable, Sendable {
     case downloads
     case recentlyClosed
     case settings
+    case importWizard
 }
 
 public struct AIModel: Hashable, Codable, Sendable, Identifiable {

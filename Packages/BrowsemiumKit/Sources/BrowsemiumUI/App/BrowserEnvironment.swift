@@ -147,17 +147,33 @@ public final class BrowserEnvironment {
 
     // MARK: - Profiles
 
-    /// Keychain account for an AI provider credential, scoped to the active
-    /// profile so two profiles can hold different keys for the same provider.
-    /// A key saved by a pre-profiles build is migrated on first use.
+    /// Naming an account must never read a secret: Settings and the assistant
+    /// call this while drawing their initial state.
     public func providerCredentialAccount(_ provider: AIProviderID) -> String {
-        let scoped = Self.providerCredentialAccount(provider, profileID: activeProfile.id)
+        Self.providerCredentialAccount(provider, profileID: activeProfile.id)
+    }
+
+    /// Attributes-only availability check, including a pre-profiles item.
+    public func hasProviderCredential(_ provider: AIProviderID) -> Bool {
+        let scoped = providerCredentialAccount(provider)
         let legacy = "provider.\(provider.rawValue)"
-        if (try? keychain.hasSecret(account: scoped)) != true,
-           let value = try? keychain.secret(account: legacy),
-           !value.isEmpty {
-            try? keychain.setSecret(value, account: scoped)
+        return (try? keychain.hasSecret(account: scoped)) == true
+            || (try? keychain.hasSecret(account: legacy)) == true
+    }
+
+    /// Migrate only while making a provider request, where reading its key is
+    /// expected. A denied prompt leaves the old item untouched.
+    public func providerCredentialAccountForUse(_ provider: AIProviderID) -> String {
+        let scoped = providerCredentialAccount(provider)
+        guard (try? keychain.hasSecret(account: scoped)) != true else { return scoped }
+        let legacy = "provider.\(provider.rawValue)"
+        guard (try? keychain.hasSecret(account: legacy)) == true,
+              let value = try? keychain.secret(account: legacy), !value.isEmpty else { return scoped }
+        do {
+            try keychain.setSecret(value, account: scoped)
             try? keychain.deleteSecret(account: legacy)
+        } catch {
+            return scoped
         }
         return scoped
     }

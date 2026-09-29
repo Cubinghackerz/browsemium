@@ -7,6 +7,7 @@ import Testing
 
 private final class ProfileDeletionKeychain: KeychainAPI, @unchecked Sendable {
     private var values: [String: Data] = [:]
+    private(set) var reads = 0
 
     func store(service: String, account: String, data: Data) -> OSStatus {
         values["\(service)|\(account)"] = data
@@ -14,6 +15,7 @@ private final class ProfileDeletionKeychain: KeychainAPI, @unchecked Sendable {
     }
 
     func read(service: String, account: String) -> (status: OSStatus, data: Data?) {
+        reads += 1
         guard let value = values["\(service)|\(account)"] else {
             return (errSecItemNotFound, nil)
         }
@@ -28,6 +30,49 @@ private final class ProfileDeletionKeychain: KeychainAPI, @unchecked Sendable {
     func exists(service: String, account: String) -> Bool {
         values["\(service)|\(account)"] != nil
     }
+}
+
+@Test @MainActor
+func openingSettingsCanCheckLegacyProviderKeyWithoutReadingIt() throws {
+    let backend = ProfileDeletionKeychain()
+    let keychain = KeychainStore(service: "legacy-provider-check", api: backend)
+    try keychain.setSecret("fixture-only", account: "provider.\(AIProviderID.openAI.rawValue)")
+    let environment = BrowserEnvironment.inMemory(keychain: keychain)
+
+    let scoped = environment.providerCredentialAccount(.openAI)
+    #expect(environment.hasProviderCredential(.openAI))
+    #expect(backend.reads == 0, "Drawing Settings must use attributes only")
+    #expect(try !keychain.hasSecret(account: scoped))
+
+    #expect(environment.providerCredentialAccountForUse(.openAI) == scoped)
+    #expect(backend.reads == 1, "Only actual provider use may read the legacy secret")
+    #expect(try keychain.hasSecret(account: scoped))
+}
+
+@Test @MainActor
+func savingCredentialToImportProfileDoesNotLeakIntoActiveProfile() throws {
+    let backend = ProfileDeletionKeychain()
+    let keychain = KeychainStore(service: "profile-scoped-import", api: backend)
+    let environment = BrowserEnvironment.inMemory(keychain: keychain)
+    let model = BrowserWindowModel(environment: environment)
+    let activeProfile = model.activeProfile
+    let importProfile = try #require(model.createProfile(named: "Imported", switchToIt: false))
+
+    #expect(model.saveCredential(
+        host: "example.com",
+        username: "person",
+        password: "fixture-only",
+        profile: importProfile
+    ))
+    #expect(try environment.savedCredentialRepository.all().isEmpty)
+
+    let importedCredentials = try SavedCredentialRepository(
+        database: environment.profileStore.database(for: importProfile)
+    ).all()
+    let imported = try #require(importedCredentials.first)
+    #expect(imported.host == "example.com")
+    #expect(try keychain.secret(account: imported.keychainAccount) == "fixture-only")
+    #expect(model.activeProfile.id == activeProfile.id)
 }
 
 @Test @MainActor

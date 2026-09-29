@@ -155,10 +155,10 @@ public struct BrowsemiumAppView: View {
             FirstRunView(model: model) {
                 UserDefaults.standard.set(true, forKey: Self.onboardingKey)
                 showFirstRun = false
-            } onMoveFromChrome: {
+            } onImportBrowser: {
                 UserDefaults.standard.set(true, forKey: Self.onboardingKey)
                 showFirstRun = false
-                model.openPanel(.settings)
+                model.openPanel(.importWizard)
             }
         }
         .onAppear {
@@ -348,6 +348,8 @@ public struct BrowsemiumAppView: View {
                 LibraryView(model: model)
             case .settings:
                 SettingsView(model: model)
+            case .importWizard:
+                ImportWizardView(model: model)
             case .none:
                 webContent
             }
