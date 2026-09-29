@@ -42,10 +42,15 @@ that require an account.
   BYOK API access for all four, keys in the macOS keychain
 - Password vault: explicit save, keychain storage, fill only after a choice,
   never auto-submits
-- Import from Chrome, Brave, Edge, Vivaldi, Arc, Chromium, Firefox, and Safari:
-  bookmarks, history, reading list, default search engine, and Chromium-family
-  passwords. Passwords from Firefox and Safari are not importable, and the app
-  says why.
+- The import guide detects Chrome, Brave, Edge, Vivaldi, Arc, Dia, Helium,
+  Opera, Chromium, Firefox, and Safari. It previews bookmarks, history,
+  Chromium-family passwords, and cookies per profile. Cookies can carry account
+  access and are off by default. Chromium-family default search engines are
+  imported when selected. Password CSV from Apple Passwords, 1Password,
+  Bitwarden, LastPass, and Dashlane can be mapped and imported into Keychain.
+  Direct Firefox password decryption is not yet supported. Site storage does
+  not transfer; detected Chromium extensions require a separate, confirmed
+  reinstall and start disabled.
 - Quick search-engine switching from the address bar, plus `!g` / `!d` / `!b` /
   `!br` one-off prefixes
 - Address-bar suggestions from local history and bookmarks only

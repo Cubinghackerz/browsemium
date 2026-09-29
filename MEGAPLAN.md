@@ -188,21 +188,17 @@ Strengths to keep: `BrowserEngine` seam (`BrowserRuntimeController`,
 `WebViewFactory` single config point); memory saver with real signals
 (`TabSleepPolicy` + audio/capture/download/keep-awake); honest metrics +
 benchmark gate; review-before-send AI (web panels + BYOK + local Ollama);
-8-browser importer; spaces; per-profile isolated data stores; sandboxed
+11-browser importer; spaces; per-profile isolated data stores; sandboxed
 WebKit edition; Swift 6 strict-concurrency layering that matches
 best-in-class.
 
-Gaps, ranked by leverage:
-
-1. No extensions — `WKWebExtension` now makes this attainable.
-2. No sidebar/vertical tabs, tab folders, peek, or split view (`PaneID`
-   already exists in the engine).
-3. No automation surface — no CLI, MCP, URL scheme, or AppleScript.
-4. AI dock lacks @-tab context, saved skills, inline writing assist,
-   multi-tab summarization.
-5. Content blocking limited to the generated starter list — no
-   user-supplied lists.
-6. No per-site settings surface, translation, or lockable spaces.
+The sidebar, folders, peek, split view, extension core, multi-tab AI context,
+saved skills, site shield, translation, locked spaces, and element hiding have
+shipped. The remaining gaps are migration coverage (Firefox encrypted logins,
+extension reinstalls, autofill, and session formats), the toolbar extension
+host and per-site controls, user filter lists, passkeys, CLI/MCP, visual QA,
+and the release-time memory gate. Treat those as open even when adjacent code
+exists; no performance or login-continuity claim follows from a partial import.
 
 ## Roadmap
 
@@ -442,6 +438,33 @@ until signing credentials exist.
   not expose them).
 - Per-site extension enablement alongside the existing host-permission
   controls.
+
+### Phase 6 — Switch & Shine — IN PROGRESS
+
+- One geometric split-triangle source now generates the plated app icon,
+  template logo, favicons, social card, DMG art, and README banner. The site
+  uses Geist and follows light/dark appearance; the logo is a quiet watermark
+  on empty app canvases. Screenshot watermarks are optional and off by default.
+- A browser-neutral import guide is reachable from onboarding, New Tab,
+  Settings, and ⌘K. Profile names and available emails are shown. An
+  all-profiles route maps each source profile into a separate Browsemium
+  profile. The existing preview remains the gate before writing.
+- Chromium and Firefox cookies have an explicit opt-in. Chromium `v10`
+  values use the same permission-gated Safe Storage key as logins; Safari
+  `Cookies.binarycookies` is parsed only when readable. Cookies are placed in
+  the selected profile's WebKit store. Password-manager CSV imports use an
+  explicit column map and Keychain storage; plaintext CSV export requires a
+  confirmation. These paths must pass fixture and UI verification before
+  release claims change.
+- Still open: direct Firefox `key4.db` login decryption, Safari cookie access
+  when sandbox scope does not cover the file, custom search engine/keyword
+  lists, batch extension reinstall, autofill addresses, open/pinned session
+  restoration, bookmark/history portable backups, and per-item import reports.
+- This cycle's quality gate is a whole-app visual pass in light and dark plus
+  scoped motion polish. Smart routing, advanced blocking, toolbar extension
+  actions, passkeys, password health, CLI/MCP, and optional encrypted sync are
+  proposals for subsequent scoping. Sync would reverse the current no-sync
+  product decision and is not authorized for implementation.
 
 ### Later
 
