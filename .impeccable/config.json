@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "geist",
+        "createdAt": "2026-09-29T11:02:24.473Z",
+        "reason": "User's Switch & Shine brief explicitly specifies a self-hosted Geist wordmark/site font with OFL credit; this intentional brand choice is retained."
+      }
+    ]
+  }
+}
