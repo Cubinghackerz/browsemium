@@ -1,4 +1,5 @@
 import AppKit
+import CoreText
 import SwiftUI
 import BrowsemiumEngineKit
 
@@ -215,9 +216,58 @@ public struct BrowsemiumLogo: View {
     public var body: some View {
         Image("Logo", bundle: .module)
             .resizable()
+            .renderingMode(.template)
             .aspectRatio(contentMode: .fit)
             .frame(width: size, height: size)
+            .foregroundStyle(Color.browsemiumPrimary)
             .accessibilityLabel("Browsemium")
+    }
+}
+
+/// Register the bundled wordmark face once per process.
+private enum BrowsemiumBrandFont {
+    static let name: String? = {
+        guard let url = Bundle.module.url(forResource: "Geist-Variable", withExtension: "ttf") else {
+            return nil
+        }
+        _ = CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+        return "Geist-SemiBold"
+    }()
+}
+
+/// Sentence-case wordmark with a bundled font: no network or system install.
+public struct BrowsemiumWordmark: View {
+    private let size: CGFloat
+
+    public init(size: CGFloat = 17) { self.size = size }
+
+    public var body: some View {
+        Text("Browsemium")
+            .font(BrowsemiumBrandFont.name.map { .custom($0, size: size) }
+                ?? .system(size: size, weight: .semibold))
+            .tracking(-size * 0.02)
+            .foregroundStyle(Color.browsemiumPrimary)
+    }
+}
+
+/// A decorative, template-tinted mark for an otherwise empty canvas.
+public struct BrowsemiumWatermark: View {
+    private let size: CGFloat
+
+    public init(size: CGFloat = 220) {
+        self.size = size
+    }
+
+    public var body: some View {
+        Image("Logo", bundle: .module)
+            .resizable()
+            .renderingMode(.template)
+            .aspectRatio(contentMode: .fit)
+            .frame(width: size, height: size)
+            .foregroundStyle(Color.browsemiumPrimary)
+            .opacity(0.055)
+            .accessibilityHidden(true)
+            .allowsHitTesting(false)
     }
 }
 

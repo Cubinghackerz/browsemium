@@ -1,0 +1,12 @@
+{
+  "name": "Browsemium",
+  "short_name": "Browsemium",
+  "description": "A focused native browser for macOS",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#111111",
+  "theme_color": "#111111",
+  "icons": [
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+  ]
+}

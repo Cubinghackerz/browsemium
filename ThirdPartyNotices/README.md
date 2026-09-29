@@ -31,6 +31,7 @@ review completes, the app must fall back to text labels.
 | Resource | Source | License | Notes |
 |---|---|---|---|
 | Archivo variable Latin WOFF2 | Google Fonts / The Archivo Project Authors (Omnibus-Type) | SIL Open Font License 1.1 | Self-hosted by `Site/`; license text is in `Site/fonts/Archivo-OFL.txt` |
+| Geist Sans variable WOFF2 and TTF | [Vercel Geist](https://github.com/vercel/geist-font), commit `77f0563c03009d6c15c6342183fa53b352255b22` | SIL Open Font License 1.1 | Self-hosted by `Site/fonts/Geist-Variable.woff2` and bundled for the in-app wordmark in `Packages/BrowsemiumKit/Sources/BrowsemiumUI/Resources/Fonts/`; license text is in `Site/fonts/Geist-OFL.txt` |
 
 ## Content-filter lists
 

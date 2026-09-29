@@ -20,13 +20,28 @@ struct SplitPaneView: View {
             // the web view eats clicks that were meant for the page.
             paneHeader
 
-            WebViewHost(
-                engine: model.environment.engine,
-                tabID: tab.id,
-                isPrivate: model.session.isPrivate,
-                onFocus: { model.focusPane(pane) }
-            )
-            .onAppear { model.ensureLoaded(tab.id) }
+            if tab.lastCommittedURL == nil {
+                VStack(spacing: 8) {
+                    BrowsemiumWatermark(size: 150)
+                    Text("New tab")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.browsemiumSecondary)
+                    Button("Search or enter an address") { model.focusAddress() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.browsemiumTertiary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.browsemiumRaised)
+            } else {
+                WebViewHost(
+                    engine: model.environment.engine,
+                    tabID: tab.id,
+                    isPrivate: model.session.isPrivate,
+                    onFocus: { model.focusPane(pane) }
+                )
+                .onAppear { model.ensureLoaded(tab.id) }
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(tab.title), split pane\(isFocused ? ", focused" : "")")

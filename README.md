@@ -1,5 +1,7 @@
 # Browsemium
 
+![Browsemium split-triangle mark and wordmark](Brand/banner.svg)
+
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
 A native macOS browser for people who use AI all day. WebKit-based, written in

@@ -102,6 +102,16 @@ struct TabSidebar: View {
                                 }
                             }
                         }
+                        if pinnedTabs.isEmpty && regularTabs.isEmpty {
+                            VStack(spacing: 5) {
+                                BrowsemiumWatermark(size: 92)
+                                Text("No tabs in this space")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Color.browsemiumTertiary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 48)
+                        }
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 8)

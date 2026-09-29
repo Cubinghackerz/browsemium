@@ -8,33 +8,55 @@
 <meta property="og:title" content="Browsemium — a focused browser for macOS">
 <meta property="og:description" content="A native Mac browser with profiles, built-in AI, and memory controls that stay in your hands.">
 <meta property="og:type" content="website">
-<meta name="color-scheme" content="light">
-<meta name="theme-color" content="#ffffff">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 4 28 26H4z' fill='none' stroke='%231d4ed8' stroke-width='2.5' stroke-linejoin='round'/%3E%3C/svg%3E">
-<link rel="preload" href="/fonts/Archivo-Variable-Latin.woff2" as="font" type="font/woff2" crossorigin>
+<meta property="og:image" content="https://browsemium.vercel.app/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Browsemium's split triangle mark on a dark field">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Browsemium — a focused browser for macOS">
+<meta name="twitter:description" content="A native Mac browser with profiles, built-in AI, and memory controls that stay in your hands.">
+<meta name="twitter:image" content="https://browsemium.vercel.app/og.png">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/favicon.ico" type="image/x-icon">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="preload" href="/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <style>
   @font-face {
-    font-family: "Archivo";
-    src: url("/fonts/Archivo-Variable-Latin.woff2") format("woff2");
+    font-family: "Geist";
+    src: url("/fonts/Geist-Variable.woff2") format("woff2");
     font-style: normal;
     font-weight: 100 900;
-    font-stretch: 62.5% 125%;
     font-display: swap;
   }
 
   :root {
-    color-scheme: light;
+    color-scheme: light dark;
     --paper: #ffffff;
     --ink: #101010;
     --ink-2: #525252;
     --ink-3: #6f6f6f;
     --rule: #e8e8e8;
     --rule-2: #d6d6d6;
-    --accent: #1d4ed8;
+    --accent: #101010;
     --shell: 1120px;
-    --sans: "Archivo", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    --sans: "Geist", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
     --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
     --ease: cubic-bezier(.19, 1, .22, 1);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #111111;
+      --ink: #f7f7f7;
+      --ink-2: #b5b5b5;
+      --ink-3: #929292;
+      --rule: #303030;
+      --rule-2: #555555;
+      --accent: #f7f7f7;
+    }
   }
 
   * { box-sizing: border-box; }
@@ -49,12 +71,12 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     caret-color: var(--accent);
-    scrollbar-color: #c9c9c9 var(--paper);
+    scrollbar-color: var(--rule-2) var(--paper);
   }
-  ::selection { background: var(--accent); color: #fff; }
+  ::selection { background: var(--ink); color: var(--paper); }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-track { background: var(--paper); }
-  ::-webkit-scrollbar-thumb { border: 3px solid var(--paper); border-radius: 99px; background: #c9c9c9; }
+  ::-webkit-scrollbar-thumb { border: 3px solid var(--paper); border-radius: 99px; background: var(--rule-2); }
   a { color: inherit; text-decoration: none; }
   a:focus-visible, button:focus-visible, summary:focus-visible {
     outline: 2px solid var(--accent);
@@ -65,7 +87,7 @@
   @media (max-width: 640px) { .shell { width: calc(100% - 40px); } }
   .skip {
     position: absolute; left: 16px; top: -64px; z-index: 40;
-    padding: 10px 14px; background: var(--ink); color: #fff; font-size: 13px;
+    padding: 10px 14px; background: var(--ink); color: var(--paper); font-size: 13px;
     transition: top .2s var(--ease);
   }
   .skip:focus { top: 16px; }
@@ -73,7 +95,7 @@
   /* Nav */
   .nav {
     position: sticky; top: 0; z-index: 20;
-    background: rgba(255, 255, 255, .88);
+    background: var(--paper);
     background: color-mix(in srgb, var(--paper) 88%, transparent);
     backdrop-filter: saturate(140%) blur(14px);
     -webkit-backdrop-filter: saturate(140%) blur(14px);
@@ -84,10 +106,8 @@
   }
   .js .nav::after { transform: scaleX(0); animation: draw .9s .1s var(--ease) forwards; }
   .nav .shell { min-height: 64px; display: flex; align-items: center; gap: 28px; }
-  .wordmark { display: inline-flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
-  .wordmark svg { flex: none; display: block; }
-  .wordmark path { stroke: var(--accent); }
-  .js .wordmark path { stroke-dasharray: 80; stroke-dashoffset: 80; animation: drawStroke 1.1s .2s var(--ease) forwards; }
+  .wordmark { display: inline-flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 600; letter-spacing: -.02em; }
+  .wordmark img { flex: none; display: block; }
   .nav-links { margin-left: auto; display: flex; align-items: center; gap: 26px; }
   .nav-links a { font-size: 14px; color: var(--ink-2); }
   .nav-links a:not(.nav-cta) {
@@ -98,7 +118,7 @@
   }
   .nav-links a:not(.nav-cta):hover { color: var(--ink); background-size: 100% 1px; }
   .nav-cta {
-    padding: 8px 15px; background: var(--ink); color: #fff !important;
+    padding: 8px 15px; background: var(--ink); color: var(--paper) !important;
     font-weight: 550; border-radius: 2px;
     transition: background .18s ease;
   }
@@ -109,7 +129,13 @@
   }
 
   /* Hero */
-  .hero { padding: clamp(88px, 17vh, 190px) 0 clamp(64px, 10vh, 120px); }
+  .hero { position: relative; overflow: hidden; padding: clamp(88px, 17vh, 190px) 0 clamp(64px, 10vh, 120px); }
+  .hero::before {
+    content: ""; position: absolute; width: min(76vw, 900px); aspect-ratio: 1;
+    left: 54%; top: -12%; background: url("/favicon.svg") center / contain no-repeat;
+    opacity: .045; pointer-events: none;
+  }
+  .hero .shell { position: relative; }
   h1 {
     margin: 0 0 30px; max-width: 13ch;
     font-size: clamp(2.75rem, 8vw, 6rem);
@@ -143,12 +169,12 @@
   }
   .command code::-webkit-scrollbar { display: none; }
   .copy {
-    flex: none; padding: 8px 13px; border: 1px solid #8f8f8f; border-radius: 2px;
+    flex: none; padding: 8px 13px; border: 1px solid var(--rule-2); border-radius: 2px;
     background: transparent; color: var(--ink); font: inherit; font-size: 13px; font-weight: 550;
     cursor: pointer; min-width: 68px;
     transition: background .18s ease, border-color .18s ease, color .18s ease;
   }
-  .copy:hover:not(:disabled) { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .copy:hover:not(:disabled) { background: var(--ink); border-color: var(--ink); color: var(--paper); }
   .copy:disabled { cursor: default; }
   .copy.copied { border-color: var(--accent); color: var(--accent); background: transparent; }
   .js .hero .command { opacity: 0; animation: rise .9s .46s var(--ease) forwards; }
@@ -283,6 +309,8 @@
   /* Footer */
   footer { border-top: 1px solid var(--rule); padding: 30px 0 54px; font-size: .8125rem; color: var(--ink-3); }
   footer .shell { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; }
+  .footer-lockup { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); font-weight: 550; letter-spacing: -.02em; }
+  .footer-lockup img { width: 20px; height: 20px; }
   footer .links { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-left: auto; }
   footer a { color: var(--ink-2); }
   footer a:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
@@ -310,8 +338,8 @@
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav">
   <div class="shell">
-    <a class="wordmark" href="#top" aria-label="Browsemium home"><svg width="17" height="17" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4 28 26H4z" fill="none" stroke-width="2.7" stroke-linejoin="round"/></svg>Browsemium</a>
-    <nav class="nav-links" aria-label="Main navigation"><a href="#why">Why Browsemium</a><a href="#ai">AI</a><a href="#move">Move from Chrome</a><a class="nav-github" href="https://github.com/Cubinghackerz/browsemium">GitHub</a><a class="nav-cta" href="#install">Install</a></nav>
+    <a class="wordmark" href="#top" aria-label="Browsemium home"><img src="/favicon.svg" width="20" height="20" alt="">Browsemium</a>
+    <nav class="nav-links" aria-label="Main navigation"><a href="#why">Why Browsemium</a><a href="#ai">AI</a><a href="#move">Switch browsers</a><a class="nav-github" href="https://github.com/Cubinghackerz/browsemium">GitHub</a><a class="nav-cta" href="#install">Install</a></nav>
   </div>
 </header>
 
@@ -342,7 +370,7 @@
         <div class="spec-row"><dt>Blocking</dt><dd>WebKit content rules. Rule state only, never an invented count</dd></div>
         <div class="spec-row"><dt>Profiles</dt><dd>Cookies, logins, history, and site data stay in separate lanes</dd></div>
         <div class="spec-row"><dt>Extensions</dt><dd>Chrome and Firefox style, through WebKit's extension APIs (beta, macOS 15.4+)</dd></div>
-        <div class="spec-row"><dt>Imports</dt><dd>Chrome, Brave, Edge, Vivaldi, Arc, Firefox, and Safari</dd></div>
+        <div class="spec-row"><dt>Imports</dt><dd>11 browsers, including Chrome, Firefox, and Safari; review before writing</dd></div>
         <div class="spec-row"><dt>Account and telemetry</dt><dd>None, and no cloud sync</dd></div>
       </dl>
     </div>
@@ -384,15 +412,16 @@
     <div class="shell story">
       <h2>Bring your browser setup with you, not your browser baggage.</h2>
       <div class="story-body">
-        <p>The migration assistant finds compatible browsers and profiles, then previews what is ready before anything is written.</p>
+        <p>The import guide finds compatible browsers and profiles, then previews what is ready before anything is written.</p>
         <dl class="ruled">
           <div class="ruled-row"><dt>Bookmarks and folders</dt><dd>previewed first</dd></div>
           <div class="ruled-row"><dt>Recent history</dt><dd>previewed first</dd></div>
-          <div class="ruled-row"><dt>Passwords, where the source allows</dt><dd>Chromium-family only</dd></div>
-          <div class="ruled-row"><dt>Search settings and sessions</dt><dd>restored, not rewritten</dd></div>
-          <div class="ruled-row"><dt>Cookies, extensions, site storage</dt><dd>stay behind</dd></div>
+          <div class="ruled-row"><dt>Passwords</dt><dd>Chromium key or mapped CSV</dd></div>
+          <div class="ruled-row"><dt>Default search engine</dt><dd>Chromium-family profiles</dd></div>
+          <div class="ruled-row"><dt>Cookies and sign-ins</dt><dd>opt-in, per profile</dd></div>
+          <div class="ruled-row"><dt>Extensions and site storage</dt><dd>review or set up again</dd></div>
         </dl>
-        <p>The source browser is never quit or silently changed. Firefox and Safari passwords are not importable, and the app says why.</p>
+        <p>The source browser is never quit or changed. Firefox and Apple Passwords can export a CSV; direct Firefox password decryption is still unavailable. Cookie transfer may keep some sign-ins, but sites can still ask you to sign in again.</p>
       </div>
     </div>
   </section>
@@ -419,14 +448,14 @@
       <details><summary>Is Browsemium faster than Chrome?<span class="plus" aria-hidden="true"></span></summary><div class="answer"><p>Browsemium does not claim to render pages faster. It brings your browsing and AI workflows into one place, and lets you unload idle background tabs on a schedule you choose.</p></div></details>
       <details><summary>How does memory saver work?<span class="plus" aria-hidden="true"></span></summary><div class="answer"><p>Choose how long background tabs stay live and the maximum number to keep loaded. A sleeping tab reloads when you return. Browsemium reports the app memory it can measure; WebKit does not expose memory per tab.</p></div></details>
       <details><summary>What can the AI receive?<span class="plus" aria-hidden="true"></span></summary><div class="answer"><p>When enabled, a message can include the page title, a sanitized URL, and bounded readable page text. Screenshots, selections, and files are never attached automatically: you choose them for a message and review them before sending.</p></div></details>
-      <details><summary>What comes over when I switch browsers?<span class="plus" aria-hidden="true"></span></summary><div class="answer"><p>The importer previews compatible profiles, bookmarks, history, passwords, search settings, and sessions before writing anything. Cookies, extensions, and engine-specific site data are not copied.</p></div></details>
+      <details><summary>What comes over when I switch browsers?<span class="plus" aria-hidden="true"></span></summary><div class="answer"><p>The guide previews compatible profiles, bookmarks, history, Chromium-family passwords, search settings, and cookies before writing. Cookie transfer is off by default because cookies can grant account access. Password-manager CSV files can be mapped into Keychain. Extensions and engine-specific site data are not copied.</p></div></details>
       <details><summary>Do I need an API key?<span class="plus" aria-hidden="true"></span></summary><div class="answer"><p>No. Use ChatGPT, Claude, Gemini, or Grok with the web subscriptions you already have. API keys are optional and stored in the macOS keychain. Ollama can run locally on this Mac.</p></div></details>
       <details><summary>macOS says Browsemium can't be opened. Now what?<span class="plus" aria-hidden="true"></span></summary><div class="answer"><p>Preview builds are ad-hoc signed and not notarized by Apple yet, so Gatekeeper may block the first launch. Open System Settings → Privacy &amp; Security and choose <b>Open Anyway</b> next to Browsemium. The installer verifies the checksum, signature, sandbox, and architectures before anything is copied, and it never removes quarantine attributes. Developer ID signing and notarization return with the stable release.</p></div></details>
     </div>
   </section>
 </main>
 
-<footer><div class="shell"><span>Browsemium <span data-release-version>2.1.0</span> · WebKit · macOS 14+</span><span>No account and no telemetry.</span><span class="links"><a href="https://github.com/Cubinghackerz/browsemium">Source</a><a href="https://github.com/Cubinghackerz/browsemium/releases">Releases</a><a href="https://github.com/Cubinghackerz/browsemium/issues">Issues</a></span></div></footer>
+<footer><div class="shell"><span class="footer-lockup"><img src="/favicon.svg" alt="">Browsemium</span><span><span data-release-version>2.1.0</span> · WebKit · macOS 14+</span><span>No account and no telemetry.</span><span class="links"><a href="https://github.com/Cubinghackerz/browsemium">Source</a><a href="https://github.com/Cubinghackerz/browsemium/releases">Releases</a><a href="https://github.com/Cubinghackerz/browsemium/issues">Issues</a></span></div></footer>
 
 <script>
   document.documentElement.classList.add("js");
