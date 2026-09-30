@@ -441,6 +441,17 @@ until signing credentials exist.
 
 ### Phase 6 — Switch & Shine — IN PROGRESS
 
+- Quality pass (committed, not yet released): A1 keeps a committed page active
+  after navigation failure; A2 gates external app launches on user activation
+  and frame policy; A3 prompts for transient HTTP credentials without saving
+  them or bypassing certificate validation; A4 retries an active process crash
+  once per 60 seconds; A5 reports the five scoped persistence write failures.
+  Bug-specific regressions were checked red → green → reverted-red. The full
+  Swift package suite passed after A and after B. Thirteen fixed condition
+  sleeps became polling waits, and in-memory preferences use isolated suites.
+  Manual native QA, the deeper audit, and release gates remain separately
+  tracked in `QUALITY_PASS.md`; no performance claim follows from these tests.
+
 - One geometric split-triangle source now generates the plated app icon,
   template logo, favicons, social card, DMG art, and README banner. The site
   uses Geist and follows light/dark appearance; the logo is a quiet watermark
