@@ -441,7 +441,7 @@ public final class TabRuntime {
             break
         case .crashed:
             setLifecycle(.crashed)
-        case .progressChanged, .requestedExternalScheme, .downloadStarted, .downloadFinished, .downloadFailed, .audioStateChanged, .requestedAISelection, .lifecycleChanged, .linkHovered, .elementPicked, .elementPickCancelled, .elementPickFailed:
+        case .progressChanged, .requestedExternalScheme, .blockedExternalScheme, .downloadStarted, .downloadFinished, .downloadFailed, .audioStateChanged, .requestedAISelection, .lifecycleChanged, .linkHovered, .elementPicked, .elementPickCancelled, .elementPickFailed:
             break
         }
         onEvent?(event)

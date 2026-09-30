@@ -29,10 +29,6 @@ final class WebNavigationDelegate: NSObject, WKNavigationDelegate {
             return .cancel
         }
 
-        if navigationAction.shouldPerformDownload {
-            return .download
-        }
-
         guard let scheme = url.scheme?.lowercased() else {
             return .cancel
         }
@@ -42,8 +38,24 @@ final class WebNavigationDelegate: NSObject, WKNavigationDelegate {
         }
 
         guard scheme == "http" || scheme == "https" else {
-            runtime?.report(.requestedExternalScheme(url))
-            return .cancel
+            switch ExternalSchemePolicy.evaluate(
+                scheme: scheme,
+                isUserActivated: navigationAction.navigationType == .linkActivated,
+                isMainFrame: navigationAction.targetFrame?.isMainFrame ?? true
+            ) {
+            case .open:
+                runtime?.report(.requestedExternalScheme(url))
+                return .cancel
+            case .block:
+                runtime?.report(.blockedExternalScheme(scheme))
+                return .cancel
+            case .allowInWebView:
+                return navigationAction.shouldPerformDownload ? .download : .allow
+            }
+        }
+
+        if navigationAction.shouldPerformDownload {
+            return .download
         }
 
         if navigationAction.targetFrame == nil {

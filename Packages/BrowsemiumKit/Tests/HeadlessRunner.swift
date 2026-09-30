@@ -76,6 +76,7 @@ struct HeadlessRunner {
     static func main() throws {
         try verifyIdentifiers()
         try verifyNavigation()
+        try verifyExternalSchemePolicy()
         try verifyDatabase()
         try verifyAIParsing()
         try verifySleepPolicy()
@@ -837,6 +838,14 @@ struct HeadlessRunner {
         let data = try JSONEncoder().encode(value)
         let decoded = try JSONDecoder().decode(Value.self, from: data)
         try expect(decoded == value, "Identifier Codable round trip failed")
+    }
+
+    private static func verifyExternalSchemePolicy() throws {
+        try expect(ExternalSchemePolicy.evaluate(scheme: "mailto", isUserActivated: false) == .block, "Scripted app launch must be blocked")
+        try expect(ExternalSchemePolicy.evaluate(scheme: "mailto", isUserActivated: true) == .open, "Clicked mail links must work")
+        try expect(ExternalSchemePolicy.evaluate(scheme: "file", isUserActivated: true) == .block, "File links must never launch externally")
+        try expect(ExternalSchemePolicy.evaluate(scheme: "custom", isUserActivated: true, isMainFrame: false) == .block, "Subframes must not launch unknown apps")
+        try expect(ExternalSchemePolicy.evaluate(scheme: "blob", isUserActivated: false) == .allowInWebView, "Blob content must stay in WebKit")
     }
 
     private static func verifyNavigation() throws {

@@ -36,6 +36,8 @@ public enum TabRuntimeEvent: Sendable {
     /// window shows it in the preview overlay instead of a new tab.
     case requestedPeek(URL)
     case requestedExternalScheme(URL)
+    /// A page attempted an external launch that failed the gesture policy.
+    case blockedExternalScheme(String)
     case downloadStarted(UUID)
     case downloadFinished(UUID)
     case downloadFailed(UUID, String)

@@ -3423,6 +3423,10 @@ public final class BrowserWindowModel: PermissionPrompting {
             openPeek(url: url)
         case .requestedExternalScheme(let url):
             openExternally(url)
+        case .blockedExternalScheme(let scheme):
+            if session.activeTabID == tabID || peek?.tabID == tabID {
+                statusMessage = "Blocked \(scheme) link that tried to open another app"
+            }
         case .downloadStarted, .downloadFinished, .downloadFailed:
             break
         }
