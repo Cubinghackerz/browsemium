@@ -84,6 +84,16 @@ public final class AIDockViewModel {
     public convenience init(windowModel: BrowserWindowModel) {
         self.init(environment: windowModel.environment)
         browser = windowModel
+        synchronizeBrowserContext()
+    }
+
+    public func synchronizeBrowserContext() {
+        guard let browser else { return }
+        stop()
+        clearConversation()
+        clearAttachments()
+        providerPanel.configureStorage(isPrivate: browser.session.isPrivate, profileIdentifier: environment.activeProfile.dataStoreUUID)
+        refreshConversations()
     }
 
     public init(environment: BrowserEnvironment) {

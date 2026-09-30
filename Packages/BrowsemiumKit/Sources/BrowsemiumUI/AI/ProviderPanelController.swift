@@ -44,6 +44,8 @@ public final class ProviderPanelController {
     public var didFailComposerMessage: (@MainActor (AIProviderID, String) -> Void)?
 
     private let factory = WebViewFactory()
+    private var isPrivateStorage = true
+    private var profileIdentifier: UUID?
     private var webViews: [AIProviderID: WKWebView] = [:]
     private var bridgeHandlers: [AIProviderID: ComposerBridgeMessageHandler] = [:]
     private var uiDelegates: [AIProviderID: ProviderPanelUIDelegate] = [:]
@@ -57,6 +59,27 @@ public final class ProviderPanelController {
     private var pendingComposerTasks: [AIProviderID: Task<Void, Never>] = [:]
 
     public init() {}
+
+    public func configureStorage(isPrivate: Bool, profileIdentifier: UUID) {
+        guard isPrivateStorage != isPrivate || self.profileIdentifier != profileIdentifier else { return }
+        releaseAll()
+        lastTrustedURLs.removeAll()
+        isPrivateStorage = isPrivate
+        self.profileIdentifier = profileIdentifier
+    }
+
+    func makeConfiguration() -> WKWebViewConfiguration {
+        let configuration = factory.makeConfiguration(store: isPrivateStorage ? .ephemeral : .persistent)
+        if !isPrivateStorage, let profileIdentifier {
+            configuration.websiteDataStore = WKWebsiteDataStore(forIdentifier: profileIdentifier)
+            // The global factory controller can belong to another window's
+            // profile. Never attach that controller to this profile's panel.
+            if #available(macOS 15.4, *), WebViewFactory.dataStoreIdentifier != profileIdentifier {
+                configuration.webExtensionController = nil
+            }
+        }
+        return configuration
+    }
 
     /// Restricts provider uploads to the per-dock staging directory. The
     /// fallback temporary-directory check keeps the controller safe when it is
@@ -72,7 +95,7 @@ public final class ProviderPanelController {
             return existing
         }
 
-        let configuration = factory.makeConfiguration(store: .persistent)
+        let configuration = makeConfiguration()
         let handler = ComposerBridgeMessageHandler(owner: self, provider: provider)
         let uiDelegate = ProviderPanelUIDelegate(owner: self, provider: provider)
         configuration.userContentController.addUserScript(

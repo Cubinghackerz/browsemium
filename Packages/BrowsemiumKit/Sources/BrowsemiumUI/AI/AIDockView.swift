@@ -82,10 +82,9 @@ struct AIDockView: View {
             ai.errorMessage = nil
         }
         .onChange(of: model.session.isPrivate) {
-            ai.clearConversation()
-            ai.clearAttachments()
-            ai.refreshConversations()
+            ai.synchronizeBrowserContext()
         }
+        .onChange(of: model.activeProfile.id) { ai.synchronizeBrowserContext() }
         .onChange(of: model.session.spaces) { ai.clearAttachments() }
         .onChange(of: model.unlockedSpaceIDs) { ai.clearAttachments() }
         .onChange(of: ai.provider) {

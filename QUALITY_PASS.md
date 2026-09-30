@@ -115,7 +115,12 @@ trusted operation label plus error domain/code, not descriptions or SQL bindings
 - Credential presence uses `hasSecret`; secret reads remain explicit connect,
   model-loading, or send operations. Reviewed markdown drops non-HTTP(S)
   destinations; its native URL handler now also validates the scheme.
-- Provider-panel private storage is the next separately reproduced boundary.
+- Provider panels always requested persistent storage, including private
+  windows, and relied on the factory's global profile identifier. Panels now
+  use ephemeral storage in private windows and an explicit profile identifier
+  otherwise. Scope changes release old panels and pending/trusted URLs. A
+  mismatched global extension controller is not attached. Both storage
+  regressions passed and failed again with legacy configuration restored.
 
 ## Remaining verification and scope
 
