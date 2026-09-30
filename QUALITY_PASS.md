@@ -71,6 +71,27 @@ trusted operation label plus error domain/code, not descriptions or SQL bindings
 
 ## Remaining verification and scope
 
+### Deeper audit: extension filesystem
+
+- Reviewed extension load/unload, action/permission callbacks and adapters;
+  manifest/CRX parsing; store path construction, installation, replacement,
+  removal, and symlink scanning. Private views are configured without an
+  extension controller; the model bridge still needs its own privacy check.
+- Confirmed and fixed hidden symlink acceptance, replaced unpacked-payload
+  links, and identifier-directory links. Hidden files are now included in
+  validation, installed unpacked payloads are revalidated, and linked source,
+  archive, and identifier paths are refused.
+- Confirmed that double failure (commit and rollback) deleted the old copy.
+  A small transaction helper now preserves the backup and reports a recovery
+  error. Successful rollback and normal reinstall companion tests passed.
+- Four bug-specific regressions passed with fixes and failed again with the
+  guards/backup retention reverted. No real extension was opened or changed.
+- Limits: ZIP/CRX payloads are passed to WebKit, not extracted by Browsemium;
+  there is no application archive-entry preflight yet. CRX signatures are not
+  verified by this code. Platform unload errors remain unverified, and the
+  current host discards them. Concurrent local filesystem replacement is not
+  covered by these path-based checks.
+
 - Native end-to-end offline navigation, external click/script behavior,
   authentication retries/cancel, WebContent kill/recovery, and light/dark
   appearance are not yet manually verified for these changes.

@@ -78,6 +78,7 @@ public final class ExtensionStore: @unchecked Sendable {
 
         return entries.compactMap { entry in
             guard Self.isValidIdentifier(entry.lastPathComponent) else { return nil }
+            guard (try? entry.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else { return nil }
             guard (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
                 return nil
             }
@@ -93,6 +94,9 @@ public final class ExtensionStore: @unchecked Sendable {
         guard candidate.deletingLastPathComponent().path == root.path else {
             throw InstallError.invalidIdentifier(id)
         }
+        guard (try? candidate.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else {
+            throw InstallError.symbolicLinkNotAllowed(id)
+        }
         return candidate
     }
 
@@ -103,6 +107,7 @@ public final class ExtensionStore: @unchecked Sendable {
 
         let unpacked = directory.appendingPathComponent("unpacked", isDirectory: true)
         if fileManager.fileExists(atPath: unpacked.appendingPathComponent("manifest.json").path) {
+            do { try rejectSymbolicLinks(in: unpacked) } catch { return nil }
             let manifest = ExtensionManifest.read(fromDirectory: unpacked)
             return InstalledExtension(
                 id: id,
@@ -118,6 +123,7 @@ public final class ExtensionStore: @unchecked Sendable {
 
         let zip = directory.appendingPathComponent("extension.zip")
         if fileManager.fileExists(atPath: zip.path) {
+            guard (try? zip.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else { return nil }
             return InstalledExtension(
                 id: id,
                 name: id,
@@ -158,6 +164,9 @@ public final class ExtensionStore: @unchecked Sendable {
         guard fileManager.fileExists(atPath: sourceURL.path, isDirectory: &isDirectory) else {
             throw InstallError.unsupportedSource(sourceURL.lastPathComponent)
         }
+        if try sourceURL.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true {
+            throw InstallError.symbolicLinkNotAllowed(sourceURL.lastPathComponent)
+        }
 
         try fileManager.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
         let staging = rootDirectory.appendingPathComponent(".staging-\(UUID().uuidString)", isDirectory: true)
@@ -165,7 +174,6 @@ public final class ExtensionStore: @unchecked Sendable {
         try fileManager.createDirectory(at: staging, withIntermediateDirectories: false)
         defer {
             try? fileManager.removeItem(at: staging)
-            try? fileManager.removeItem(at: backup)
         }
 
         let extensionPayload: InstalledExtension
@@ -230,19 +238,7 @@ public final class ExtensionStore: @unchecked Sendable {
             throw InstallError.unsupportedSource(sourceURL.lastPathComponent)
         }
 
-        let hadExisting = fileManager.fileExists(atPath: destination.path)
-        if hadExisting {
-            try fileManager.moveItem(at: destination, to: backup)
-        }
-        do {
-            try fileManager.moveItem(at: staging, to: destination)
-        } catch {
-            if hadExisting, !fileManager.fileExists(atPath: destination.path) {
-                try? fileManager.moveItem(at: backup, to: destination)
-            }
-            throw error
-        }
-        try? fileManager.removeItem(at: backup)
+        try ExtensionUpdateTransaction.replace(staging: staging, destination: destination, backup: backup)
 
         let relativeResource = extensionPayload.resourceURL.path.replacingOccurrences(
             of: staging.path,
@@ -322,8 +318,8 @@ public final class ExtensionStore: @unchecked Sendable {
         guard let enumerator = FileManager.default.enumerator(
             at: directory,
             includingPropertiesForKeys: Array(keys),
-            options: [.skipsHiddenFiles]
-        ) else { return }
+            options: []
+        ) else { throw InstallError.unsupportedSource(directory.lastPathComponent) }
         for case let item as URL in enumerator {
             if try item.resourceValues(forKeys: keys).isSymbolicLink == true {
                 throw InstallError.symbolicLinkNotAllowed(item.lastPathComponent)

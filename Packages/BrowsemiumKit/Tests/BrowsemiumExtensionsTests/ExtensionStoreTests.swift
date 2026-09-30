@@ -1,5 +1,5 @@
 import BrowsemiumCore
-import BrowsemiumExtensions
+@testable import BrowsemiumExtensions
 import Foundation
 import Testing
 
@@ -27,6 +27,104 @@ private func makeStore() throws -> ExtensionStore {
 }
 
 // MARK: - Store
+
+@Test func aFailedUpdateRestoresThePreviousCopyWhenRollbackSucceeds() throws {
+    let source = try makeExtensionFolder(named: "Rollback fixture")
+    let store = try makeStore()
+    defer {
+        try? FileManager.default.removeItem(at: source)
+        try? FileManager.default.removeItem(at: store.rootDirectory)
+    }
+    let item = try store.install(from: source)
+    let destination = try store.extensionDirectory(id: item.id)
+    let staging = store.rootDirectory.appendingPathComponent(".staging-fixture", isDirectory: true)
+    let backup = store.rootDirectory.appendingPathComponent(".backup-fixture", isDirectory: true)
+    try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false)
+    var moves = 0
+    #expect(throws: (any Error).self) {
+        try ExtensionUpdateTransaction.replace(staging: staging, destination: destination, backup: backup) { from, to in
+            moves += 1
+            if moves == 2 { throw CocoaError(.fileWriteNoPermission) }
+            try FileManager.default.moveItem(at: from, to: to)
+        }
+    }
+    #expect(moves == 3)
+    #expect(FileManager.default.fileExists(atPath: destination.appendingPathComponent("unpacked/manifest.json").path))
+    #expect(!FileManager.default.fileExists(atPath: backup.path))
+}
+
+@Test func aFailedUpdateAndRollbackPreserveTheOnlyWorkingCopy() throws {
+    let source = try makeExtensionFolder(named: "Recovery fixture")
+    let store = try makeStore()
+    defer {
+        try? FileManager.default.removeItem(at: source)
+        try? FileManager.default.removeItem(at: store.rootDirectory)
+    }
+    let item = try store.install(from: source)
+    let destination = try store.extensionDirectory(id: item.id)
+    let staging = store.rootDirectory.appendingPathComponent(".staging-fixture", isDirectory: true)
+    let backup = store.rootDirectory.appendingPathComponent(".backup-fixture", isDirectory: true)
+    try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false)
+    var moves = 0
+    #expect(throws: (any Error).self) {
+        try ExtensionUpdateTransaction.replace(staging: staging, destination: destination, backup: backup) { from, to in
+            moves += 1
+            if moves > 1 { throw CocoaError(.fileWriteNoPermission) }
+            try FileManager.default.moveItem(at: from, to: to)
+        }
+    }
+    #expect(moves == 3)
+    #expect(FileManager.default.fileExists(atPath: backup.appendingPathComponent("unpacked/manifest.json").path))
+    #expect(!FileManager.default.fileExists(atPath: destination.path))
+}
+
+@Test(arguments: [".escape", ".hidden/escape"])
+func hiddenExtensionSymlinksAreRejected(_ relativePath: String) throws {
+    let source = try makeExtensionFolder(named: "Hidden link")
+    let outside = try makeExtensionFolder(named: "Outside fixture")
+    let store = try makeStore()
+    defer {
+        try? FileManager.default.removeItem(at: source)
+        try? FileManager.default.removeItem(at: outside)
+        try? FileManager.default.removeItem(at: store.rootDirectory)
+    }
+    let link = source.appendingPathComponent(relativePath)
+    try FileManager.default.createDirectory(at: link.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outside)
+    #expect(throws: ExtensionStore.InstallError.self) { try store.install(from: source) }
+    #expect(try store.installed().isEmpty)
+}
+
+@Test
+func installedExtensionDirectorySymlinksAreNotTrusted() throws {
+    let source = try makeExtensionFolder(named: "Directory link")
+    let store = try makeStore()
+    defer {
+        try? FileManager.default.removeItem(at: source)
+        try? FileManager.default.removeItem(at: store.rootDirectory)
+    }
+    let item = try store.install(from: source)
+    let directory = try store.extensionDirectory(id: item.id)
+    let outside = source.appendingPathComponent("moved-install", isDirectory: true)
+    try FileManager.default.moveItem(at: directory, to: outside)
+    try FileManager.default.createSymbolicLink(at: directory, withDestinationURL: outside)
+    #expect(try store.installed().isEmpty)
+    #expect(throws: ExtensionStore.InstallError.self) { try store.extensionDirectory(id: item.id) }
+    #expect(FileManager.default.fileExists(atPath: outside.appendingPathComponent("unpacked/manifest.json").path))
+}
+
+@Test func installedUnpackedPayloadSymlinksAreNotLoaded() throws {
+    let source = try makeExtensionFolder(named: "Payload link")
+    let store = try makeStore()
+    defer {
+        try? FileManager.default.removeItem(at: source)
+        try? FileManager.default.removeItem(at: store.rootDirectory)
+    }
+    let item = try store.install(from: source)
+    try FileManager.default.removeItem(at: item.resourceURL)
+    try FileManager.default.createSymbolicLink(at: item.resourceURL, withDestinationURL: source)
+    #expect(try store.installed().isEmpty)
+}
 
 @Test
 func installingAnUnpackedFolderCopiesItIntoTheStore() throws {
