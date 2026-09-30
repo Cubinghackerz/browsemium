@@ -157,6 +157,24 @@ trusted operation label plus error domain/code, not descriptions or SQL bindings
   containment/WAL fixtures, extension rollback/privacy, AI source/link checks,
   locked-space launch/palette tests, and incognito record guards.
 
+## Final automated verification
+
+- Headless runner after the core/policy fixes: passed.
+- XcodeGen and `Scripts/verify-project.sh`: passed. Generated project changes
+  register the new sources/tests; no generated project was edited manually.
+- Debug app build: passed. The final Xcode test rebuilt the latest app after
+  the extra private-window action fix and passed: **351 tests, zero failures,
+  zero skipped tests** (373 executions including dynamic parameter cases).
+  Counts were checked in the result bundle, not inferred from exit status.
+- Full Swift package suite after A, B, and the deeper E changes: passed. The
+  final extra UI guard was checked focused red/green/reverted-red and covered
+  by the final Xcode UI test target. No failing test was skipped or weakened.
+- `git diff --check`: passed. Generated dependency-resolution churn is absent.
+- Latest DerivedData app launched successfully with a fresh profile under
+  the app container's `Data/tmp/browsemium-quality-Nn3KvH`. Its running process
+  holds that fixture database; it did not fall back to the user's database or
+  an in-memory store. Browser left open. No real profile was inspected.
+
 ## Remaining verification and scope
 
 - Native end-to-end offline navigation, external click/script behavior,
@@ -167,7 +185,14 @@ trusted operation label plus error domain/code, not descriptions or SQL bindings
 - The reviewed areas and concrete fixes are listed above; this is not a
   whole-codebase security certification. Archive signatures/entry preflight,
   atomic concurrent import snapshots, and filesystem-swap defense remain open.
-- Final headless/project/app-build/app-test/diff gates remain to be run after
-  the complete pass. No release was cut; release notes are unchanged.
+- The local-site browser tool failed before execution because its environment
+  metadata lacked `sandboxPolicy`; a minimal retry failed the same way. No
+  browser screenshots or desktop/mobile color-scheme checks are claimed.
+- Settings' no-Keychain-prompt guarantee was checked in presence-query code,
+  not manually exercised through the native Settings UI in this environment.
+- Next feature units are scoped in `Plans/` and linked from `MEGAPLAN.md`;
+  smart routing, user lists, per-site extension controls, and the remaining
+  import work have not been implemented by this quality pass.
+- No release was cut; release notes and the installer manifest are unchanged.
 - Developer ID/notarization and the quiet-machine memory gate remain open.
 - No OpenUI scaffold, JavaScript toolchain, sync, telemetry, or Chromium work.
