@@ -4006,6 +4006,10 @@ public final class BrowserWindowModel: PermissionPrompting {
     /// Reloads enabled extensions and rebinds the host to this window. The
     /// most recently active window is the one extensions see.
     public func reloadExtensions() {
+        guard !session.isPrivate else {
+            refreshExtensionActions()
+            return
+        }
         if #available(macOS 15.4, *) {
             environment.extensionHost?.bridge = self
             environment.extensionHost?.permissionPrompter = self
@@ -4148,7 +4152,8 @@ public final class BrowserWindowModel: PermissionPrompting {
     // MARK: - Extension bridge
 
     public func extensionTabSnapshots() -> [ExtensionTabSnapshot] {
-        visibleTabs.enumerated().map { index, tab in
+        let permitted = ExtensionTabAccessPolicy.tabIDs(in: session, unlocked: unlockedSpaceIDs)
+        return visibleTabs.filter { permitted.contains($0.id) }.enumerated().map { index, tab in
             ExtensionTabSnapshot(
                 id: tab.id,
                 title: tab.title,
@@ -4162,19 +4167,19 @@ public final class BrowserWindowModel: PermissionPrompting {
     }
 
     public func extensionActivateTab(_ tabID: TabID) -> Bool {
-        guard session.tabs.contains(where: { $0.id == tabID }) else { return false }
+        guard ExtensionTabAccessPolicy.tabIDs(in: session, unlocked: unlockedSpaceIDs).contains(tabID) else { return false }
         selectTab(tabID)
         return true
     }
 
     public func extensionCloseTab(_ tabID: TabID) -> Bool {
-        guard session.tabs.contains(where: { $0.id == tabID }) else { return false }
+        guard ExtensionTabAccessPolicy.tabIDs(in: session, unlocked: unlockedSpaceIDs).contains(tabID) else { return false }
         closeTab(tabID)
         return true
     }
 
     public func extensionLoadURL(_ url: URL, in tabID: TabID) -> Bool {
-        guard session.tabs.contains(where: { $0.id == tabID }) else { return false }
+        guard ExtensionTabAccessPolicy.tabIDs(in: session, unlocked: unlockedSpaceIDs).contains(tabID) else { return false }
         tabURLs[tabID] = url
         updateTab(tabID) { tab in
             tab.replaced(lastCommittedURL: .some(url), lifecycle: .loading, lastAccessedAt: Date())
@@ -4186,6 +4191,7 @@ public final class BrowserWindowModel: PermissionPrompting {
 
     @discardableResult
     public func extensionCreateTab(url: URL?, active: Bool) -> TabID? {
+        guard ExtensionTabAccessPolicy.readableSpaceIDs(in: session, unlocked: unlockedSpaceIDs).contains(session.activeSpaceID) else { return nil }
         let previous = session.activeTabID
         let created = newTab(url: url)
         if !active, let previous, previous != created {
@@ -4328,7 +4334,8 @@ extension BrowserWindowModel: ExtensionPermissionPrompting {
     /// Suspends the extension's API call until the user answers. A second
     /// request while one is pending denies the first rather than leaking it.
     public func promptForExtensionPermissions(_ request: ExtensionPermissionRequest) async -> Bool {
-        await withCheckedContinuation { continuation in
+        guard !session.isPrivate else { return false }
+        return await withCheckedContinuation { continuation in
             if let existing = extensionPermissionContinuation {
                 extensionPermissionContinuation = nil
                 existing.resume(returning: false)

@@ -69,14 +69,12 @@ trusted operation label plus error domain/code, not descriptions or SQL bindings
   descriptor-based protection against a malicious concurrent filesystem swap.
   No real source profile or credential was opened for this audit.
 
-## Remaining verification and scope
-
-### Deeper audit: extension filesystem
+## Deeper audit: extensions
 
 - Reviewed extension load/unload, action/permission callbacks and adapters;
   manifest/CRX parsing; store path construction, installation, replacement,
   removal, and symlink scanning. Private views are configured without an
-  extension controller; the model bridge still needs its own privacy check.
+  extension controller.
 - Confirmed and fixed hidden symlink acceptance, replaced unpacked-payload
   links, and identifier-directory links. Hidden files are now included in
   validation, installed unpacked payloads are revalidated, and linked source,
@@ -91,12 +89,22 @@ trusted operation label plus error domain/code, not descriptions or SQL bindings
   verified by this code. Platform unload errors remain unverified, and the
   current host discards them. Concurrent local filesystem replacement is not
   covered by these path-based checks.
+- Confirmed that the model bridge exposed private tab metadata and permitted
+  navigation/closure of locked-space tabs. A small access policy now guards
+  reads and mutations; private models do not replace the shared host bridge.
+  Host window/adaptor callbacks also reject private sessions. Both regressions
+  passed with the fix and failed again with the access policy reverted.
+  Normal bridge operations, permission continuations, and ephemeral WebView
+  controller exclusion passed. An introduced continuation return-type build
+  error was diagnosed and fixed; no test was skipped.
+
+## Remaining verification and scope
 
 - Native end-to-end offline navigation, external click/script behavior,
   authentication retries/cancel, WebContent kill/recovery, and light/dark
   appearance are not yet manually verified for these changes.
-- Deeper importer, extension extraction/update, AI/privacy, session restore,
-  and copy-claim audit is next; this document does not imply those are safe.
+- AI/privacy, session restore, and copy-claim audit is next; this document does
+  not imply those are safe.
 - Final headless/project/app-build/app-test/diff gates remain to be run after
   the complete pass. No release was cut; release notes are unchanged.
 - Developer ID/notarization and the quiet-machine memory gate remain open.

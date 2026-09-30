@@ -218,6 +218,44 @@ func theBridgeSnapshotsAndDrivesTheStrip() throws {
     #expect(model.extensionCloseTab(TabID()) == false)
 }
 
+@Test @MainActor
+func privateExtensionBridgeNeverExposesOrMutatesTabs() {
+    let model = BrowserWindowModel(environment: .inMemory(engine: StubEngine()))
+    model.enterPrivateMode()
+    let url = URL(string: "https://private-fixture.example")!
+    let tabID = model.newTab(url: url)
+    let count = model.session.tabs.count
+    #expect(model.extensionTabSnapshots().isEmpty)
+    let activated = model.extensionActivateTab(tabID)
+    let loaded = model.extensionLoadURL(URL(string: "https://injected-fixture.example")!, in: tabID)
+    let closed = model.extensionCloseTab(tabID)
+    let created = model.extensionCreateTab(url: url, active: true)
+    #expect(!activated)
+    #expect(!loaded)
+    #expect(!closed)
+    #expect(created == nil)
+    #expect(model.session.tabs.count == count)
+    #expect(model.tabURLs[tabID] == url)
+}
+
+@Test @MainActor
+func extensionBridgeCannotMutateLockedSpaceTabs() {
+    let model = BrowserWindowModel(environment: .inMemory(engine: StubEngine()))
+    let personal = model.session.activeSpaceID
+    let secret = model.createGroup(named: "Locked fixture")
+    let url = URL(string: "https://locked-fixture.example")!
+    let tabID = model.newTab(url: url)
+    model.switchGroup(personal)
+    model.setSpaceLocked(secret, locked: true)
+    #expect(!model.extensionTabSnapshots().contains { $0.id == tabID })
+    let loaded = model.extensionLoadURL(URL(string: "https://injected-fixture.example")!, in: tabID)
+    let closed = model.extensionCloseTab(tabID)
+    #expect(!loaded)
+    #expect(!closed)
+    #expect(model.tabURLs[tabID] == url)
+    #expect(model.session.tabs.contains { $0.id == tabID })
+}
+
 // MARK: - Chrome Web Store (beta)
 
 private struct StubWebStore: ChromeWebStoreDownloading {

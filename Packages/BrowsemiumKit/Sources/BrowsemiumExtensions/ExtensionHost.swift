@@ -198,6 +198,10 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate {
     /// WebKit compares tabs by object identity, so adapters are cached per
     /// tab id and only their snapshot is updated.
     func tabAdaptersForWindow() -> [ExtensionTabAdapter] {
+        guard !isPrivateSession() else {
+            tabAdapters.removeAll()
+            return []
+        }
         guard let bridge else { return [] }
         let snapshots = bridge.extensionTabSnapshots()
         let liveIDs = Set(snapshots.map(\.id))
@@ -230,14 +234,14 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate {
         _ controller: WKWebExtensionController,
         openWindowsFor extensionContext: WKWebExtensionContext
     ) -> [any WKWebExtensionWindow] {
-        bridge == nil ? [] : [windowAdapter]
+        bridge == nil || isPrivateSession() ? [] : [windowAdapter]
     }
 
     public func webExtensionController(
         _ controller: WKWebExtensionController,
         focusedWindowFor extensionContext: WKWebExtensionContext
     ) -> (any WKWebExtensionWindow)? {
-        bridge == nil ? nil : windowAdapter
+        bridge == nil || isPrivateSession() ? nil : windowAdapter
     }
 
     public func webExtensionController(
@@ -302,7 +306,7 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate {
         // Both a toolbar click on a popup action and the extension calling
         // `action.openPopup()` land here; the toolbar shows the preloaded
         // popover anchored to the button.
-        guard let presenter = actionPresenter else {
+        guard !isPrivateSession(), let presenter = actionPresenter else {
             completionHandler(ExtensionHostError.noActionPopupHost)
             return
         }
