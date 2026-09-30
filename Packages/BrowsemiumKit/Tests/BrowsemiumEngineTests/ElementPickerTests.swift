@@ -82,7 +82,10 @@ func pickingAnElementReportsItsVerifiedSelector() async throws {
 
     let webView = controller.runtime(for: tabID).currentWebView
     controller.beginElementPicking(tabID: tabID)
-    try await Task.sleep(for: .milliseconds(300))
+    try #require(await waitFor {
+        let active = try await webView?.evaluateJavaScript(#"document.querySelector('[data-browsemium-picker="highlight"]') !== null"#)
+        return active as? Bool == true
+    })
 
     try await webView?.evaluateJavaScript("""
         document.getElementById('ad-slot').dispatchEvent(
@@ -114,7 +117,10 @@ func escapeCancelsPickingWithoutSaving() async throws {
 
     let webView = controller.runtime(for: tabID).currentWebView
     controller.beginElementPicking(tabID: tabID)
-    try await Task.sleep(for: .milliseconds(300))
+    try #require(await waitFor {
+        let active = try await webView?.evaluateJavaScript(#"document.querySelector('[data-browsemium-picker="highlight"]') !== null"#)
+        return active as? Bool == true
+    })
 
     try await webView?.evaluateJavaScript("""
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
@@ -180,7 +186,10 @@ func changingRulesUpdatesTheOpenPageWithoutReloading() async throws {
     try await webView?.evaluateJavaScript("window.__bmNoReload = true")
 
     controller.replaceCosmeticRules(["picker.test": "#ad-slot { display: none !important; }"])
-    try await Task.sleep(for: .milliseconds(300))
+    try #require(await waitFor {
+        let display = try await webView?.evaluateJavaScript("getComputedStyle(document.getElementById('ad-slot')).display")
+        return display as? String == "none"
+    })
 
     let hidden = try await webView?.evaluateJavaScript(
         "getComputedStyle(document.getElementById('ad-slot')).display"

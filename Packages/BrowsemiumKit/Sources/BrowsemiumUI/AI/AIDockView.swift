@@ -93,9 +93,9 @@ struct AIDockView: View {
             ai.restoreLastConversationIfNeeded()
             if ai.mode == .web,
                model.environment.loadSettings().includePageMetadataInWebAI,
-               !UserDefaults.standard.bool(forKey: "browsemium.webAI.pageMetadataNotice.v1") {
+               !model.environment.userDefaults.bool(forKey: "browsemium.webAI.pageMetadataNotice.v1") {
                 model.statusMessage = "Web AI adds this page's safe text and metadata when you send. Screenshots are only attached when you choose Capture."
-                UserDefaults.standard.set(true, forKey: "browsemium.webAI.pageMetadataNotice.v1")
+                model.environment.userDefaults.set(true, forKey: "browsemium.webAI.pageMetadataNotice.v1")
             }
         }
         .onAppear {

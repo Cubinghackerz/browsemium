@@ -8,7 +8,7 @@ import BrowsemiumEngineKit
 enum ImportAccessStore {
     private static let defaultsKey = "browsemium.importAccessBookmarks"
 
-    static func save(folder: URL, for candidateID: String) {
+    static func save(folder: URL, for candidateID: String, defaults: UserDefaults = .standard) {
         guard let data = try? folder.bookmarkData(
             options: .withSecurityScope,
             includingResourceValuesForKeys: nil,
@@ -16,16 +16,16 @@ enum ImportAccessStore {
         ) else {
             return
         }
-        var stored = storedBookmarks()
+        var stored = storedBookmarks(defaults: defaults)
         stored[candidateID] = data
-        UserDefaults.standard.set(stored, forKey: defaultsKey)
+        defaults.set(stored, forKey: defaultsKey)
     }
 
     /// Resolves the remembered folder without opening it. The caller is
     /// responsible for balancing `startAccessingSecurityScopedResource()` —
     /// doing it here as well leaked one grant per import.
-    static func resolveURL(candidateID: String) -> URL? {
-        guard let data = storedBookmarks()[candidateID] else { return nil }
+    static func resolveURL(candidateID: String, defaults: UserDefaults = .standard) -> URL? {
+        guard let data = storedBookmarks(defaults: defaults)[candidateID] else { return nil }
         var isStale = false
         guard let url = try? URL(
             resolvingBookmarkData: data,
@@ -42,9 +42,9 @@ enum ImportAccessStore {
     /// Finds a remembered grant that covers `folder` — a browser root the user
     /// allowed earlier, whose profiles are therefore importable without
     /// another prompt. The caller balances the access scope on the result.
-    static func resolveAncestor(of folder: URL) -> URL? {
+    static func resolveAncestor(of folder: URL, defaults: UserDefaults = .standard) -> URL? {
         let target = folder.standardizedFileURL.path
-        for data in storedBookmarks().values {
+        for data in storedBookmarks(defaults: defaults).values {
             var isStale = false
             guard let url = try? URL(
                 resolvingBookmarkData: data,
@@ -62,7 +62,7 @@ enum ImportAccessStore {
         return nil
     }
 
-    private static func storedBookmarks() -> [String: Data] {
-        UserDefaults.standard.dictionary(forKey: defaultsKey) as? [String: Data] ?? [:]
+    private static func storedBookmarks(defaults: UserDefaults) -> [String: Data] {
+        defaults.dictionary(forKey: defaultsKey) as? [String: Data] ?? [:]
     }
 }

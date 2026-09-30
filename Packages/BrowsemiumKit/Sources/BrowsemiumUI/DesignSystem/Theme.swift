@@ -144,7 +144,11 @@ public enum BrowserMetrics {
 
     /// The dock width from the last session, clamped to a sane range.
     public static var restoredDockWidth: CGFloat {
-        let stored = UserDefaults.standard.double(forKey: aiDockWidthDefaultsKey)
+        restoredDockWidth(in: .standard)
+    }
+
+    public static func restoredDockWidth(in defaults: UserDefaults) -> CGFloat {
+        let stored = defaults.double(forKey: aiDockWidthDefaultsKey)
         guard stored > 0 else { return aiDockWidth }
         return min(max(stored, aiDockMinimumWidth), 1200)
     }

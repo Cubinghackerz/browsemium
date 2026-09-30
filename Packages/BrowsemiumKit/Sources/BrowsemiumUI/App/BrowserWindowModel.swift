@@ -234,10 +234,10 @@ public final class BrowserWindowModel: PermissionPrompting {
         tabURLs = Dictionary(uniqueKeysWithValues: initialSession.tabs.compactMap { tab in
             tab.lastCommittedURL.map { (tab.id, $0) }
         })
-        isBookmarksBarVisible = UserDefaults.standard.object(forKey: "browsemium.bookmarksBarVisible") as? Bool ?? true
-        isSidebarCollapsed = UserDefaults.standard.object(forKey: "browsemium.sidebarCollapsed") as? Bool ?? false
+        isBookmarksBarVisible = environment.userDefaults.object(forKey: "browsemium.bookmarksBarVisible") as? Bool ?? true
+        isSidebarCollapsed = environment.userDefaults.object(forKey: "browsemium.sidebarCollapsed") as? Bool ?? false
         hiddenExtensionActionIDs = Set(
-            UserDefaults.standard.stringArray(forKey: Self.hiddenExtensionActionsKey(for: environment.activeProfile)) ?? []
+            environment.userDefaults.stringArray(forKey: Self.hiddenExtensionActionsKey(for: environment.activeProfile)) ?? []
         )
 
         startObservingRuntime()
@@ -2250,7 +2250,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         Task {
             do {
                 let data = try await environment.engine.pageScreenshot(tabID: tabID)
-                let output = UserDefaults.standard.bool(forKey: "browsemium.screenshotWatermark")
+                let output = environment.userDefaults.bool(forKey: "browsemium.screenshotWatermark")
                     ? (Self.watermarkedScreenshot(data) ?? data) : data
                 saveExport(data: output, baseName: baseName, extension: "png")
             } catch {
@@ -2947,7 +2947,7 @@ public final class BrowserWindowModel: PermissionPrompting {
 
     public func toggleBookmarksBar() {
         isBookmarksBarVisible.toggle()
-        UserDefaults.standard.set(isBookmarksBarVisible, forKey: "browsemium.bookmarksBarVisible")
+        environment.userDefaults.set(isBookmarksBarVisible, forKey: "browsemium.bookmarksBarVisible")
     }
 
     /// Collapses the sidebar tab list to a slim rail, or expands it back.
@@ -2955,7 +2955,7 @@ public final class BrowserWindowModel: PermissionPrompting {
     /// records the preference for when the sidebar returns.
     public func toggleSidebarCollapsed() {
         isSidebarCollapsed.toggle()
-        UserDefaults.standard.set(isSidebarCollapsed, forKey: "browsemium.sidebarCollapsed")
+        environment.userDefaults.set(isSidebarCollapsed, forKey: "browsemium.sidebarCollapsed")
     }
 
     public func refreshSavedCredentials() {
@@ -3682,7 +3682,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         webStoreOffer = nil
         dismissedWebStoreOffers.removeAll()
         hiddenExtensionActionIDs = Set(
-            UserDefaults.standard.stringArray(forKey: Self.hiddenExtensionActionsKey(for: environment.activeProfile)) ?? []
+            environment.userDefaults.stringArray(forKey: Self.hiddenExtensionActionsKey(for: environment.activeProfile)) ?? []
         )
         addressText = activeTab?.lastCommittedURL?.absoluteString ?? ""
         activePanel = .none
@@ -4076,7 +4076,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         } else {
             hiddenExtensionActionIDs.insert(extensionID)
         }
-        UserDefaults.standard.set(
+        environment.userDefaults.set(
             Array(hiddenExtensionActionIDs),
             forKey: Self.hiddenExtensionActionsKey(for: environment.activeProfile)
         )

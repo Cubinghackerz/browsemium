@@ -979,13 +979,13 @@ struct SettingsView: View {
     /// One click when access was granted before; otherwise macOS asks once and
     /// the grant is remembered for next time.
     private func beginImport(_ candidate: BrowserProfileCandidate) {
-        if let granted = ImportAccessStore.resolveURL(candidateID: candidate.id) {
+        if let granted = ImportAccessStore.resolveURL(candidateID: candidate.id, defaults: model.environment.userDefaults) {
             loadPreview(folder: granted, candidate: candidate)
             return
         }
         // A granted browser root covers its child profiles, so a profile
         // discovered inside one imports without another prompt.
-        if let root = ImportAccessStore.resolveAncestor(of: candidate.folder) {
+        if let root = ImportAccessStore.resolveAncestor(of: candidate.folder, defaults: model.environment.userDefaults) {
             loadPreview(folder: candidate.folder, candidate: candidate, accessRoot: root)
             return
         }
@@ -1072,7 +1072,7 @@ struct SettingsView: View {
             statusMessage = "That folder could not be matched to a browser. Choose a profile from the list first."
             return
         }
-        ImportAccessStore.save(folder: folder, for: "\(source.rawValue)|\(folder.path)")
+        ImportAccessStore.save(folder: folder, for: "\(source.rawValue)|\(folder.path)", defaults: model.environment.userDefaults)
         handleGrantedFolder(folder, source: source, candidate: nil)
     }
 
@@ -1092,7 +1092,7 @@ struct SettingsView: View {
             statusMessage = "No readable \(source.displayName) profiles were found in that folder."
             return
         }
-        ImportAccessStore.save(folder: root, for: "\(source.rawValue)|\(root.path)")
+        ImportAccessStore.save(folder: root, for: "\(source.rawValue)|\(root.path)", defaults: model.environment.userDefaults)
         let importer = BrowserDataImporter(bookmarks: model.environment.bookmarkRepository,
                                            history: model.environment.historyRepository)
         isPreparingPreview = true
@@ -1180,7 +1180,7 @@ struct SettingsView: View {
         // descends into the profile if a parent folder is chosen instead.
         panel.directoryURL = folder
         guard panel.runModal() == .OK, let granted = panel.url else { return }
-        ImportAccessStore.save(folder: granted, for: candidate.id)
+        ImportAccessStore.save(folder: granted, for: candidate.id, defaults: model.environment.userDefaults)
         handleGrantedFolder(granted, source: candidate.source, candidate: candidate)
     }
 

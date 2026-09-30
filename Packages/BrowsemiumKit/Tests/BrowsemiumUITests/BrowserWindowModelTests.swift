@@ -585,17 +585,6 @@ func navigatingToAURLShowsTheURL() {
 
 @Test @MainActor
 func togglingSidebarCollapsedPersists() {
-    let key = "browsemium.sidebarCollapsed"
-    let previous = UserDefaults.standard.object(forKey: key)
-    defer {
-        if let previous {
-            UserDefaults.standard.set(previous, forKey: key)
-        } else {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
-    }
-    UserDefaults.standard.removeObject(forKey: key)
-
     let environment = BrowserEnvironment.inMemory()
     let model = BrowserWindowModel(environment: environment)
     #expect(model.isSidebarCollapsed == false)

@@ -155,8 +155,7 @@ func permissionPromptsSuspendUntilAnswered() async throws {
     )
 
     async let answer = model.promptForExtensionPermissions(request)
-    // Let the continuation land.
-    try? await Task.sleep(for: .milliseconds(20))
+    try #require(await waitFor { model.pendingExtensionPermission?.extensionID == "demo" })
     #expect(model.pendingExtensionPermission?.extensionID == "demo")
 
     model.answerExtensionPermission(granted: true)
@@ -175,9 +174,9 @@ func aSecondPermissionPromptDeniesTheFirst() async throws {
     )
 
     async let firstAnswer = model.promptForExtensionPermissions(first)
-    try? await Task.sleep(for: .milliseconds(20))
+    try #require(await waitFor { model.pendingExtensionPermission?.extensionID == "first" })
     async let secondAnswer = model.promptForExtensionPermissions(second)
-    try? await Task.sleep(for: .milliseconds(20))
+    try #require(await waitFor { model.pendingExtensionPermission?.extensionID == "second" })
 
     // The first request is denied rather than left hanging forever.
     #expect(await firstAnswer == false)

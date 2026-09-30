@@ -10,10 +10,15 @@ import BrowsemiumEngineKit
 private final class FakeSpaceAuthenticator: SpaceUnlockAuthenticating {
     var grants = true
     private(set) var reasons: [String] = []
+    var suspends = false
+    var pending: CheckedContinuation<Bool, Never>?
+    private(set) var completionCount = 0
 
     func authenticate(reason: String) async -> Bool {
         reasons.append(reason)
-        return grants
+        let result = suspends ? await withCheckedContinuation { pending = $0 } : grants
+        completionCount += 1
+        return result
     }
 }
 
@@ -30,8 +35,7 @@ func aLockedSpaceRefusesToOpenWhenAuthenticationFails() async throws {
     model.spaceUnlockAuthenticator = authenticator
 
     model.switchGroup(secret)
-    // The switch is asynchronous: the system prompt is not.
-    try await Task.sleep(for: .milliseconds(50))
+    try #require(await waitFor { model.statusMessage == "“Secret” stayed locked" })
 
     #expect(model.session.activeSpaceID == personal)
     #expect(model.statusMessage == "“Secret” stayed locked")
@@ -50,7 +54,7 @@ func aLockedSpaceOpensAfterAuthentication() async throws {
     model.spaceUnlockAuthenticator = authenticator
 
     model.switchGroup(secret)
-    try await Task.sleep(for: .milliseconds(50))
+    try #require(await waitFor { model.session.activeSpaceID == secret })
 
     #expect(model.session.activeSpaceID == secret)
     #expect(model.isSpaceUnlocked(secret))
@@ -58,7 +62,7 @@ func aLockedSpaceOpensAfterAuthentication() async throws {
     // Switching back and forth does not re-prompt within the same run.
     model.switchGroup(personal)
     model.switchGroup(secret)
-    try await Task.sleep(for: .milliseconds(50))
+    try #require(await waitFor { model.session.activeSpaceID == secret })
     #expect(model.session.activeSpaceID == secret)
     #expect(authenticator.reasons.count == 1)
 }
@@ -72,7 +76,7 @@ func lockingASpaceNowMovesYouToAnUnlockedOne() async throws {
     let authenticator = FakeSpaceAuthenticator()
     model.spaceUnlockAuthenticator = authenticator
     model.switchGroup(secret)
-    try await Task.sleep(for: .milliseconds(50))
+    try #require(await waitFor { model.session.activeSpaceID == secret })
     #expect(model.session.activeSpaceID == secret)
 
     model.lockSpaceNow(secret)
@@ -108,7 +112,7 @@ func lockedSpaceTabsStayOutOfThePalette() async throws {
     // Once unlocked (in this run) the tab is reachable again.
     model.spaceUnlockAuthenticator = FakeSpaceAuthenticator()
     model.switchGroup(secret)
-    try await Task.sleep(for: .milliseconds(50))
+    try #require(await waitFor { model.session.activeSpaceID == secret })
     #expect(model.session.activeSpaceID == secret)
     model.switchGroup(personal)
     let visible = model.filteredCommands(query: "secret")
@@ -123,13 +127,17 @@ func choosingAnotherSpaceAbandonsAPendingUnlock() async throws {
     model.switchGroup(personal)
     model.setSpaceLocked(secret, locked: true)
     let authenticator = FakeSpaceAuthenticator()
+    authenticator.suspends = true
     model.spaceUnlockAuthenticator = authenticator
 
     // Ask for the locked space, then change your mind before the prompt
     // resolves: the newer choice wins.
     model.switchGroup(secret)
+    try #require(await waitFor { authenticator.pending != nil })
     model.switchGroup(personal)
-    try await Task.sleep(for: .milliseconds(80))
+    authenticator.pending?.resume(returning: true)
+    authenticator.pending = nil
+    try #require(await waitFor { authenticator.completionCount == 1 })
 
     #expect(model.session.activeSpaceID == personal)
 }
@@ -300,7 +308,7 @@ func unlocksDoNotCarryAcrossProfiles() async throws {
     model.setSpaceLocked(secret, locked: true)
     model.spaceUnlockAuthenticator = FakeSpaceAuthenticator()
     model.switchGroup(secret)
-    try await Task.sleep(for: .milliseconds(50))
+    try #require(await waitFor { model.unlockedSpaceIDs.contains(secret) })
     #expect(model.unlockedSpaceIDs.contains(secret))
 
     _ = model.createProfile(named: "Other")

@@ -20,7 +20,7 @@ public struct BrowsemiumAppView: View {
     @State private var model: BrowserWindowModel
     @State private var ai: AIDockViewModel
     @State private var showFirstRun: Bool
-    @State private var dockWidth: CGFloat = BrowserMetrics.restoredDockWidth
+    @State private var dockWidth: CGFloat
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -29,7 +29,8 @@ public struct BrowsemiumAppView: View {
     public init(model: BrowserWindowModel = BrowserWindowModel()) {
         _model = State(initialValue: model)
         _ai = State(initialValue: AIDockViewModel(environment: model.environment))
-        _showFirstRun = State(initialValue: !UserDefaults.standard.bool(forKey: Self.onboardingKey))
+        _showFirstRun = State(initialValue: !model.environment.userDefaults.bool(forKey: Self.onboardingKey))
+        _dockWidth = State(initialValue: BrowserMetrics.restoredDockWidth(in: model.environment.userDefaults))
     }
 
     public var body: some View {
@@ -146,6 +147,7 @@ public struct BrowsemiumAppView: View {
         .foregroundStyle(Color.browsemiumPrimary)
         .tint(Color.browsemiumFocus)
         .preferredColorScheme(preferredScheme)
+        .defaultAppStorage(model.environment.userDefaults)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: model.isAIDockVisible)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: model.isCommandPaletteVisible)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: model.peek?.tabID)
@@ -153,10 +155,10 @@ public struct BrowsemiumAppView: View {
         .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: model.isSidebarCollapsed)
         .sheet(isPresented: $showFirstRun) {
             FirstRunView(model: model) {
-                UserDefaults.standard.set(true, forKey: Self.onboardingKey)
+                model.environment.userDefaults.set(true, forKey: Self.onboardingKey)
                 showFirstRun = false
             } onImportBrowser: {
-                UserDefaults.standard.set(true, forKey: Self.onboardingKey)
+                model.environment.userDefaults.set(true, forKey: Self.onboardingKey)
                 showFirstRun = false
                 model.openPanel(.importWizard)
             }
@@ -241,7 +243,7 @@ public struct BrowsemiumAppView: View {
 
     /// Persists the assistant dock width so it survives relaunches.
     private func persistDockWidth() {
-        UserDefaults.standard.set(Double(dockWidth), forKey: BrowserMetrics.aiDockWidthDefaultsKey)
+        model.environment.userDefaults.set(Double(dockWidth), forKey: BrowserMetrics.aiDockWidthDefaultsKey)
     }
 
     /// Half the window at most, and never so wide that the page is squeezed

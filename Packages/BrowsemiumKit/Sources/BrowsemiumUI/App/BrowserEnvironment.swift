@@ -42,6 +42,8 @@ public final class BrowserEnvironment {
     /// properties cannot carry `@available`; use `extensionHost` instead.
     private var extensionHostStorage: AnyObject?
     public let keychain: KeychainStore
+    public let userDefaults: UserDefaults
+    private var temporaryPreferences: TemporaryPreferences?
 
     /// The active profile's WebKit extension host. Nil on macOS < 15.4,
     /// where WebKit has no public extension API.
@@ -56,7 +58,8 @@ public final class BrowserEnvironment {
         activeProfile: BrowserProfile,
         engine: (any BrowserEngine)? = nil,
         extensionStore: ExtensionStore? = nil,
-        keychain: KeychainStore = KeychainStore()
+        keychain: KeychainStore = KeychainStore(),
+        userDefaults: UserDefaults = .standard
     ) throws {
         self.rootDatabase = rootDatabase
         self.profileStore = profileStore
@@ -88,6 +91,7 @@ public final class BrowserEnvironment {
             self.extensionStore = ExtensionStore(rootDirectory: root)
         }
         self.keychain = keychain
+        self.userDefaults = userDefaults
         WebViewFactory.dataStoreIdentifier = activeProfile.dataStoreUUID
         rebuildExtensionHost()
     }
@@ -122,6 +126,7 @@ public final class BrowserEnvironment {
         keychain: KeychainStore = KeychainStore()
     ) -> BrowserEnvironment {
         do {
+            let preferences = try TemporaryPreferences()
             let rootDatabase = try AppDatabase.inMemory()
             let profileStore = ProfileStore(
                 root: rootDatabase,
@@ -132,14 +137,17 @@ public final class BrowserEnvironment {
             guard let profile = try profileStore.profiles().first else {
                 fatalError("Browsemium could not create an in-memory profile.")
             }
-            return try BrowserEnvironment(
+            let environment = try BrowserEnvironment(
                 rootDatabase: rootDatabase,
                 profileStore: profileStore,
                 activeProfile: profile,
                 engine: engine,
                 extensionStore: extensionStore,
-                keychain: keychain
+                keychain: keychain,
+                userDefaults: preferences.defaults
             )
+            environment.temporaryPreferences = preferences
+            return environment
         } catch {
             fatalError("Browsemium could not create its in-memory database: \(error)")
         }
