@@ -43,6 +43,32 @@ trusted operation label plus error domain/code, not descriptions or SQL bindings
   history. Prepended the requested supersession line to the user's untracked
   `HANDOFF.md`, without committing that file.
 
+## Deeper audit: importer
+
+- Reviewed profile discovery/resolution, preview/apply, login and cookie
+  reads, search-engine parsing, SQLite copy/WAL handling, and import SQL.
+- Confirmed escaping profile/artifact symlinks with generated fixtures.
+  Discovery now rejects out-of-root profiles; preview and apply reject linked
+  artifacts (including WAL/SHM) before writes. Metadata reads reject linked
+  files. Safari cookie lookup no longer infers grants to other live stores
+  from the selected profile. Three abuse regressions passed with the fix and
+  failed again with the containment/artifact guard reverted.
+- Fixed a compatibility failure introduced during hardening: existing
+  `/private` aliases and missing optional files normalize differently in
+  Foundation. Resolve the existing root once and inspect relative components.
+  The existing parent-folder regression and new minimal case now pass.
+- Keychain-denial copy falsely claimed a partial import succeeded; it now
+  correctly says nothing was imported. Message regression failed against the
+  old wording and passed with the correction.
+- SQL in the reviewed importer is static; no source-controlled SQL
+  interpolation found. Preview does not invoke the Safe Storage provider;
+  apply requests it only for explicitly selected password/cookie import.
+  No value logging was found in this file. Existing live-WAL fixture passed.
+- Limits: sequential DB/WAL copying is not an atomic concurrent-writer
+  snapshot; changed sources can require a retry. Path checks do not constitute
+  descriptor-based protection against a malicious concurrent filesystem swap.
+  No real source profile or credential was opened for this audit.
+
 ## Remaining verification and scope
 
 - Native end-to-end offline navigation, external click/script behavior,

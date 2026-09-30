@@ -1,5 +1,5 @@
 import BrowsemiumCore
-import BrowsemiumData
+@testable import BrowsemiumData
 import Foundation
 import GRDB
 import Testing
@@ -62,6 +62,62 @@ private func makeImporter() throws -> (BrowserDataImporter, BookmarkRepository, 
         history,
         database
     )
+}
+
+@Test
+func importPreviewRejectsAnEscapingBookmarkSymlink() throws {
+    let selected = try FakeChromeProfile(bookmarks: [], visits: [])
+    let outside = try FakeChromeProfile(bookmarks: [["type": "url", "name": "Outside", "url": "https://outside.example"]], visits: [])
+    defer { selected.cleanUp(); outside.cleanUp() }
+    let bookmarks = selected.folder.appendingPathComponent("Bookmarks")
+    try FileManager.default.removeItem(at: bookmarks)
+    try FileManager.default.createSymbolicLink(at: bookmarks, withDestinationURL: outside.folder.appendingPathComponent("Bookmarks"))
+    let (importer, _, _, _) = try makeImporter()
+    #expect(throws: BrowserDataImporter.ImportError.self) {
+        try importer.preview(at: selected.folder, source: .chrome)
+    }
+}
+
+@Test
+func browserRootDiscoveryExcludesEscapingProfileSymlinks() throws {
+    let selected = try FakeChromeProfile(bookmarks: [], visits: [])
+    let outside = try FakeChromeProfile(bookmarks: [], visits: [])
+    defer { selected.cleanUp(); outside.cleanUp() }
+    try FileManager.default.createSymbolicLink(at: selected.folder.appendingPathComponent("Default"), withDestinationURL: outside.folder)
+    #expect(BrowserProfileLocator.profiles(insideBrowserRoot: selected.folder, source: .chrome).isEmpty)
+}
+
+@Test func missingOptionalArtifactsUnderEnumeratedProfilesAreSafe() throws {
+    let profile = try FakeChromeProfile(bookmarks: [], visits: [])
+    defer { profile.cleanUp() }
+    let nested = profile.folder.appendingPathComponent("Default", isDirectory: true)
+    try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: false)
+    let entries = try FileManager.default.contentsOfDirectory(at: profile.folder, includingPropertiesForKeys: [.isDirectoryKey])
+    let enumerated = try #require(entries.first { $0.lastPathComponent == "Default" })
+    #expect(BrowserImportPathPolicy.permitsArtifact(enumerated.appendingPathComponent("Preferences"), within: enumerated))
+    #expect(BrowserImportPathPolicy.permitsArtifact(enumerated.appendingPathComponent("Network/Cookies"), within: enumerated))
+}
+
+@Test func keychainDenialMessageDoesNotClaimAnImportSucceeded() {
+    let message = BrowserDataImporter.ImportError.credentialsLocked("Fixture Browser").localizedDescription
+    #expect(message.contains("Nothing was imported"))
+    #expect(!message.contains("Everything else was imported"))
+}
+
+@Test
+func importApplyRejectsAnEscapingHistoryWALSymlinkBeforeWriting() throws {
+    let selected = try FakeChromeProfile(bookmarks: [["type": "url", "name": "Fixture", "url": "https://fixture.example"]], visits: [])
+    let outside = try FakeChromeProfile(bookmarks: [], visits: [])
+    defer { selected.cleanUp(); outside.cleanUp() }
+    let (importer, bookmarks, _, _) = try makeImporter()
+    let preview = try importer.preview(at: selected.folder, source: .chrome)
+    let sidecar = selected.folder.appendingPathComponent("History-wal")
+    if FileManager.default.fileExists(atPath: sidecar.path) { try FileManager.default.removeItem(at: sidecar) }
+    try FileManager.default.createSymbolicLink(at: sidecar, withDestinationURL: outside.folder.appendingPathComponent("Bookmarks"))
+    #expect(throws: BrowserDataImporter.ImportError.self) {
+        try importer.apply(preview, profile: selected.folder)
+    }
+    #expect(try bookmarks.all().isEmpty)
 }
 
 /// Chrome stores microseconds since 1601-01-01.

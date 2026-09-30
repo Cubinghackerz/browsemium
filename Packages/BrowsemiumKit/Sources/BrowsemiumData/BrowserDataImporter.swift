@@ -320,6 +320,7 @@ public enum BrowserProfileLocator {
             let names = entries
                 .filter { name in
                     guard name == "Default" || name.hasPrefix("Profile ") else { return false }
+                    guard BrowserImportPathPolicy.isDescendant(root.appendingPathComponent(name), of: root) else { return false }
                     var isDirectory: ObjCBool = false
                     let exists = FileManager.default.fileExists(
                         atPath: root.appendingPathComponent(name).path,
@@ -364,6 +365,7 @@ public enum BrowserProfileLocator {
                 includingPropertiesForKeys: [.isDirectoryKey]
             )) ?? []
             return entries
+                .filter { BrowserImportPathPolicy.isDescendant($0, of: profilesDirectory) }
                 .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
                 .sorted { $0.lastPathComponent < $1.lastPathComponent }
                 .map { folder in
@@ -411,6 +413,7 @@ public enum BrowserProfileLocator {
                 }
                 return names.compactMap { name in
                     let folder = root.appendingPathComponent(name, isDirectory: true)
+                    guard BrowserImportPathPolicy.isDescendant(folder, of: root) else { return nil }
                     let exists = BrowserDataImporter.profileLooksValid(folder, source: source)
                     // Only offer the default profile of a browser that is not
                     // installed when nothing else was found for it.
@@ -443,6 +446,7 @@ public enum BrowserProfileLocator {
     }
 
     public static func chromiumDisplayNames(localStateURL: URL) -> [String: String] {
+        guard BrowserImportPathPolicy.permitsArtifact(localStateURL, within: localStateURL.deletingLastPathComponent()) else { return [:] }
         guard let data = try? Data(contentsOf: localStateURL),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let infoCache = root["profile"] as? [String: Any],
@@ -462,6 +466,7 @@ public enum BrowserProfileLocator {
     /// decide which source profile or destination data store to read.
     public static func chromiumEmails(in browserRoot: URL) -> [String: String] {
         let localStateURL = browserRoot.appendingPathComponent("Local State")
+        guard BrowserImportPathPolicy.permitsArtifact(localStateURL, within: browserRoot) else { return [:] }
         guard let data = try? Data(contentsOf: localStateURL),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let profile = root["profile"] as? [String: Any],
@@ -495,6 +500,7 @@ public enum BrowserProfileLocator {
             )]
         }
         return entries
+            .filter { BrowserImportPathPolicy.isDescendant($0, of: root) }
             .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
             .map { folder in
@@ -517,6 +523,7 @@ public enum BrowserProfileLocator {
     }
 
     public static func firefoxDisplayNames(profilesIniURL: URL) -> [String: String] {
+        guard BrowserImportPathPolicy.permitsArtifact(profilesIniURL, within: profilesIniURL.deletingLastPathComponent()) else { return [:] }
         guard let contents = try? String(contentsOf: profilesIniURL, encoding: .utf8) else { return [:] }
         var names: [String: String] = [:]
         var currentName: String?
@@ -572,7 +579,7 @@ public final class BrowserDataImporter: @unchecked Sendable {
             case .unreadableData(let message):
                 "Browser data could not be read: \(message)"
             case .credentialsLocked(let browser):
-                "\(browser) passwords are encrypted with a key in your macOS keychain, and macOS did not allow Browsemium to read it. Everything else was imported."
+                "\(browser) passwords and encrypted cookies need permission to read the source key in your macOS keychain. Nothing was imported. Allow access, or turn off password and cookie import and try again."
             }
         }
     }
@@ -605,7 +612,8 @@ public final class BrowserDataImporter: @unchecked Sendable {
         )) ?? []
 
         let directories = children.filter {
-            (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            BrowserImportPathPolicy.isDescendant($0, of: folder)
+                && (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
         }
 
         switch source.family {
@@ -673,6 +681,7 @@ public final class BrowserDataImporter: @unchecked Sendable {
         guard let profile = Self.resolveProfileFolder(folder, source: source) else {
             throw ImportError.unsupportedFolder(source.displayName)
         }
+        try BrowserImportPathPolicy.validate(profile, source: source)
 
         let read: ([ImportedBookmark], [ImportedVisit])
         switch source.family {
@@ -757,19 +766,11 @@ public final class BrowserDataImporter: @unchecked Sendable {
     }
 
     private static func safariCookieURL(in profile: URL) -> URL? {
-        var candidates = [profile.appendingPathComponent("Cookies.binarycookies")]
-        // Never pull the user's live Safari cookies while previewing a moved
-        // or fixture folder that merely looks like Safari. Alternate stores
-        // are considered only for the actual installed Safari profile.
-        if let standard = BrowserImportSource.safari.profileRoot,
-           profile.resolvingSymlinksInPath().standardizedFileURL
-            == standard.resolvingSymlinksInPath().standardizedFileURL {
-            candidates.append(profile.deletingLastPathComponent()
-                .appendingPathComponent("Cookies/Cookies.binarycookies"))
-            candidates.append(FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Library/Containers/com.apple.Safari/Data/Library/Cookies/Cookies.binarycookies"))
-        }
-        return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
+        // Do not infer a grant for Safari's other stores from a selected profile.
+        let candidate = profile.appendingPathComponent("Cookies.binarycookies")
+        guard BrowserImportPathPolicy.permitsArtifact(candidate, within: profile),
+              FileManager.default.fileExists(atPath: candidate.path) else { return nil }
+        return candidate
     }
 
     private func searchEngine(in profile: URL, source: BrowserImportSource) -> BrowserImportPreview.SearchEngine? {
@@ -821,6 +822,7 @@ public final class BrowserDataImporter: @unchecked Sendable {
         keyProvider: BrowserCredentialKeyProviding? = nil,
         profile: URL? = nil
     ) throws -> BrowserImportResult {
+        if let profile { try BrowserImportPathPolicy.validate(profile, source: preview.source) }
         var credentials: [ChromeLogin] = []
         var cookies: [BrowserImportCookie] = []
         let needsChromiumKey = preview.source.family == .chromium
@@ -1121,9 +1123,10 @@ public final class BrowserDataImporter: @unchecked Sendable {
     /// Reads a browser's SQLite database from a private copy.
     ///
     /// Chrome and Firefox keep their databases open while they run, and a
-    /// read-only open of a live database fails or returns partial data. Copying
-    /// the file (plus its WAL and shared-memory sidecars) is the only reliable
-    /// way to read it, and it never writes to the source browser.
+    /// read-only open of a live database can fail. Copying the file with its
+    /// WAL and shared-memory sidecars retains uncheckpointed writes without
+    /// writing to the source. It is not an atomic snapshot of a concurrent
+    /// writer; a source that changes during copying may require a retry.
     private func readSQLite<T>(_ url: URL, body: (Database) throws -> T) throws -> T {
         let workdir = FileManager.default.temporaryDirectory
             .appendingPathComponent("browsemium-import-\(UUID().uuidString)", isDirectory: true)
