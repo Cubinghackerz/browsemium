@@ -17,6 +17,7 @@ final class StubEngine: BrowserEngine {
     private(set) var warmTabPreparations = 0
     /// Tabs `capture` was asked about, in order.
     private(set) var capturedTabs: [TabID] = []
+    private(set) var reloadedTabs: [TabID] = []
     private var zoomLevels: [TabID: CGFloat] = [:]
     /// The text each tab's fake readable page carries.
     var pageText: (TabID) -> String = { _ in "stub page text" }
@@ -56,7 +57,7 @@ final class StubEngine: BrowserEngine {
     func navigate(tabID: TabID, to request: NavigationRequest) async throws {}
     func goBack(tabID: TabID) {}
     func goForward(tabID: TabID) {}
-    func reload(tabID: TabID) {}
+    func reload(tabID: TabID) { reloadedTabs.append(tabID) }
     func stopLoading(tabID: TabID) {}
     func canGoBack(tabID: TabID) -> Bool { false }
     func canGoForward(tabID: TabID) -> Bool { false }

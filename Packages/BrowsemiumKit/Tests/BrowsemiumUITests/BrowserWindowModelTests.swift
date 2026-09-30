@@ -5,6 +5,72 @@ import Testing
 import BrowsemiumEngineKit
 
 @Test @MainActor
+func activeProcessCrashReloadsOnceAndThenStops() {
+    let engine = StubEngine()
+    let model = BrowserWindowModel(environment: .inMemory(engine: engine))
+    let tabID = model.newTab(url: URL(string: "https://crash.example")!)
+    engine.emit(.finished(title: "Fixture", url: URL(string: "https://crash.example")!), for: tabID)
+    engine.emit(.crashed, for: tabID)
+    #expect(engine.reloadedTabs == [tabID])
+    engine.emit(.finished(title: "Fixture", url: URL(string: "https://crash.example")!), for: tabID)
+    engine.emit(.crashed, for: tabID)
+    #expect(engine.reloadedTabs == [tabID])
+    #expect(model.activeTab?.lifecycle == .crashed)
+    #expect(model.statusMessage == "This page stopped responding. Reload to try again.")
+}
+
+@Test @MainActor
+func backgroundProcessCrashDoesNotReloadOrDisturbActiveTab() {
+    let engine = StubEngine()
+    let model = BrowserWindowModel(environment: .inMemory(engine: engine))
+    let background = model.newTab(url: URL(string: "https://background.example")!)
+    let active = model.newTab()
+    engine.emit(.crashed, for: background)
+    #expect(engine.reloadedTabs.isEmpty)
+    #expect(model.session.activeTabID == active)
+    #expect(model.session.tabs.first { $0.id == background }?.lifecycle == .crashed)
+}
+
+@Test func crashRecoveryExpiresAndForgetsClosedTabs() {
+    var recovery = TabCrashRecovery()
+    let first = TabID()
+    let second = TabID()
+    let now = Date(timeIntervalSince1970: 1_000)
+    let firstAttempt = recovery.shouldReload(first, now: now)
+    let repeatAttempt = recovery.shouldReload(first, now: now.addingTimeInterval(59))
+    let independentAttempt = recovery.shouldReload(second, now: now.addingTimeInterval(10))
+    let expiredAttempt = recovery.shouldReload(first, now: now.addingTimeInterval(60))
+    #expect(firstAttempt)
+    #expect(!repeatAttempt)
+    #expect(independentAttempt)
+    #expect(expiredAttempt)
+    recovery.remove(first)
+    let reopenedAttempt = recovery.shouldReload(first, now: now.addingTimeInterval(61))
+    #expect(reopenedAttempt)
+}
+
+@Test @MainActor
+func peekProcessCrashClosesPreviewWithoutAutomaticReload() {
+    let engine = StubEngine()
+    let model = BrowserWindowModel(environment: .inMemory(engine: engine))
+    model.openPeek(url: URL(string: "https://peek.example")!)
+    let peekID = model.peek!.tabID
+    engine.emit(.crashed, for: peekID)
+    #expect(model.peek == nil)
+    #expect(engine.reloadedTabs.isEmpty)
+    #expect(model.statusMessage == "The preview stopped responding")
+}
+
+@Test @MainActor
+func blockedExternalLaunchExplainsStatusWithoutReloading() {
+    let engine = StubEngine()
+    let model = BrowserWindowModel(environment: .inMemory(engine: engine))
+    engine.emit(.blockedExternalScheme("file"), for: model.session.activeTabID!)
+    #expect(model.statusMessage == "Blocked file link that tried to open another app")
+    #expect(engine.reloadedTabs.isEmpty)
+}
+
+@Test @MainActor
 func blockingPauseIsRememberedForOneHostOnly() {
     let engine = StubEngine()
     let model = BrowserWindowModel(environment: .inMemory(engine: engine))

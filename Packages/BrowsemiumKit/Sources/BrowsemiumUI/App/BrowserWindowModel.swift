@@ -94,6 +94,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         let url: URL
     }
     private var searchDisplayByTab: [TabID: SearchDisplay] = [:]
+    private var crashRecovery = TabCrashRecovery()
     /// The link the pointer is over in the active tab, shown in the status
     /// bar. Reported by the page's injected hover monitor.
     public private(set) var hoveredLinkURL: URL?
@@ -664,6 +665,7 @@ public final class BrowserWindowModel: PermissionPrompting {
             )
         }
         environment.engine.discard(tabID: targetID)
+        crashRecovery.remove(targetID)
         tabURLs[targetID] = nil
         searchDisplayByTab[targetID] = nil
         hoveredLinkURL = nil
@@ -3409,6 +3411,10 @@ public final class BrowserWindowModel: PermissionPrompting {
             if session.activeTabID == tabID {
                 isLoading = false
                 statusMessage = "This page stopped responding. Reload to try again."
+                if crashRecovery.shouldReload(tabID) {
+                    statusMessage = "This page stopped responding. Reloading once…"
+                    environment.engine.reload(tabID: tabID)
+                }
             }
         case .lifecycleChanged(let lifecycle):
             // Suspension and hibernation happen without a navigation event, so
