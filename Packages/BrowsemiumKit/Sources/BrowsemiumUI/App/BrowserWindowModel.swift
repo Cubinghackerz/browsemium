@@ -650,7 +650,8 @@ public final class BrowserWindowModel: PermissionPrompting {
         // reopen — recording it would fill Recently Closed with dead rows. The
         // in-flight URL in tabURLs counts: a mid-load close still reopens.
         if !session.isPrivate, let closedURL = tabURLs[targetID] ?? tab.lastCommittedURL {
-            try? environment.closedTabRepository.record(
+            do {
+                try environment.closedTabRepository.record(
                 BrowserTab(
                     id: tab.id,
                     spaceID: tab.spaceID,
@@ -662,7 +663,10 @@ public final class BrowserWindowModel: PermissionPrompting {
                     createdAt: tab.createdAt,
                     lastAccessedAt: tab.lastAccessedAt
                 )
-            )
+                )
+            } catch {
+                reportPersistenceFailure("recently closed tab", error)
+            }
         }
         environment.engine.discard(tabID: targetID)
         crashRecovery.remove(targetID)
@@ -2927,7 +2931,11 @@ public final class BrowserWindowModel: PermissionPrompting {
     }
 
     public func removeBookmark(_ bookmark: Bookmark) {
-        _ = try? environment.bookmarkRepository.remove(id: bookmark.id)
+        do {
+            try environment.bookmarkRepository.remove(id: bookmark.id)
+        } catch {
+            reportPersistenceFailure("bookmark change", error)
+        }
         refreshBookmarks()
         refreshNavigationState()
     }
@@ -3202,7 +3210,11 @@ public final class BrowserWindowModel: PermissionPrompting {
         permissionQueue.removeFirst()
         let decision: SitePermissionDecision = answer == .block ? .deny : .allow
         if answer != .allowOnce {
-            try? environment.permissionRepository.set(origin: request.origin, kind: request.kind, decision: decision)
+            do {
+                try environment.permissionRepository.set(origin: request.origin, kind: request.kind, decision: decision)
+            } catch {
+                reportPersistenceFailure("site permission", error)
+            }
             refreshSitePermissions()
         }
         permissionContinuations.removeValue(forKey: request.id)?.resume(returning: decision)
@@ -3478,7 +3490,12 @@ public final class BrowserWindowModel: PermissionPrompting {
                 createdAt: Date(),
                 updatedAt: Date()
             )
-            try? environment.downloadRepository.upsert(record)
+            do {
+                try environment.downloadRepository.upsert(record)
+            } catch {
+                reportPersistenceFailure("download history", error)
+                return
+            }
         }
 
         guard let tabID = info.tabID, tabID == session.activeTabID else { return }
@@ -3519,9 +3536,20 @@ public final class BrowserWindowModel: PermissionPrompting {
         // could otherwise land out of order and persist a stale session.
         let repository = environment.historyRepository
         let resolvedTitle = title ?? url.host ?? ""
-        Self.persistenceQueue.async {
-            _ = try? repository.record(url: url, title: resolvedTitle)
+        Self.persistenceQueue.async { [weak self] in
+            do {
+                _ = try repository.record(url: url, title: resolvedTitle)
+            } catch {
+                Task { @MainActor [weak self] in
+                    self?.reportPersistenceFailure("history", error)
+                }
+            }
         }
+    }
+
+    private func reportPersistenceFailure(_ what: String, _ error: Error) {
+        statusMessage = "Couldn't save \(what)"
+        PersistenceFailureLog.record(what, error: error)
     }
 
     // MARK: - Profiles
