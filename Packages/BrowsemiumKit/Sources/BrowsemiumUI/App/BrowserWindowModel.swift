@@ -335,6 +335,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         statusMessage = nil
         refreshNavigationState()
         applyPrivateBrowsingModeToEngine()
+        refreshExtensionActions()
     }
 
     /// Work that must happen early but not on the path to the first frame:
@@ -4047,7 +4048,7 @@ public final class BrowserWindowModel: PermissionPrompting {
     public private(set) var extensionActions: [ExtensionActionButton] = []
 
     public func refreshExtensionActions() {
-        guard #available(macOS 15.4, *), let host = environment.extensionHost else {
+        guard !session.isPrivate, #available(macOS 15.4, *), let host = environment.extensionHost else {
             extensionActions = []
             return
         }
@@ -4099,17 +4100,25 @@ public final class BrowserWindowModel: PermissionPrompting {
     /// Runs an extension's action for the active tab. A popup action routes
     /// through the host's presenter, which the toolbar supplies.
     public func performExtensionAction(_ extensionID: String) {
+        guard !session.isPrivate else {
+            statusMessage = "Extensions are unavailable in private windows."
+            return
+        }
         guard #available(macOS 15.4, *) else { return }
         environment.extensionHost?.performAction(for: extensionID, tabID: session.activeTabID)
     }
 
     /// Extension-supplied menu items for an action button, fetched on demand.
     public func extensionActionMenuItems(_ extensionID: String) -> [NSMenuItem] {
-        guard #available(macOS 15.4, *) else { return [] }
+        guard !session.isPrivate, #available(macOS 15.4, *) else { return [] }
         return environment.extensionHost?.actionMenuItems(for: extensionID, tabID: session.activeTabID) ?? []
     }
 
     public func openExtensionOptions(_ extensionID: String) {
+        guard !session.isPrivate else {
+            statusMessage = "Extensions are unavailable in private windows."
+            return
+        }
         guard #available(macOS 15.4, *),
               let url = environment.extensionHost?.optionsPageURL(for: extensionID) else {
             statusMessage = "This extension has no options page"
@@ -4125,6 +4134,7 @@ public final class BrowserWindowModel: PermissionPrompting {
 
     @available(macOS 15.4, *)
     public func registerExtensionActionPresenter(_ presenter: any ExtensionActionPopupPresenting) {
+        guard !session.isPrivate else { return }
         environment.extensionHost?.actionPresenter = presenter
     }
 
@@ -4147,6 +4157,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         activated: TabID? = nil,
         previous: TabID? = nil
     ) {
+        guard !session.isPrivate else { return }
         guard #available(macOS 15.4, *), let host = environment.extensionHost else { return }
         host.stripDidChange(closedTabID: closed, activatedTabID: activated, previousTabID: previous)
         // Actions are tab-specific (badges, enabled state), so the toolbar

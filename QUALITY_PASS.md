@@ -97,6 +97,12 @@ trusted operation label plus error domain/code, not descriptions or SQL bindings
   Normal bridge operations, permission continuations, and ephemeral WebView
   controller exclusion passed. An introduced continuation return-type build
   error was diagnosed and fixed; no test was skipped.
+- Final review found cached action buttons and extension Options still
+  reachable in private windows. Private entry/refresh now clears actions;
+  action invocation, menus, Options, presenter registration, and strip
+  notifications reject private sessions. Fixture regression passed and failed
+  again with the action/Options guards removed; normal toolbar/bridge
+  companions passed.
 
 ## Deeper audit: AI context
 
@@ -155,7 +161,9 @@ trusted operation label plus error domain/code, not descriptions or SQL bindings
 
 - Native end-to-end offline navigation, external click/script behavior,
   authentication retries/cancel, WebContent kill/recovery, and light/dark
-  appearance are not yet manually verified for these changes.
+  appearance are not yet manually verified for these changes. Screen Recording
+  and Accessibility preflight both returned unavailable; permissions were not
+  changed and no whole-screen capture was attempted.
 - The reviewed areas and concrete fixes are listed above; this is not a
   whole-codebase security certification. Archive signatures/entry preflight,
   atomic concurrent import snapshots, and filesystem-swap defense remain open.

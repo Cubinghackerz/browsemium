@@ -64,6 +64,25 @@ func anExtensionWithAnActionGetsAToolbarButton() async throws {
 }
 
 @Test @MainActor
+func privateWindowsHideExtensionActionsAndRejectOptions() async throws {
+    guard #available(macOS 15.4, *) else { return }
+    let environment = try makeActionEnvironment()
+    let model = BrowserWindowModel(environment: environment)
+    let id = try await loadExtension(named: "Private boundary fixture", manifest: """
+        {"manifest_version":3,"name":"Private boundary fixture","version":"1.0",
+         "action":{"default_title":"Fixture action"},"options_page":"options.html"}
+        """, into: environment, model: model)
+    try #require(!model.extensionActions.isEmpty)
+    model.enterPrivateMode()
+    #expect(model.extensionActions.isEmpty)
+    model.refreshExtensionActions()
+    #expect(model.extensionActions.isEmpty)
+    let tabCount = model.session.tabs.count
+    model.openExtensionOptions(id)
+    #expect(model.session.tabs.count == tabCount)
+}
+
+@Test @MainActor
 func hidingAnExtensionActionRemovesItsToolbarButton() async throws {
     guard #available(macOS 15.4, *) else { return }
     let environment = try makeActionEnvironment()
