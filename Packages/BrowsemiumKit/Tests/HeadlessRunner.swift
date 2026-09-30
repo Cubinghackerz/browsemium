@@ -735,6 +735,13 @@ struct HeadlessRunner {
             runtime.report(.crashed)
             try expect(runtime.lifecycle == .crashed, "A crashed page must move the runtime to .crashed")
             try expect(lifecycleChanges() == [.hibernated, .crashed], "A crash must emit a lifecycle change")
+
+            let page = URL(string: "https://fixture.example")!
+            runtime.report(.finished(title: "Fixture", url: page))
+            runtime.report(.startedLoading(URL(string: "https://offline.example")))
+            runtime.report(.failed("Offline"))
+            try expect(runtime.lifecycle == .active, "A failed navigation must keep the committed page active")
+            try expect(runtime.lastCommittedURL == page, "A failure must preserve the committed URL")
         }
     }
 

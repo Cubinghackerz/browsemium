@@ -432,7 +432,9 @@ public final class TabRuntime {
             }
             setLifecycle(.active)
         case .failed:
-            setLifecycle(lastCommittedURL == nil ? .metadataOnly : .crashed)
+            // A navigation error leaves the committed document healthy.
+            // Only content-process termination is a crash.
+            setLifecycle(lastCommittedURL == nil ? .metadataOnly : .active)
         case .cancelled:
             // A cancelled navigation changed nothing: whatever was committed
             // (if anything) is still the page, and the lifecycle is untouched.
