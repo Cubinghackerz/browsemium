@@ -24,10 +24,14 @@ that require an account.
 - **Lower memory by unloading, and it says so.** Background tabs are unloaded
   after a configurable idle period, with a ceiling on simultaneously loaded
   tabs. The in-app copy states the trade-off: pages reload when you return.
-- **No account, no telemetry, no cloud sync.** Browsing data stays on the Mac.
-- **No autonomous AI.** The assistant never clicks, types, or submits. Page
-  text, selection, and screenshots are captured only on request and reviewed in
-  a sheet before anything is sent.
+- **No account, no product telemetry, no cloud sync.** Browser records are
+  stored locally; websites, extensions, searches, and chosen AI providers
+  still receive their ordinary network traffic.
+- **No autonomous AI.** The assistant does not operate browsing pages.
+  API requests have a native review sheet. Provider-website sends prepare
+  enabled page metadata and readable text at the user's send action, without
+  a separate native review sheet; that context is enabled by default.
+  Screenshots, selections, and files require an explicit attachment choice.
 - **Ad and tracker blocking through WebKit content rules**, reported as rule
   state only — WebKit does not expose blocked-request counts, so Browsemium
   never shows a number it cannot verify.

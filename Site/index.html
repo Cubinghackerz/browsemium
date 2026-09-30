@@ -347,7 +347,7 @@
   <section class="hero">
     <div class="shell">
       <h1><span class="line"><span>Keep the web.</span></span><span class="line"><span>Lose the weight.</span></span></h1>
-      <p class="lede">A native Mac browser that unloads the tabs you are not using, keeps profiles separate, and puts the AI you already use beside the page. No account, no telemetry, nothing sent anywhere you did not send it.</p>
+      <p class="lede">A native Mac browser that unloads the tabs you are not using, keeps profiles separate, and puts the AI you already use beside the page. No Browsemium account, no product telemetry. Websites, extensions, and your chosen AI provider make their own network requests.</p>
       <div class="command">
         <span class="prompt" aria-hidden="true">$</span>
         <code id="install-command">curl -fsSL https://browsemium.vercel.app/install.sh | bash</code>
@@ -396,14 +396,14 @@
     <div class="shell story">
       <h2>The assistant works beside the page. You stay in control.</h2>
       <div class="story-body">
-        <p>Use ChatGPT, Claude, Gemini, Grok, or a local Ollama model beside the page you are reading, with the web subscription you already have or an optional API key. Context is a choice, not a default:</p>
+        <p>Use ChatGPT, Claude, Gemini, Grok, or a local Ollama model beside the page you are reading, with the web subscription you already have or an optional API key. Web-provider sends include page metadata and bounded readable text by default; you can turn this off in Settings:</p>
         <dl class="ruled">
           <div class="ruled-row"><dt>Page title and a sanitized URL</dt><dd>when enabled</dd></div>
           <div class="ruled-row"><dt>Readable page text</dt><dd>prepared at send, bounded</dd></div>
           <div class="ruled-row"><dt>A screenshot</dt><dd>only when you choose one</dd></div>
           <div class="ruled-row"><dt>A selection or a file</dt><dd>only when you choose one</dd></div>
         </dl>
-        <p>Everything is reviewed in a sheet before it is sent. The assistant never clicks, types, or submits.</p>
+        <p>API messages are reviewed in a sheet before sending. In provider-website mode, context is prepared when you send through the provider's composer, without a separate native review sheet. The assistant never acts autonomously on browsing pages.</p>
       </div>
     </div>
   </section>

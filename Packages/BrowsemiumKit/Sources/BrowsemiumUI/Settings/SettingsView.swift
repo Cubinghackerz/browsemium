@@ -877,7 +877,7 @@ struct SettingsView: View {
                     .font(.system(size: 12))
                     .foregroundStyle(Color.browsemiumTertiary)
             }
-            SettingsNote("No account, no telemetry. Browsing data leaves this Mac only when you send it to a site or an AI provider you chose.")
+            SettingsNote("No Browsemium account or product telemetry. Websites, enabled extensions, searches, and your chosen AI provider still make network requests.")
         }
     }
 

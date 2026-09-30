@@ -452,6 +452,14 @@ until signing credentials exist.
   Manual native QA, the deeper audit, and release gates remain separately
   tracked in `QUALITY_PASS.md`; no performance claim follows from these tests.
 
+- Deeper quality audit (committed source, not a release): importer profile
+  containment and linked-artifact checks, extension hidden-link checks and
+  recoverable update rollback, private/locked extension bridge checks, and
+  private/locked AI context and provider-storage isolation. AI attachment
+  source URLs strip credentials/query/fragment. Privacy/review/deletion copy
+  now states implementation limits; see `QUALITY_PASS.md` for regression
+  evidence and remaining security/manual-QA limits.
+
 - One geometric split-triangle source now generates the plated app icon,
   template logo, favicons, social card, DMG art, and README banner. The site
   uses Geist and follows light/dark appearance; the logo is a quiet watermark

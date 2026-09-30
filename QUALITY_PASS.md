@@ -128,13 +128,37 @@ trusted operation label plus error domain/code, not descriptions or SQL bindings
   escaping/capping assertions remain intact: their fixtures use a title with
   an ampersand and a long path, rather than relying on sharing query values.
 
+## Session/privacy and claim check
+
+| Claim | Reviewed implementation and limits |
+| --- | --- |
+| Local browser records; no product telemetry/account/sync | ProfileStore and repository writes are local. Reviewed network call sites cover websites, search, favicons, extension downloads, and selected AI providers; no product telemetry path was found in the scoped grep. This is not a dependency-wide network audit. |
+| Separate profiles; private browsing | Profile databases and identified WebKit stores are separate. Private runtime selection is ephemeral; history, session, and closed-tab writes have private guards. Existing incognito tests cover these paths. AI panels now use explicit profile/private storage too. |
+| Locked-space restore and palette | `sessionLandingUnlocked` selects an unlocked landing space; tab/recent palette rows filter locked spaces. Stored session/history metadata remains local and unencrypted; locks are not an at-rest security boundary. |
+| AI context and credentials | Metadata strips URL credentials/query/fragment; capture and request builders bound text; request-boundary source URLs now use the same sanitizer. Key presence checks use attributes-only `hasSecret`. Page text/files can contain secrets and are not generally redacted. |
+| AI review | Native API mode has a review sheet. Provider-website mode enriches the user's composer send, without a separate native review sheet. Corrected Site/PRODUCT/PRIVACY wording and the overbroad Settings network assurance. |
+| Profile deletion | WebKit store and Keychain deletions are requested; ProfileStore discards individual file-removal errors. Narrowed PRIVACY wording to disclose possible remnants and backups, not claim secure erasure. |
+| Memory and installation | Memory UI uses ProcessMemory with its scope stated; no comparative claim added. Installer checks and ad-hoc/not-notarized wording are preserved. Manifest/checksum and CI gates were already verified and were not re-audited. |
+
+- Geist is intentional in the user's brand brief; suppressed only
+  `overused-font=Geist` through hook-admin, with the evidence recorded. No
+  rule/file-wide suppression. The one mechanical Site scan reported no
+  findings, but ran in degraded regex mode: computed contrast/layout were
+  not verified by that tool.
+- Review was direct, one relevant function group at a time. No private user
+  profile, imported secret, provider credential, or live extension was read.
+- Full Swift package suite after Workstream E: passed, including importer
+  containment/WAL fixtures, extension rollback/privacy, AI source/link checks,
+  locked-space launch/palette tests, and incognito record guards.
+
 ## Remaining verification and scope
 
 - Native end-to-end offline navigation, external click/script behavior,
   authentication retries/cancel, WebContent kill/recovery, and light/dark
   appearance are not yet manually verified for these changes.
-- AI/privacy, session restore, and copy-claim audit is next; this document does
-  not imply those are safe.
+- The reviewed areas and concrete fixes are listed above; this is not a
+  whole-codebase security certification. Archive signatures/entry preflight,
+  atomic concurrent import snapshots, and filesystem-swap defense remain open.
 - Final headless/project/app-build/app-test/diff gates remain to be run after
   the complete pass. No release was cut; release notes are unchanged.
 - Developer ID/notarization and the quiet-machine memory gate remain open.
