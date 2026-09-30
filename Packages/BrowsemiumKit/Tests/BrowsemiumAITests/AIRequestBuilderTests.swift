@@ -4,10 +4,23 @@ import Foundation
 import Testing
 
 @Test
+func pageAttachmentSourcesNeverIncludeURLSecrets() {
+    let context = PageTextContext(url: URL(string: "https://fixture-user:fixture-password@example.com/article?token=fixture-token#fixture-fragment")!, text: "Fixture text")
+    for attachment in [AIContextAttachment.readablePage(context), .selection(context)] {
+        let prompt = AIRequestBuilder.composePrompt(userPrompt: "Question", attachments: [attachment])
+        #expect(prompt.contains("source=\"https://example.com/article\""))
+        #expect(!prompt.contains("fixture-user"))
+        #expect(!prompt.contains("fixture-password"))
+        #expect(!prompt.contains("fixture-token"))
+        #expect(!prompt.contains("fixture-fragment"))
+    }
+}
+
+@Test
 func composedPromptEscapesAttributes() {
     let context = PageTextContext(
         url: URL(string: #"https://example.com/search?q="quoted"&x=1"#),
-        title: #"A "quoted" <title>"#,
+        title: #"A "quoted" <title> & details"#,
         text: "body",
         isTruncated: false
     )
@@ -23,7 +36,9 @@ func composedPromptEscapesAttributes() {
 
 @Test
 func composedPromptCapsLongSourceURLs() {
-    let long = "https://www.google.com/search?q=test&" + String(repeating: "p=1&", count: 200)
+    // Query strings are now stripped; a long path still exercises capping
+    // and ampersand expansion without relying on sharing tracking values.
+    let long = "https://www.google.com/search/" + String(repeating: "p&/", count: 200)
     let context = PageTextContext(
         url: URL(string: long)!,
         title: nil,

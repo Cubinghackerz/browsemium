@@ -231,8 +231,8 @@ public enum AIRequestBuilder {
     private static func wrap(_ context: PageTextContext, label: String, policy: AIContextPolicy) -> String {
         let bounded = boundedText(context.text, limit: policy.maxTextCharacters)
         var attributes = "kind=\"\(label)\""
-        if policy.includeSourceURL, let url = context.url {
-            attributes += " source=\"\(boundedSource(url))\""
+        if policy.includeSourceURL, let source = PageMetadataContext(title: nil, url: context.url) {
+            attributes += " source=\"\(boundedSource(source.url))\""
         }
         if let title = context.title, !title.isEmpty {
             attributes += " title=\"\(escapedAttribute(title))\""
@@ -253,8 +253,8 @@ public enum AIRequestBuilder {
             """
     }
 
-    /// Query strings on search pages can run for hundreds of characters of
-    /// tracking parameters. The URL still identifies the page once capped.
+    /// Sanitized host/path URLs can still be long. Cap them after stripping
+    /// credentials, query strings, and fragments at the request boundary.
     /// Escaping happens before the cap so `&` → `&amp;` expansion cannot
     /// push the attribute past the bound; a dangling partial entity is
     /// trimmed at the cut.

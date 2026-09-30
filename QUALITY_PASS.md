@@ -121,6 +121,12 @@ trusted operation label plus error domain/code, not descriptions or SQL bindings
   otherwise. Scope changes release old panels and pending/trusted URLs. A
   mismatched global extension controller is not attached. Both storage
   regressions passed and failed again with legacy configuration restored.
+- Confirmed that readable/selection attachment source URLs reintroduced
+  credentials, queries, and fragments that metadata had removed. Request
+  construction now sanitizes source attributes for both attachment types.
+  Regression passed and failed again when raw URLs were restored. Existing
+  escaping/capping assertions remain intact: their fixtures use a title with
+  an ampersand and a long path, rather than relying on sharing query values.
 
 ## Remaining verification and scope
 
