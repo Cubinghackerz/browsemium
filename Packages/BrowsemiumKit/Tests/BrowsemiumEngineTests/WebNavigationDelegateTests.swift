@@ -28,3 +28,11 @@ func genuineFailuresAreNotInterruptions() {
     let alien = NSError(domain: "com.example.other", code: NSURLErrorCancelled)
     #expect(WebNavigationDelegate.isExpectedInterruption(alien) == false)
 }
+
+@Test @MainActor
+func dnsOfflineAndCertificateFailuresRemainRealFailures() {
+    for code in [NSURLErrorCannotFindHost, NSURLErrorNotConnectedToInternet,
+                 NSURLErrorSecureConnectionFailed, NSURLErrorServerCertificateUntrusted] {
+        #expect(!WebNavigationDelegate.isExpectedInterruption(NSError(domain: NSURLErrorDomain, code: code)))
+    }
+}

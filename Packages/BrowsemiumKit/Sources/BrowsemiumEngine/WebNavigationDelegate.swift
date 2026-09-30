@@ -146,6 +146,21 @@ final class WebNavigationDelegate: NSObject, WKNavigationDelegate {
         navigationResponse.canShowMIMEType ? .allow : .download
     }
 
+    func webView(
+        _ webView: WKWebView,
+        respondTo challenge: URLAuthenticationChallenge
+    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        switch AuthChallengePolicy.action(forMethod: challenge.protectionSpace.authenticationMethod) {
+        case .performDefaultHandling:
+            return (.performDefaultHandling, nil)
+        case .prompt:
+            guard let credential = await HTTPAuthPrompt.credential(for: challenge, window: webView.window) else {
+                return (.cancelAuthenticationChallenge, nil)
+            }
+            return (.useCredential, credential)
+        }
+    }
+
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         runtime?.report(.startedLoading(webView.url))
     }
