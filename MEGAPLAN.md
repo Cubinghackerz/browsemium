@@ -423,6 +423,9 @@ until signing credentials exist.
 
 ### 2.3 — Smart space routing — NEXT
 
+Implementation scope and regression gates: `Plans/2.3-smart-space-routing.md`.
+This is a plan, not shipped functionality.
+
 - Route domains (e.g. github.com, company tools) into a chosen space.
 - Configure rules from the tab context menu and Settings.
 - Never route private-window navigation; never silently unlock a locked
@@ -430,6 +433,10 @@ until signing credentials exist.
 - A reversible notice appears when a navigation moves to another space.
 
 ### 2.4 — Advanced blocking controls — NEXT
+
+Separate implementation plans: `Plans/2.4-user-filter-lists.md` and
+`Plans/2.4-extension-site-controls.md`. The toolbar action host already exists;
+site controls are the remaining work, not a duplicate toolbar implementation.
 
 - Import user-selected ABP/AdGuard lists from a local file or HTTPS source.
 - Lists compile in the background; on failure the last working version stays
@@ -479,9 +486,11 @@ until signing credentials exist.
   when sandbox scope does not cover the file, custom search engine/keyword
   lists, batch extension reinstall, autofill addresses, open/pinned session
   restoration, bookmark/history portable backups, and per-item import reports.
+  The ordered reporting/session/Firefox follow-on scope is recorded in
+  `Plans/6-import-completion.md`; none is claimed shipped by that plan.
 - This cycle's quality gate is a whole-app visual pass in light and dark plus
-  scoped motion polish. Smart routing, advanced blocking, toolbar extension
-  actions, passkeys, password health, CLI/MCP, and optional encrypted sync are
+  scoped motion polish. Smart routing, advanced blocking, per-site extension
+  controls, passkeys, password health, CLI/MCP, and optional encrypted sync are
   proposals for subsequent scoping. Sync would reverse the current no-sync
   product decision and is not authorized for implementation.
 
