@@ -1790,12 +1790,17 @@ public final class BrowserWindowModel: PermissionPrompting {
     }
 
     private func captureSelectionForAI(tabID: TabID) {
+        guard canSharePageWithAI(tabID) else {
+            statusMessage = "Page context is unavailable in private windows or locked spaces."
+            return
+        }
         Task {
             do {
                 let captured = try await environment.engine.capture(
                     tabID: tabID,
                     request: CaptureRequest(kinds: [.selection])
                 )
+                guard canSharePageWithAI(tabID) else { return }
                 pendingAIContext = captured.attachments
                 aiContextToken += 1
                 if !isAIDockVisible {
@@ -4277,13 +4282,12 @@ public final class BrowserWindowModel: PermissionPrompting {
         for tabID in tabIDs.prefix(Self.maximumAIContextTabs) {
             // A locked space's pages are never context: the lock hides their
             // content from every surface, the assistant included.
-            guard let tab = session.tabs.first(where: { $0.id == tabID }),
-                  isSpaceUnlocked(tab.spaceID),
+            guard canSharePageWithAI(tabID),
                   environment.engine.isLive(tabID: tabID),
                   let captured = try? await environment.engine.capture(
                       tabID: tabID,
                       request: CaptureRequest(kinds: [.readablePage])
-                  ) else {
+                  ), canSharePageWithAI(tabID) else {
                 skipped += 1
                 continue
             }
@@ -4302,8 +4306,12 @@ public final class BrowserWindowModel: PermissionPrompting {
     /// what the lock exists to hide.
     public func tabsAvailableForAIContext() -> [BrowserTab] {
         session.tabs.filter {
-            $0.id != session.activeTabID && isSpaceUnlocked($0.spaceID) && environment.engine.isLive(tabID: $0.id)
+            $0.id != session.activeTabID && canSharePageWithAI($0.id) && environment.engine.isLive(tabID: $0.id)
         }
+    }
+
+    public func canSharePageWithAI(_ tabID: TabID) -> Bool {
+        AIContextAccessPolicy.mayCapture(tabID, in: session, unlocked: unlockedSpaceIDs)
     }
 
     /// How many tabs one assistant request may draw context from. Each page

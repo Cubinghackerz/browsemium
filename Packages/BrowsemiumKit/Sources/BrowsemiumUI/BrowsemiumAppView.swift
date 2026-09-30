@@ -28,7 +28,7 @@ public struct BrowsemiumAppView: View {
 
     public init(model: BrowserWindowModel = BrowserWindowModel()) {
         _model = State(initialValue: model)
-        _ai = State(initialValue: AIDockViewModel(environment: model.environment))
+        _ai = State(initialValue: AIDockViewModel(windowModel: model))
         _showFirstRun = State(initialValue: !model.environment.userDefaults.bool(forKey: Self.onboardingKey))
         _dockWidth = State(initialValue: BrowserMetrics.restoredDockWidth(in: model.environment.userDefaults))
     }

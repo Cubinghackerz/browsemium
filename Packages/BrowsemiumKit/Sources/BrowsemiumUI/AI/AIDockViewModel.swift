@@ -79,6 +79,12 @@ public final class AIDockViewModel {
         let generation: UInt64
     }
     private var activeWebPreparation: WebPreparationState?
+    private weak var browser: BrowserWindowModel?
+
+    public convenience init(windowModel: BrowserWindowModel) {
+        self.init(environment: windowModel.environment)
+        browser = windowModel
+    }
 
     public init(environment: BrowserEnvironment) {
         self.environment = environment
@@ -307,13 +313,18 @@ public final class AIDockViewModel {
             errorMessage = "Open a page before sharing context."
             return
         }
+        guard browser?.canSharePageWithAI(tabID) == true else {
+            errorMessage = "Page context is unavailable in private windows or locked spaces."
+            return
+        }
         guard !isWorking else { return }
         let generation = contextGeneration
         let work = beginWork()
         defer { endWork(work) }
         do {
             let captured = try await environment.engine.capture(tabID: tabID, request: CaptureRequest(kinds: [kind]))
-            guard contextGeneration == generation else { return }
+            guard contextGeneration == generation,
+                  browser?.canSharePageWithAI(tabID) == true else { return }
             // Replace stale content instead of sending several versions of
             // the same thing. Page text is keyed by URL, so re-capturing the
             // active page leaves other tabs' text attached; selections and
@@ -610,6 +621,7 @@ public final class AIDockViewModel {
         tab: BrowserTab?,
         provider: AIProviderID
     ) async throws -> ProviderComposerPreparation {
+        let accessibleTab = tab.flatMap { browser?.canSharePageWithAI($0.id) == true ? $0 : nil }
         let generation = contextGeneration
         let preparationID = UUID()
         var generatedAttachments: [AIContextAttachment] = []
@@ -631,13 +643,16 @@ public final class AIDockViewModel {
             guard contextGeneration == generation, self.provider == provider else {
                 throw BrowsemiumError.captureUnavailable("The active page or provider changed while context was being prepared. Press Send again.")
             }
+            if let accessibleTab, browser?.canSharePageWithAI(accessibleTab.id) != true {
+                throw BrowsemiumError.captureUnavailable("The page is no longer available for sharing.")
+            }
         }
 
         try verifyContextIsCurrent()
         let settings = environment.loadSettings()
         removeProviderImages()
-        let metadata = settings.includePageMetadataInWebAI
-            ? PageMetadataContext(title: tab?.title, url: tab?.lastCommittedURL)
+        let metadata: PageMetadataContext? = settings.includePageMetadataInWebAI
+            ? accessibleTab.flatMap { PageMetadataContext(title: $0.title, url: $0.lastCommittedURL) }
             : nil
 
         let hasReadablePage = attachments.contains { attachment in
@@ -647,10 +662,10 @@ public final class AIDockViewModel {
         let automaticKinds = WebAIContextPolicy.automaticCaptureKinds(
             includePageContext: settings.includePageMetadataInWebAI,
             hasReadablePage: hasReadablePage,
-            pageURL: tab?.lastCommittedURL
+            pageURL: accessibleTab?.lastCommittedURL
         )
 
-        if automaticKinds.contains(.readablePage), let tab {
+        if automaticKinds.contains(.readablePage), let tab = accessibleTab {
             // Automatic context is deliberately text and sanitized metadata
             // only. Screenshots and files remain explicit user attachments,
             // so a normal Send can never trigger an unexpected image upload.
@@ -787,10 +802,14 @@ public final class AIDockViewModel {
     // MARK: - Persisted conversations
 
     private var shouldPersistConversations: Bool {
-        environment.loadSettings().persistAIConversations
+        browser?.session.isPrivate == false && environment.loadSettings().persistAIConversations
     }
 
     public func refreshConversations() {
+        guard browser?.session.isPrivate == false else {
+            conversationList = []
+            return
+        }
         conversationList = (try? environment.conversationRepository.conversations()) ?? []
     }
 
@@ -805,6 +824,7 @@ public final class AIDockViewModel {
     }
 
     public func openConversation(_ id: ConversationID) {
+        guard browser?.session.isPrivate == false else { return }
         guard let restored = try? environment.conversationRepository.messages(conversationID: id) else { return }
         stop()
         messages = restored
@@ -813,6 +833,7 @@ public final class AIDockViewModel {
     }
 
     public func deleteConversation(_ id: ConversationID) {
+        guard browser?.session.isPrivate == false else { return }
         try? environment.conversationRepository.delete(conversationID: id)
         if currentConversationID == id {
             clearConversation()

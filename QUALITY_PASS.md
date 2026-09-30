@@ -98,6 +98,25 @@ trusted operation label plus error domain/code, not descriptions or SQL bindings
   controller exclusion passed. An introduced continuation return-type build
   error was diagnosed and fixed; no test was skipped.
 
+## Deeper audit: AI context
+
+- Confirmed private/locked single-page capture and private multi-tab capture.
+  A small policy now checks membership, privacy, and lock state before and
+  after async capture. Web preparation omits inaccessible metadata and text;
+  selection-menu capture uses the same policy. Dock context is invalidated
+  when privacy/space/unlock state changes.
+- Confirmed private windows could restore persistent AI conversations. They
+  no longer list, restore, delete, or persist those conversations. The dock is
+  bound weakly to its window; unbound capture fails closed. Three regressions
+  passed and failed again when the guards were reverted. Normal unlocked
+  capture and existing quick-action companions passed.
+- Metadata initialization is failable; an introduced nested-optional compile
+  error was localized and fixed with `flatMap`, without relaxing a test.
+- Credential presence uses `hasSecret`; secret reads remain explicit connect,
+  model-loading, or send operations. Reviewed markdown drops non-HTTP(S)
+  destinations; its native URL handler now also validates the scheme.
+- Provider-panel private storage is the next separately reproduced boundary.
+
 ## Remaining verification and scope
 
 - Native end-to-end offline navigation, external click/script behavior,

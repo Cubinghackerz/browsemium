@@ -81,6 +81,13 @@ struct AIDockView: View {
             ai.clearAttachments()
             ai.errorMessage = nil
         }
+        .onChange(of: model.session.isPrivate) {
+            ai.clearConversation()
+            ai.clearAttachments()
+            ai.refreshConversations()
+        }
+        .onChange(of: model.session.spaces) { ai.clearAttachments() }
+        .onChange(of: model.unlockedSpaceIDs) { ai.clearAttachments() }
         .onChange(of: ai.provider) {
             // A stream belonging to the previous provider must not keep
             // writing into the transcript after the switch.
@@ -854,6 +861,7 @@ private struct AIChatTranscript: View {
         // Links in answers — inline markdown links and the link list alike —
         // open as Browsemium tabs, not in an external browser.
         .environment(\.openURL, OpenURLAction { url in
+            guard SafeMarkdownDocument.sanitizedURL(url.absoluteString) != nil else { return .discarded }
             model.newTab(url: url)
             return .handled
         })
