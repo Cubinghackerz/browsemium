@@ -18,6 +18,8 @@ final class StubEngine: BrowserEngine {
     /// Tabs `capture` was asked about, in order.
     private(set) var capturedTabs: [TabID] = []
     private(set) var reloadedTabs: [TabID] = []
+    private(set) var printedTabs: [TabID] = []
+    private(set) var articleRequests: [TabID] = []
     private var zoomLevels: [TabID: CGFloat] = [:]
     /// The text each tab's fake readable page carries.
     var pageText: (TabID) -> String = { _ in "stub page text" }
@@ -76,7 +78,7 @@ final class StubEngine: BrowserEngine {
     func setZoom(tabID: TabID, to zoom: CGFloat) {
         zoomLevels[tabID] = min(max(zoom, 0.5), 3)
     }
-    func printPage(tabID: TabID) {}
+    func printPage(tabID: TabID) { printedTabs.append(tabID) }
     func pagePDF(tabID: TabID) async throws -> Data { throw BrowsemiumError.webContentUnavailable }
     func pageScreenshot(tabID: TabID) async throws -> Data { throw BrowsemiumError.webContentUnavailable }
     func togglePictureInPicture(tabID: TabID) async -> Bool { false }
@@ -88,6 +90,7 @@ final class StubEngine: BrowserEngine {
     }
 
     func extractArticle(tabID: TabID) async throws -> ReaderArticle {
+        articleRequests.append(tabID)
         throw BrowsemiumError.webContentUnavailable
     }
     func fillCredential(tabID: TabID, username: String, password: String) async throws -> Bool { false }

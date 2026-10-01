@@ -33,6 +33,7 @@
 		49D5315F497BC71C8F8A6D90 /* BrowsemiumCore in Frameworks */ = {isa = PBXBuildFile; productRef = 09ADB7EBA008AAE2B56D065D /* BrowsemiumCore */; };
 		4C25968473C01701B0B5E250 /* ExtensionActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85035AA204931AF841488A3A /* ExtensionActionTests.swift */; };
 		505907702ABAEAD38C019F17 /* UserFilterListRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D44FB65BBFC5B47C80EBB92D /* UserFilterListRepositoryTests.swift */; };
+		54A6DC0B6FBA8C85B14B077E /* PalettePageCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDD9A63742E92756169BF06F /* PalettePageCommandTests.swift */; };
 		57EE621B44A8BB14D820D48C /* ChromiumDownloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = 441C8A07FC001691F9AA1BD2 /* ChromiumDownloads.swift */; };
 		58931CE2915011A6D1F03154 /* BrowsemiumCEF.h in CopyFiles */ = {isa = PBXBuildFile; fileRef = 577D96312FA41F7C34A1BA12 /* BrowsemiumCEF.h */; };
 		58E7D0F34BCF556BD7DB76B6 /* TabFolderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1675C0CE68E40A9B9729A608 /* TabFolderTests.swift */; };
@@ -181,6 +182,7 @@
 		C3C9246D617D18F8DD99717F /* BrowserImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserImportTests.swift; sourceTree = "<group>"; };
 		CBEA843A8AC5B4B0C0DB0DBF /* libBrowsemiumCEFBridge.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libBrowsemiumCEFBridge.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		CCA119EBCA91CAEFA1D8FDBB /* SplitViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplitViewTests.swift; sourceTree = "<group>"; };
+		CDD9A63742E92756169BF06F /* PalettePageCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalettePageCommandTests.swift; sourceTree = "<group>"; };
 		D411139AF1254E75BB95D935 /* UpdateController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateController.swift; sourceTree = "<group>"; };
 		D44FB65BBFC5B47C80EBB92D /* UserFilterListRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserFilterListRepositoryTests.swift; sourceTree = "<group>"; };
 		D551469D0BFDE7A8E86F940E /* ProfileDeletionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileDeletionTests.swift; sourceTree = "<group>"; };
@@ -346,6 +348,7 @@
 				1779C27926DC0FA9F05B5833 /* ExtensionIntegrationTests.swift */,
 				B9E7DD87B4136BD543DF4D35 /* IncognitoTests.swift */,
 				31A3A7EACAB67CE69BCBD2E0 /* LockedSpaceTests.swift */,
+				CDD9A63742E92756169BF06F /* PalettePageCommandTests.swift */,
 				5FE4DFCB4038284941F33266 /* PeekTests.swift */,
 				848606A184222F0907904A13 /* PermissionAndSleepWiringTests.swift */,
 				3D7A712EA197F46E70513927 /* PersistenceFailureTests.swift */,
@@ -747,6 +750,7 @@
 				3EC92D4DED8CD9FAA97056C5 /* ExtensionIntegrationTests.swift in Sources */,
 				1D427568D20C44C16BE4CBD3 /* IncognitoTests.swift in Sources */,
 				E81DFC30360847B365F6672F /* LockedSpaceTests.swift in Sources */,
+				54A6DC0B6FBA8C85B14B077E /* PalettePageCommandTests.swift in Sources */,
 				8D04FB1174E240A9D2AD6D10 /* PeekTests.swift in Sources */,
 				CC8CD0CD15798A97C322C6F7 /* PermissionAndSleepWiringTests.swift in Sources */,
 				DE5C96D58285CD45A668E630 /* PersistenceFailureTests.swift in Sources */,

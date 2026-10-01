@@ -2460,6 +2460,14 @@ public final class BrowserWindowModel: PermissionPrompting {
             zoomOut()
         case .resetZoom:
             resetZoom()
+        case .printPage:
+            printPage()
+        case .findInPage:
+            showFindBar()
+        case .toggleReaderMode:
+            toggleReaderMode()
+        case .hideElement:
+            beginElementHiding()
         case .savePageAsPDF:
             savePageAsPDF()
         case .savePageScreenshot:

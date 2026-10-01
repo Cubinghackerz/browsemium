@@ -13,6 +13,22 @@ Changes here are committed source, not a published 2.1.1 release.
   UI-model test files. Headless build/runner, full Swift package tests, generated
   app build/test, project verification, and whitespace checks passed.
 
+## Palette page actions — 2026-10-01
+
+- Added print, find in page, Reader mode, and hide element catalog rows with
+  the existing menu shortcuts. Each dispatches to its existing page action;
+  Inspect remains absent until the Inspector implementation ships.
+- Six new tests (including four discovery cases) verify exact command mappings,
+  shortcuts, empty-query discovery, active-tab print targeting, find-bar opening,
+  explicit picker activation without saving, and Reader failure handling.
+- Debugging evidence: the tests failed on missing rows, passed after the fix,
+  failed again with the catalog additions reverted, then passed after restoration.
+  No existing regression assertions were weakened or skipped.
+- Headless build/runner, the full Swift package suite, generated app build/test,
+  project verification, and final source/whitespace review passed. The generated
+  project adds only registration of the new regression test file. Native
+  light/dark palette QA is not claimed by these automated checks.
+
 ## Baseline
 
 - No stale SwiftPM test processes were found.

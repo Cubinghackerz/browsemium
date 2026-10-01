@@ -8,6 +8,8 @@ claim follows from this work.
 
 - Command-palette row construction is separated into small providers. Existing
   commands, order, fuzzy ranking, and locked-tab filtering are preserved.
+- Added print, find in page, Reader mode, and hide element to the command
+  palette. They use the existing page actions and matching menu shortcuts.
 - The roadmap no longer claims a debug-build Web Inspector. Inspector access
   remains unimplemented; no Inspect command is advertised yet.
 

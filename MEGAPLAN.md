@@ -539,7 +539,9 @@ sync, telemetry, autonomous AI, or CEF feature work is authorized.
 Groundwork: command-palette row construction now lives in small catalog/tab/
 intent/library providers rather than the window model. The extraction preserves
 existing row order, fuzzy ranking, IDs, command routing, and locked-tab filtering.
-Print/find/reader/hide rows are next; Inspect waits for a real Inspector path.
+Print, find in page, Reader mode, and hide element rows are implemented with
+existing menu shortcuts and dispatch paths. Inspect waits for a real Inspector
+path; no placeholder command is advertised.
 
 Finish the written plans in this order: user filter lists → extension site
 controls → smart space routing → remaining import coverage. Then close the

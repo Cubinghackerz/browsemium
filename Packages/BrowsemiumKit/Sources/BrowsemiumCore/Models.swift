@@ -427,6 +427,10 @@ public enum BrowserCommand: Hashable, Sendable {
     case zoomIn
     case zoomOut
     case resetZoom
+    case printPage
+    case findInPage
+    case toggleReaderMode
+    case hideElement
     case savePageAsPDF
     case savePageScreenshot
     case togglePictureInPicture
