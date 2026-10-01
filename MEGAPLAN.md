@@ -440,8 +440,9 @@ site controls are the remaining work, not a duplicate toolbar implementation.
 
 The bounded, cancellable hostname converter is implemented with generated
 regression fixtures and real WebKit compilation coverage. It reports unsupported
-syntax rather than widening rules. Persistence/last-good transactions, runtime
-wiring, and Settings import controls remain open; user lists are not yet usable
+syntax rather than widening rules. Profile-local last-good transactions are
+implemented with stale-result, rollback, and aggregate-limit fixtures. Runtime
+wiring and Settings import controls remain open; user lists are not yet usable
 in the app.
 
 - Import user-selected ABP/AdGuard lists from a local file or HTTPS source.

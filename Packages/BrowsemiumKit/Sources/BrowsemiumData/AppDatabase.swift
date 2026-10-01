@@ -180,6 +180,27 @@ public final class AppDatabase: @unchecked Sendable {
                 """)
             try database.execute(sql: "CREATE INDEX cosmetic_rules_host ON cosmetic_rules (host)")
         }
+        migrator.registerMigration("profile-v11-user-filter-lists") { database in
+            try database.execute(sql: """
+                CREATE TABLE user_filter_list_revisions (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    revision INTEGER NOT NULL CHECK (revision > 0)
+                );
+                CREATE TABLE user_filter_lists (
+                    id TEXT PRIMARY KEY NOT NULL REFERENCES user_filter_list_revisions(id),
+                    name TEXT NOT NULL,
+                    source TEXT NOT NULL CHECK (source IN ('localFile', 'https')),
+                    revision INTEGER NOT NULL CHECK (revision > 0),
+                    content_hash TEXT NOT NULL CHECK (length(content_hash) = 64),
+                    rules_json TEXT NOT NULL CHECK (length(CAST(rules_json AS BLOB)) <= 16777216),
+                    accepted_count INTEGER NOT NULL CHECK (accepted_count BETWEEN 1 AND 50000),
+                    skipped_count INTEGER NOT NULL CHECK (skipped_count BETWEEN 0 AND 100000),
+                    ignored_count INTEGER NOT NULL CHECK (ignored_count BETWEEN 0 AND 100000),
+                    is_enabled INTEGER NOT NULL CHECK (is_enabled IN (0, 1)),
+                    updated_at DATETIME NOT NULL
+                )
+                """)
+        }
         return migrator
     }
 

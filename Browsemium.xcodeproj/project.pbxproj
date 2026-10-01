@@ -32,6 +32,7 @@
 		4793A6660735CAC9B6B68AAF /* BrowsemiumApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C3F425E3D016D89BAE9E398 /* BrowsemiumApp.swift */; };
 		49D5315F497BC71C8F8A6D90 /* BrowsemiumCore in Frameworks */ = {isa = PBXBuildFile; productRef = 09ADB7EBA008AAE2B56D065D /* BrowsemiumCore */; };
 		4C25968473C01701B0B5E250 /* ExtensionActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85035AA204931AF841488A3A /* ExtensionActionTests.swift */; };
+		505907702ABAEAD38C019F17 /* UserFilterListRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D44FB65BBFC5B47C80EBB92D /* UserFilterListRepositoryTests.swift */; };
 		57EE621B44A8BB14D820D48C /* ChromiumDownloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = 441C8A07FC001691F9AA1BD2 /* ChromiumDownloads.swift */; };
 		58931CE2915011A6D1F03154 /* BrowsemiumCEF.h in CopyFiles */ = {isa = PBXBuildFile; fileRef = 577D96312FA41F7C34A1BA12 /* BrowsemiumCEF.h */; };
 		58E7D0F34BCF556BD7DB76B6 /* TabFolderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1675C0CE68E40A9B9729A608 /* TabFolderTests.swift */; };
@@ -181,6 +182,7 @@
 		CBEA843A8AC5B4B0C0DB0DBF /* libBrowsemiumCEFBridge.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libBrowsemiumCEFBridge.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		CCA119EBCA91CAEFA1D8FDBB /* SplitViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplitViewTests.swift; sourceTree = "<group>"; };
 		D411139AF1254E75BB95D935 /* UpdateController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateController.swift; sourceTree = "<group>"; };
+		D44FB65BBFC5B47C80EBB92D /* UserFilterListRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserFilterListRepositoryTests.swift; sourceTree = "<group>"; };
 		D551469D0BFDE7A8E86F940E /* ProfileDeletionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileDeletionTests.swift; sourceTree = "<group>"; };
 		D7206BEC4825DEA806A7B0DE /* AppDatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabaseTests.swift; sourceTree = "<group>"; };
 		D9230E062C13E36D3435BC3A /* ExternalSchemePolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalSchemePolicyTests.swift; sourceTree = "<group>"; };
@@ -453,6 +455,7 @@
 				7C079291A4562E57EEDB4A84 /* ExtensionRepositoryTests.swift */,
 				2FA377ECC8415F876E09E730 /* ProfileDiscoveryTests.swift */,
 				F2637D77BAD284CF0902651C /* ProfileStoreTests.swift */,
+				D44FB65BBFC5B47C80EBB92D /* UserFilterListRepositoryTests.swift */,
 			);
 			name = BrowsemiumDataTests;
 			path = Packages/BrowsemiumKit/Tests/BrowsemiumDataTests;
@@ -726,6 +729,7 @@
 				2FC3147FBD81F3728EC78DFC /* ExtensionRepositoryTests.swift in Sources */,
 				C3AF1FFCA43B28002086D64A /* ProfileDiscoveryTests.swift in Sources */,
 				3A94F1E8F12590971F2797A9 /* ProfileStoreTests.swift in Sources */,
+				505907702ABAEAD38C019F17 /* UserFilterListRepositoryTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
