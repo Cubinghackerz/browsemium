@@ -33,6 +33,7 @@ struct SettingsView: View {
     @State private var importingID: String?
     @State private var isImporting = false
     @State private var importPreview: BrowserImportPreview?
+    @State private var importPreviewError: String?
     @State private var importOptions = BrowserImportOptions()
     @State private var importFolder: URL?
     @State private var importLastSummary: String?
@@ -55,6 +56,9 @@ struct SettingsView: View {
     @State private var isHistoryMenuPresented = false
     @AppStorage("browsemium.screenshotWatermark") private var screenshotWatermark = false
     @State private var csvImport: BrowserPasswordCSV?
+    @State private var csvImportTarget: PasswordCSVImportTarget?
+    @State private var csvImportError: String?
+    @State private var wantsBrowserPasswordCSV = false
     @State private var isShowingCSVImport = false
     @State private var isConfirmingCSVExport = false
     @State private var batchEntries: [BatchImportEntry] = []
@@ -126,7 +130,12 @@ struct SettingsView: View {
         .onChange(of: model.searchEngineTemplate) { _, template in
             settings.searchEngineTemplate = template
         }
-        .sheet(item: $importPreview) { preview in
+        .sheet(item: $importPreview, onDismiss: {
+            if wantsBrowserPasswordCSV {
+                wantsBrowserPasswordCSV = false
+                choosePasswordCSV(target: csvImportTarget)
+            }
+        }) { preview in
             ImportPreviewSheet(
                 preview: preview,
                 options: $importOptions,
@@ -134,11 +143,21 @@ struct SettingsView: View {
                 newProfileName: $importNewProfileName,
                 currentProfileName: model.activeProfile.name,
                 isImporting: isImporting,
+                errorMessage: importPreviewError,
                 onCancel: {
                     importPreview = nil
                     importFolder = nil
                 },
-                onImport: commitImport
+                onImport: commitImport,
+                onImportPasswordCSV: {
+                    csvImportTarget = PasswordCSVImportTarget(destination: importDestination,
+                        currentProfile: model.activeProfile, newProfileName: importNewProfileName)
+                    wantsBrowserPasswordCSV = true
+                    importPreview = nil
+                    importFolder = nil
+                    importAccessRoot = nil
+                    importPreviewError = nil
+                }
             )
         }
         .sheet(isPresented: $isAddingPassword) {
@@ -150,9 +169,15 @@ struct SettingsView: View {
                 onSave: savePassword
             )
         }
-        .sheet(isPresented: $isShowingCSVImport, onDismiss: { csvImport = nil }) {
+        .sheet(isPresented: $isShowingCSVImport, onDismiss: {
+            csvImport = nil
+            csvImportTarget = nil
+            csvImportError = nil
+        }) {
             if let csvImport {
                 PasswordCSVImportSheet(csv: csvImport,
+                                       destinationName: csvImportTarget?.displayName ?? model.activeProfile.name,
+                                       errorMessage: csvImportError,
                                        onCancel: { isShowingCSVImport = false },
                                        onImport: importPasswordsFromCSV)
             }
@@ -624,10 +649,10 @@ struct SettingsView: View {
                 BrowsemiumTextButton("Choose…") { chooseImportFolder() }
                     .disabled(isImporting)
             }
-            SettingsRow("Password manager CSV") {
+            SettingsRow("Passwords from a CSV") {
                 BrowsemiumTextButton("Choose CSV…") { choosePasswordCSV() }
             }
-            SettingsNote("Apple Passwords, 1Password, Bitwarden, LastPass, and Dashlane can export CSV. The next step maps columns and previews counts; the file is never uploaded.")
+            SettingsNote("Export passwords from your browser, Apple Passwords, or a password manager. CSV import does not read the source browser's encryption key. Review the columns and count before importing; nothing is uploaded. CSV files contain readable passwords, so delete the exported file after importing.")
 
             if let importLastSummary {
                 SettingsRow("Last import") {
@@ -1176,6 +1201,7 @@ struct SettingsView: View {
                 importDestination = .newProfile
                 importNewProfileName = candidate.profileName
                 importFolder = folder
+                importPreviewError = nil
                 importPreview = preview
                 statusMessage = nil
             } catch {
@@ -1420,12 +1446,14 @@ struct SettingsView: View {
 
     private func commitImport() {
         guard let preview = importPreview, let folder = importFolder else { return }
+        importPreviewError = nil
         let options = importOptions
         let keyProvider: any BrowserCredentialKeyProviding
         do {
             keyProvider = try importKeyProvider(for: preview, options: options)
         } catch {
             statusMessage = error.localizedDescription
+            importPreviewError = error.localizedDescription
             return
         }
         // Create and switch to the new profile first, so the import writes to
@@ -1606,7 +1634,9 @@ struct SettingsView: View {
         return notes.isEmpty ? headline : headline + "; " + notes.joined(separator: ", ")
     }
 
-    private func choosePasswordCSV() {
+    private func choosePasswordCSV(target: PasswordCSVImportTarget? = nil) {
+        let selectedTarget = target ?? .existing(model.activeProfile)
+        defer { if !isShowingCSVImport { csvImportTarget = nil } }
         let panel = NSOpenPanel()
         panel.title = "Choose a password CSV"
         panel.allowedContentTypes = [.commaSeparatedText, .plainText]
@@ -1623,6 +1653,8 @@ struct SettingsView: View {
             if let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
                size > 16 * 1024 * 1024 { throw BrowserPasswordCSV.CSVError.tooLarge }
             csvImport = try BrowserPasswordCSV(data: Data(contentsOf: url))
+            csvImportTarget = selectedTarget
+            csvImportError = nil
             isShowingCSVImport = true
         } catch {
             statusMessage = error.localizedDescription
@@ -1630,10 +1662,17 @@ struct SettingsView: View {
     }
 
     private func importPasswordsFromCSV(_ credentials: [ChromeLogin]) {
-        let count = storeCredentials(credentials, profile: model.activeProfile).filter { $0 == .accepted }.count
-        csvImport = nil
-        isShowingCSVImport = false
-        statusMessage = "Imported \(count) passwords to Keychain; \(credentials.count - count) skipped."
+        guard let target = csvImportTarget else { return }
+        csvImportError = nil
+        do {
+            let count = try target.importCredentials(credentials, using: model)
+            csvImport = nil
+            isShowingCSVImport = false
+            statusMessage = "Imported \(count) passwords into \(target.displayName); \(credentials.count - count) could not be saved. Delete the exported CSV when finished."
+        } catch {
+            statusMessage = error.localizedDescription
+            csvImportError = error.localizedDescription
+        }
     }
 
     private func exportPasswordsToCSV() {

@@ -2716,7 +2716,7 @@ public final class BrowserWindowModel: PermissionPrompting {
                 .first { $0.username == username.trimmingCharacters(in: .whitespacesAndNewlines) }
             let credential = try repository.save(host: host, username: username)
             if existing == nil { created = credential }
-            try environment.keychain.setSecret(password, account: credential.keychainAccount)
+            try environment.keychain.setPassword(password, account: credential.keychainAccount)
             if targetProfile.id == environment.activeProfile.id { refreshSavedCredentials() }
             statusMessage = "Password saved securely in Keychain"
             return true

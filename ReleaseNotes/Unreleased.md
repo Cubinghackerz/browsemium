@@ -13,6 +13,18 @@ claim follows from this work.
 - The roadmap no longer claims a debug-build Web Inspector. Inspector access
   remains unimplemented; no Inspect command is advertised yet.
 
+## Password import recovery
+
+- Browser-key queries disallow authentication dialogs. Direct password/cookie
+  import requires an already-accessible source key; protected keys are not
+  bypassed, unlocked, or modified.
+- A password CSV action in the browser preview keeps the chosen destination
+  profile. Recovery errors are shown in the preview. CSV import reads no
+  source-browser key, saves passwords to Keychain, and reminds you to delete
+  the unencrypted export afterward.
+- Fixed password whitespace being trimmed during vault writes. Passwords now
+  keep their exact value; API-key entry retains its existing trimming behavior.
+
 ## Still open
 
 User-filter runtime wiring and Settings, per-site extension controls, smart

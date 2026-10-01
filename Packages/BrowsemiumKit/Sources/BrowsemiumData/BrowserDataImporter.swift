@@ -598,7 +598,7 @@ public final class BrowserDataImporter: @unchecked Sendable {
             case .unreadableData(let message):
                 "Browser data could not be read: \(message)"
             case .credentialsLocked(let browser):
-                "\(browser) passwords and encrypted cookies need permission to read the source key in your macOS keychain. Nothing was imported. Allow access, or turn off password and cookie import and try again."
+                "\(browser)'s passwords or encrypted cookies are not accessible without macOS authorization. Nothing was imported. Import passwords from a CSV exported by \(browser), or turn off password and cookie import and try again."
             }
         }
     }

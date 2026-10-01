@@ -11,8 +11,10 @@ struct ImportPreviewSheet: View {
     @Binding var newProfileName: String
     let currentProfileName: String
     let isImporting: Bool
+    let errorMessage: String?
     let onCancel: () -> Void
     let onImport: () -> Void
+    let onImportPasswordCSV: () -> Void
 
     private var hasSelectedData: Bool {
         (options.includesBookmarks && preview.bookmarkCount > 0)
@@ -40,6 +42,13 @@ struct ImportPreviewSheet: View {
             }
 
             destinationPicker
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Color.browsemiumWarning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             if preview.bookmarkCount > 0 {
                 scopeRow(
@@ -72,9 +81,20 @@ struct ImportPreviewSheet: View {
             if preview.credentialCount > 0 {
                 scopeRow(
                     title: "Passwords",
-                    detail: "\(preview.credentialCount) saved logins. macOS may ask to read \(preview.source.safeStorageService ?? "the source browser's key"); imported logins go to your keychain.",
+                    detail: "\(preview.credentialCount) saved logins. Direct import uses only an already-accessible encryption key, without asking macOS to unlock it. If access is unavailable, use a password CSV instead.",
                     isOn: $options.includesPasswords
                 )
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                BrowsemiumTextButton("Import passwords from CSV…", action: onImportPasswordCSV)
+                    .disabled(isImporting)
+                Text(preview.source == .safari
+                     ? "Export passwords from Apple Passwords, then choose the CSV. Your selected destination is kept."
+                     : "Export passwords as CSV from \(preview.source.displayName)'s password manager, then choose the file. Your selected destination is kept.")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Color.browsemiumSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if preview.cookieCount > 0 {
@@ -83,8 +103,8 @@ struct ImportPreviewSheet: View {
                     detail: "\(preview.cookieCount) cookies. They can grant account access. Import only into a profile you control; some sites may still ask you to sign in.",
                     isOn: $options.includesCookies
                 )
-                if options.includesCookies, let service = preview.source.safeStorageService {
-                    Text("macOS may ask to unlock \(service) before importing.")
+                if options.includesCookies, preview.source.safeStorageService != nil {
+                    Text("Encrypted cookies need an already-accessible browser key. If it is unavailable, turn off cookies and sign in again. A password CSV does not transfer cookies.")
                         .font(.system(size: 10.5))
                         .foregroundStyle(Color.browsemiumWarning)
                 }

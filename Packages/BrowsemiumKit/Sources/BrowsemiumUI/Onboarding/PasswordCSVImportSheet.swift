@@ -5,6 +5,8 @@ import SwiftUI
 @MainActor
 struct PasswordCSVImportSheet: View {
     let csv: BrowserPasswordCSV
+    let destinationName: String
+    let errorMessage: String?
     let onCancel: () -> Void
     let onImport: ([ChromeLogin]) -> Void
 
@@ -12,8 +14,10 @@ struct PasswordCSVImportSheet: View {
     @State private var usernameColumn: Int
     @State private var passwordColumn: Int
 
-    init(csv: BrowserPasswordCSV, onCancel: @escaping () -> Void, onImport: @escaping ([ChromeLogin]) -> Void) {
+    init(csv: BrowserPasswordCSV, destinationName: String, errorMessage: String?, onCancel: @escaping () -> Void, onImport: @escaping ([ChromeLogin]) -> Void) {
         self.csv = csv
+        self.destinationName = destinationName
+        self.errorMessage = errorMessage
         self.onCancel = onCancel
         self.onImport = onImport
         _siteColumn = State(initialValue: csv.suggestedMap?.site ?? 0)
@@ -29,20 +33,28 @@ struct PasswordCSVImportSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Import passwords from CSV")
                 .font(.system(size: 16, weight: .semibold))
-            Text("Choose the columns from Apple Passwords, 1Password, Bitwarden, LastPass, Dashlane, or another CSV. Nothing is written until you import.")
+            Text("Choose the columns from a browser or password-manager export. The source browser's encryption key is not read. Nothing is written until you import.")
                 .font(.system(size: 12))
                 .foregroundStyle(Color.browsemiumSecondary)
             column("Website", selection: $siteColumn)
             column("Username", selection: $usernameColumn)
             column("Password", selection: $passwordColumn)
-            Text("\(mapped.count) of \(csv.rowCount) rows have a website, username, and password. Passwords go to macOS Keychain; the CSV remains wherever you exported it.")
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.browsemiumWarning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text("Import into \(destinationName)")
+                .font(.system(size: 12, weight: .medium))
+            Text("\(mapped.count) of \(csv.rowCount) rows have a website, username, and password. Passwords go to macOS Keychain. The exported CSV contains readable passwords; delete it after importing.")
                 .font(.system(size: 11))
                 .foregroundStyle(Color.browsemiumSecondary)
             HStack {
                 BrowsemiumTextButton("Cancel", action: onCancel)
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                BrowsemiumPrimaryButton("Import \(mapped.count) passwords", isDisabled: mapped.isEmpty) {
+                BrowsemiumPrimaryButton(mapped.count == 1 ? "Import 1 password" : "Import \(mapped.count) passwords", isDisabled: mapped.isEmpty) {
                     onImport(mapped)
                 }
                 .keyboardShortcut(.defaultAction)

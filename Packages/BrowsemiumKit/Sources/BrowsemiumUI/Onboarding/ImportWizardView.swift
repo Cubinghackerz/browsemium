@@ -76,10 +76,13 @@ struct ImportBatchSheet: View {
                 Toggle("History (\(historyCount))", isOn: $options.includesHistory)
                 if passwordCount > 0 {
                     Toggle("Passwords (\(passwordCount))", isOn: $options.includesPasswords)
+                    Text("Direct import does not request access to locked browser keys. If passwords are inaccessible, use the password CSV option in the import guide for each destination profile.")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(Color.browsemiumSecondary)
                 }
                 if cookieCount > 0 {
                     Toggle("Cookies and sign-ins (\(cookieCount))", isOn: $options.includesCookies)
-                    Text("Cookies can grant account access. This is off by default. macOS may ask to unlock the source browser's key.")
+                    Text("Cookies can grant account access and are off by default. Encrypted cookies need an already-accessible browser key; otherwise sign in again.")
                         .font(.system(size: 10.5))
                         .foregroundStyle(Color.browsemiumWarning)
                 }

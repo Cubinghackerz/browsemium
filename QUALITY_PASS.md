@@ -29,6 +29,43 @@ Changes here are committed source, not a published 2.1.1 release.
   project adds only registration of the new regression test file. Native
   light/dark palette QA is not claimed by these automated checks.
 
+## Password import recovery — 2026-10-01
+
+- Root cause: explicit import used an interactive source-key query, producing
+  the source browser's Safe Storage authorization dialog. A new read boundary
+  uses `LAContext.interactionNotAllowed` and the legacy Keychain fail-UI policy;
+  accountless fallback remains noninteractive and only follows item-not-found.
+  Unsupported test/custom backends fail closed rather than retry interactively.
+- All nine Chromium sources use that boundary. Denied, missing, and unavailable
+  keys become a recovery message without importing anything. Source keys and
+  their ACLs are never changed. Settings presence checks still use attributes.
+- The browser preview offers CSV recovery, preserving the selected destination.
+  The destination is captured before opening a file picker; cancel/empty input
+  creates no profile. CSV import reads no source key, writes only to the selected
+  profile's credential vault, and warns that the exported CSV is unencrypted.
+- Also reproduced password corruption caused by trimming whitespace at the
+  vault write. Password-specific writes preserve bytes; API-key writes keep their
+  previous normalization. Generated Chrome/Firefox/Apple CSV fixtures verify
+  destination isolation, idempotent re-import, no secret reads, and fidelity.
+- Regression evidence: interactive reads and whitespace loss failed before
+  fixes; all focused checks passed; reverting the no-UI policies, destination
+  selection, and password write caused their checks to fail again. Fixes restored.
+- Light/dark fixture renders of the recovery and CSV sheets were inspected;
+  counts/destination/recovery controls were legible and no password was shown.
+  These are rendering smoke tests, not pixel-diff baselines or live Keychain QA.
+  The design detector reported no findings and no suppressions were added.
+- Headless build/runner, the full Swift package suite, generated app build/test,
+  project verification, and final source/whitespace review passed. Xcode reported
+  395 distinct passing tests (436 parameterized runs), with no failures or skips.
+  An unexpected compiler-driver console diagnostic was checked against the saved
+  result: the build succeeded with zero errors and only deprecation warnings.
+  No real browser profile, password, or source-Keychain item was read. Native
+  file-picker/sheet sequencing and source permission states remain manual QA;
+  a CSV route cannot transfer cookies.
+- The legacy fail-UI constant produces a known deprecation warning. It is kept
+  deliberately alongside the modern context for source keys in the file-based
+  login Keychain; no warnings or tests are globally suppressed.
+
 ## Baseline
 
 - No stale SwiftPM test processes were found.

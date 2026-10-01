@@ -492,12 +492,22 @@ ordinary user-list rules do not broaden into main-frame blocking.
   maps each source profile into a separate Browsemium profile. The existing
   preview remains the gate before writing.
 - Chromium and Firefox cookies have an explicit opt-in. Chromium `v10`
-  values use the same permission-gated Safe Storage key as logins; Safari
+  values use the same source key as logins, but source-key queries now disallow
+  authentication UI. Direct import works only for already-accessible keys;
+  otherwise passwords use the explicit CSV route and encrypted cookies remain
+  unavailable. The no-key/no-write gate stays intact. Safari
   `Cookies.binarycookies` is parsed only when readable. Cookies are placed in
   the selected profile's WebKit store. Password-manager CSV imports use an
   explicit column map and Keychain storage; plaintext CSV export requires a
   confirmation. These paths must pass fixture and UI verification before
   release claims change.
+- Password recovery is available directly in the browser preview. CSV import
+  keeps the selected destination, creates new profiles only at confirmation,
+  and stores passwords in Keychain without reading a source-browser key.
+  Password writes preserve significant whitespace. Generated browser CSV,
+  denied-access, no-interactive-fallback, profile-isolation, and whitespace
+  regressions cover this development unit; native source-Keychain permission
+  states and real sign-in continuity remain user QA.
 - Per-item import reports distinguish preview parsing, prepared transfers, and
   destination writes. Source ordinals and closed reason codes explain duplicates,
   unsupported items, selection skips, decryption failures, and partial write

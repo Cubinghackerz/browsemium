@@ -2,11 +2,8 @@ import BrowsemiumData
 import Foundation
 import BrowsemiumEngineKit
 
-/// Supplies Chrome's password-encryption key.
-///
-/// The key lives in the login keychain as "Chrome Safe Storage". macOS asks the
-/// user to authorise reading it the first time, which is why password import is
-/// opt-in and everything else still imports when the user declines.
+/// Reads an already-accessible Chromium source key only after import selection.
+/// Never asks macOS to authorize it; unavailable keys require the CSV route.
 struct ChromeSafeStorageKeyProvider: BrowserCredentialKeyProviding {
     let keychain: KeychainStore
 
@@ -14,8 +11,14 @@ struct ChromeSafeStorageKeyProvider: BrowserCredentialKeyProviding {
         // Every Chromium-family browser shares the scheme but each stores its
         // key under its own keychain item.
         guard let service = source.safeStorageService else { return nil }
-        guard let password = try keychain.secret(service: service), !password.isEmpty else {
-            return nil
+        let password: String
+        do {
+            guard let value = try keychain.secretWithoutInteraction(service: service), !value.isEmpty else {
+                throw BrowserDataImporter.ImportError.credentialsLocked(source.displayName)
+            }
+            password = value
+        } catch is KeychainStore.KeychainError {
+            throw BrowserDataImporter.ImportError.credentialsLocked(source.displayName)
         }
         return try ChromeCredentialCrypto.derivedKey(safeStoragePassword: password)
     }
