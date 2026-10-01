@@ -4,6 +4,24 @@ import Foundation
 import GRDB
 import Testing
 
+@Test func browserImportHintsUseAccountHomeInsteadOfSandboxProcessHome() throws {
+    let account = URL(fileURLWithPath: "/tmp/browsemium-home-fixture/account", isDirectory: true)
+    let container = account.appendingPathComponent("Library/Containers/com.browsemium.browser/Data", isDirectory: true)
+    let home = BrowserImportHomeDirectory.resolve(accountHome: account, processHome: container)
+    #expect(home == account)
+    for source in BrowserImportSource.allCases {
+        let root = try #require(source.profileRoot(relativeTo: home))
+        #expect(root.path.hasPrefix(account.path + "/Library/"))
+        #expect(!root.path.contains("/Containers/"))
+        let selected = root.appendingPathComponent("Default", isDirectory: true)
+        #expect(BrowserImportSourceDetector.detect(in: selected, homeDirectory: home) == source)
+    }
+    // If account metadata is unavailable, retain the process path rather
+    // than guessing another user's directory.
+    let fallback = URL(fileURLWithPath: "/tmp/browsemium-home-fixture/container", isDirectory: true)
+    #expect(BrowserImportHomeDirectory.resolve(accountHome: nil, processHome: fallback) == fallback)
+}
+
 /// Builds a throwaway Chrome profile on disk so the importer is exercised
 /// against real files rather than mocks.
 private struct FakeChromeProfile {

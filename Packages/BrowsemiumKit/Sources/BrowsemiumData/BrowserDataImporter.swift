@@ -67,7 +67,13 @@ public enum BrowserImportSource: String, CaseIterable, Identifiable, Sendable {
 
     /// Where this browser keeps its profiles, or nil when it does not use one.
     public var profileRoot: URL? {
-        let home = FileManager.default.homeDirectoryForCurrentUser
+        profileRoot(relativeTo: BrowserImportHomeDirectory.current)
+    }
+
+    /// Pure path construction for source hints and generated fixtures. Unlike
+    /// the app's own storage, browser sources use the account home, not the
+    /// sandbox process home. This does not inspect or grant access to files.
+    public func profileRoot(relativeTo home: URL) -> URL? {
         let base = home.appendingPathComponent("Library/Application Support", isDirectory: true)
         switch self {
         case .chrome: return base.appendingPathComponent("Google/Chrome", isDirectory: true)
@@ -269,23 +275,24 @@ public enum BrowserImportSourceDetector {
     /// the same file names but encrypts passwords with its own keychain item —
     /// guessing "Chrome" for a Brave profile would make decryption fail. The
     /// file names are the fallback for a folder that was moved elsewhere.
-    public static func detect(in folder: URL) -> BrowserImportSource? {
+    public static func detect(in folder: URL, homeDirectory: URL? = nil) -> BrowserImportSource? {
+        let home = homeDirectory ?? BrowserImportHomeDirectory.current
         let path = folder.resolvingSymlinksInPath().standardizedFileURL.path
         let chromiumFamily = BrowserImportSource.allCases
             .filter { $0.family == .chromium }
-            .sorted { ($0.profileRoot?.path.count ?? 0) > ($1.profileRoot?.path.count ?? 0) }
+            .sorted { ($0.profileRoot(relativeTo: home)?.path.count ?? 0) > ($1.profileRoot(relativeTo: home)?.path.count ?? 0) }
         for source in chromiumFamily {
-            if let root = source.profileRoot?.resolvingSymlinksInPath().standardizedFileURL.path,
+            if let root = source.profileRoot(relativeTo: home)?.resolvingSymlinksInPath().standardizedFileURL.path,
                path == root || path.hasPrefix(root + "/") {
                 return source
             }
         }
-        if let firefoxRoot = BrowserImportSource.firefox.profileRoot?.deletingLastPathComponent()
+        if let firefoxRoot = BrowserImportSource.firefox.profileRoot(relativeTo: home)?.deletingLastPathComponent()
             .resolvingSymlinksInPath().standardizedFileURL.path,
            path == firefoxRoot || path.hasPrefix(firefoxRoot + "/") {
             return .firefox
         }
-        if let safariRoot = BrowserImportSource.safari.profileRoot?.resolvingSymlinksInPath().standardizedFileURL.path,
+        if let safariRoot = BrowserImportSource.safari.profileRoot(relativeTo: home)?.resolvingSymlinksInPath().standardizedFileURL.path,
            path == safariRoot || path.hasPrefix(safariRoot + "/") {
             return .safari
         }
@@ -574,7 +581,7 @@ public enum BrowserProfileLocator {
     }
 
     private static func home() -> URL {
-        FileManager.default.homeDirectoryForCurrentUser
+        BrowserImportHomeDirectory.current
     }
 }
 

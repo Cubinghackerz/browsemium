@@ -482,6 +482,10 @@ ordinary user-list rules do not broaden into main-frame blocking.
   on empty app canvases. Screenshot watermarks are optional and off by default.
 - A browser-neutral import guide is reachable from onboarding, New Tab,
   Settings, and ⌘K. Installed supported browser apps are detected first;
+  source path hints and original-folder identification use the account home,
+  not the sandbox container home. A generated sandbox-home regression covers
+  all 11 source roots without reading real profiles; folder grants remain
+  mandatory. Native import/continuity QA remains a user check.
   Browsemium then asks macOS for folder access before locating profiles and
   showing names, available emails, and preview counts. An all-profiles route
   maps each source profile into a separate Browsemium profile. The existing

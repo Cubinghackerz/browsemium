@@ -6,6 +6,12 @@ Extend the existing importer,
 preview, Keychain, and profile mapping; never replace them or read real user
 source profiles for development tests.
 
+Installed-browser discovery uses account-home source hints rather than the
+sandbox process home. Generated paths cover all 11 source roots and a missing
+account-directory fallback. Looking up this path does not grant access;
+profile reads still require the explicit security-scoped folder permission.
+Native folder selection and login continuity remain user QA before release.
+
 ## Ordered units
 
 1. Per-item reporting first: structured category/result/reason records for
