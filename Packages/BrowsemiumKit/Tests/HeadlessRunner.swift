@@ -94,6 +94,7 @@ struct HeadlessRunner {
         try verifyProviderHandoff()
         try verifyMarkdownSanitization()
         try verifyContentRules()
+        try verifyUserFilterConversion()
         print("Browsemium headless verification passed")
     }
 
@@ -332,6 +333,22 @@ struct HeadlessRunner {
             _ = try NSRegularExpression(pattern: filter)
             try expect(trigger["if-domain"] == nil, "if-domain matches the page, not the request — do not use it to block trackers")
         }
+    }
+
+    private static func verifyUserFilterConversion() throws {
+        let conversion = try FilterListConverter.convert(Data("@@||allowed.example^\n||ads.example^\n||unsupported.example^$third-party".utf8))
+        try expect(conversion.acceptedCount == 2 && conversion.skipped.count == 1,
+                   "User filter conversion must report supported and unsupported rules honestly")
+        let rules = try require(try JSONSerialization.jsonObject(with: Data(conversion.rulesJSON.utf8)) as? [[String: Any]],
+                                "Converted filters must be valid JSON")
+        for rule in rules {
+            let trigger = try require(rule["trigger"] as? [String: Any], "Converted rule is missing its trigger")
+            let pattern = try require(trigger["url-filter"] as? String, "Converted rule is missing its URL filter")
+            try expect(!pattern.contains("|"), "Converted rules must not use regex alternation")
+            try expect(trigger["if-domain"] == nil, "Request hosts must not be converted into page-domain qualifiers")
+        }
+        let last = try require(rules.last?["action"] as? [String: Any], "Converted exception has no action")
+        try expect(last["type"] as? String == "ignore-previous-rules", "Exceptions must follow blocking rules")
     }
 
     private static func verifyMarkdownSanitization() throws {

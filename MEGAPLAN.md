@@ -432,11 +432,17 @@ This is a plan, not shipped functionality.
   space — the user is asked.
 - A reversible notice appears when a navigation moves to another space.
 
-### 2.4 — Advanced blocking controls — NEXT
+### 2.4 — Advanced blocking controls — IN PROGRESS
 
 Separate implementation plans: `Plans/2.4-user-filter-lists.md` and
 `Plans/2.4-extension-site-controls.md`. The toolbar action host already exists;
 site controls are the remaining work, not a duplicate toolbar implementation.
+
+The bounded, cancellable hostname converter is implemented with generated
+regression fixtures and real WebKit compilation coverage. It reports unsupported
+syntax rather than widening rules. Persistence/last-good transactions, runtime
+wiring, and Settings import controls remain open; user lists are not yet usable
+in the app.
 
 - Import user-selected ABP/AdGuard lists from a local file or HTTPS source.
 - Lists compile in the background; on failure the last working version stays
