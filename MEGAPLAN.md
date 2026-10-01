@@ -472,9 +472,11 @@ site controls are the remaining work, not a duplicate toolbar implementation.
   uses Geist and follows light/dark appearance; the logo is a quiet watermark
   on empty app canvases. Screenshot watermarks are optional and off by default.
 - A browser-neutral import guide is reachable from onboarding, New Tab,
-  Settings, and ⌘K. Profile names and available emails are shown. An
-  all-profiles route maps each source profile into a separate Browsemium
-  profile. The existing preview remains the gate before writing.
+  Settings, and ⌘K. Installed supported browser apps are detected first;
+  Browsemium then asks macOS for folder access before locating profiles and
+  showing names, available emails, and preview counts. An all-profiles route
+  maps each source profile into a separate Browsemium profile. The existing
+  preview remains the gate before writing.
 - Chromium and Firefox cookies have an explicit opt-in. Chromium `v10`
   values use the same permission-gated Safe Storage key as logins; Safari
   `Cookies.binarycookies` is parsed only when readable. Cookies are placed in

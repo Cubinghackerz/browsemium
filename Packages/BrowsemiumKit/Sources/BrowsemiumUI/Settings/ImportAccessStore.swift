@@ -26,6 +26,19 @@ enum ImportAccessStore {
     /// doing it here as well leaked one grant per import.
     static func resolveURL(candidateID: String, defaults: UserDefaults = .standard) -> URL? {
         guard let data = storedBookmarks(defaults: defaults)[candidateID] else { return nil }
+        return resolveFolder(data)
+    }
+
+    /// Returns only the locations the user previously selected. Callers must
+    /// still open each security scope before inspecting browser files.
+    static func resolvedFolders(defaults: UserDefaults = .standard) -> [(candidateID: String, folder: URL)] {
+        storedBookmarks(defaults: defaults).compactMap { candidateID, data in
+            guard let folder = resolveFolder(data) else { return nil }
+            return (candidateID: candidateID, folder: folder)
+        }
+    }
+
+    private static func resolveFolder(_ data: Data) -> URL? {
         var isStale = false
         guard let url = try? URL(
             resolvingBookmarkData: data,

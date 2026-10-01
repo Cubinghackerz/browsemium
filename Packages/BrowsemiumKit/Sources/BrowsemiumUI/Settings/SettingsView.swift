@@ -29,6 +29,7 @@ struct SettingsView: View {
     @State private var credentialUsername = ""
     @State private var credentialPassword = ""
     @State private var importCandidates: [BrowserProfileCandidate] = []
+    @State private var installedImportSources: [BrowserImportSource] = []
     @State private var importingID: String?
     @State private var isImporting = false
     @State private var importPreview: BrowserImportPreview?
@@ -542,11 +543,18 @@ struct SettingsView: View {
     }
 
     private var importSection: some View {
-        SettingsCard("Choose a browser profile", systemImage: "square.and.arrow.down") {
-            SettingsNote("Choose a source, review its counts, then choose what moves. Your source browser is never changed.")
+        SettingsCard("Import from another browser", systemImage: "square.and.arrow.down") {
+            SettingsNote("Installed browsers are detected automatically. Choose one to grant access; Browsemium finds its profiles and previews what can move. Nothing changes in the source browser.")
+
+            let readableSources = Set(importCandidates.filter(\.isReadable).map(\.source))
+            let readableCandidates = importCandidates.filter(\.isReadable)
+            let sourcesNeedingAccess = installedImportSources.filter { !readableSources.contains($0) }
+            let manualCandidates = importCandidates.filter {
+                !$0.isReadable && !installedImportSources.contains($0.source)
+            }
 
             ForEach(BrowserImportSource.allCases) { source in
-                if importCandidates.contains(where: { $0.source == source && $0.isReadable }) {
+                if readableSources.contains(source) {
                     SettingsRow("Every \(source.displayName) profile") {
                         BrowsemiumTextButton("Review all profiles…") { beginBatchReview(source: source) }
                             .disabled(isImporting || isBatchImporting)
@@ -554,37 +562,59 @@ struct SettingsView: View {
                 }
             }
 
-            if importCandidates.isEmpty {
-                SettingsRow("No browser profiles detected") {
-                    Text("Choose a folder below to import manually.")
+            ForEach(sourcesNeedingAccess) { source in
+                SettingsRow(source.displayName) {
+                    HStack(spacing: 10) {
+                        Text("Installed")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.browsemiumTertiary)
+                        BrowsemiumTextButton("Find profiles…") {
+                            beginImport(source: source)
+                        }
+                        .disabled(isImporting || isBatchImporting)
+                    }
+                }
+            }
+
+            ForEach(readableCandidates) { candidate in
+                SettingsRow(candidate.label) {
+                    HStack(spacing: 10) {
+                        if let email = candidate.email {
+                            Text(email)
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(Color.browsemiumTertiary)
+                                .lineLimit(1)
+                        }
+                        Text("Ready")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.browsemiumSuccess)
+                        BrowsemiumTextButton(importingID == candidate.id ? "Reading…" : "Review") {
+                            beginImport(candidate)
+                        }
+                        .disabled(isImporting)
+                    }
+                }
+            }
+
+            ForEach(manualCandidates) { candidate in
+                SettingsRow(candidate.label) {
+                    HStack(spacing: 10) {
+                        Text("Access needed")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.browsemiumTertiary)
+                        BrowsemiumTextButton("Find profiles…") {
+                            beginImport(candidate)
+                        }
+                        .disabled(isImporting || isBatchImporting)
+                    }
+                }
+            }
+
+            if installedImportSources.isEmpty && importCandidates.isEmpty {
+                SettingsRow("No supported browser app found") {
+                    Text("You can still choose a saved profile folder or import a password CSV below.")
                         .font(.system(size: 11.5))
                         .foregroundStyle(Color.browsemiumSecondary)
-                }
-            } else {
-                ForEach(importCandidates) { candidate in
-                    SettingsRow(candidate.label) {
-                        HStack(spacing: 10) {
-                            if let email = candidate.email {
-                                Text(email)
-                                    .font(.system(size: 10.5))
-                                    .foregroundStyle(Color.browsemiumTertiary)
-                                    .lineLimit(1)
-                            }
-                            if candidate.isReadable {
-                                Text("Ready")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(Color.browsemiumSuccess)
-                            } else {
-                                Text("Asks permission once")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(Color.browsemiumTertiary)
-                            }
-                            BrowsemiumTextButton(importingID == candidate.id ? "Reading…" : "Review") {
-                                beginImport(candidate)
-                            }
-                            .disabled(isImporting)
-                        }
-                    }
                 }
             }
             SettingsRow("Another folder") {
@@ -609,7 +639,7 @@ struct SettingsView: View {
                     ProgressView().controlSize(.small)
                 }
             }
-            SettingsNote("Browsemium previews each readable browser profile before anything moves. macOS asks for folder access once, then remembers it. Cookies are optional; extensions need a separate reinstall confirmation. Site storage does not move. Nothing is uploaded or removed from the source browser.")
+            SettingsNote("macOS asks before Browsemium reads browser files, then remembers that folder choice. Review counts before importing; cookies are optional and extensions need separate confirmation. Site storage does not move. Nothing is uploaded or removed from the source browser.")
         }
     }
 
@@ -972,8 +1002,118 @@ struct SettingsView: View {
     }
 
     private func refreshImportCandidates() {
-        let candidates = BrowserProfileLocator.candidates()
-        importCandidates = candidates.filter { $0.isReadable } + candidates.filter { !$0.isReadable }
+        let registeredBundleIdentifiers = Set(BrowserImportSource.allCases.compactMap { source -> String? in
+            let identifier = source.applicationBundleIdentifier
+            return NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier) == nil
+                ? nil
+                : identifier
+        })
+        installedImportSources = BrowserApplicationDiscovery.installedSources(in: registeredBundleIdentifiers)
+
+        // Do not probe browser profile paths on Settings open. The sandbox only
+        // grants access to folders the user selected; reuse those bookmarks,
+        // and enumerate profile metadata while each grant is active.
+        var candidatesByID: [String: BrowserProfileCandidate] = [:]
+        for grant in ImportAccessStore.resolvedFolders(defaults: model.environment.userDefaults) {
+            guard let source = BrowserImportSource.allCases.first(where: {
+                grant.candidateID.hasPrefix("\($0.rawValue)|")
+            }) else { continue }
+
+            let opened = grant.folder.startAccessingSecurityScopedResource()
+            guard opened else { continue }
+            defer { grant.folder.stopAccessingSecurityScopedResource() }
+
+            let discovered: [BrowserProfileCandidate]
+            if BrowserDataImporter.profileLooksValid(grant.folder, source: source) {
+                discovered = [grantedProfileCandidate(at: grant.folder, source: source)]
+            } else {
+                discovered = BrowserProfileLocator.profiles(insideBrowserRoot: grant.folder, source: source)
+                    .filter(\.isReadable)
+            }
+
+            for candidate in discovered {
+                guard let existing = candidatesByID[candidate.id] else {
+                    candidatesByID[candidate.id] = candidate
+                    continue
+                }
+                let existingHasMetadata = existing.email != nil
+                    || existing.profileName != existing.folder.lastPathComponent
+                let candidateHasMetadata = candidate.email != nil
+                    || candidate.profileName != candidate.folder.lastPathComponent
+                if !existingHasMetadata && candidateHasMetadata {
+                    candidatesByID[candidate.id] = candidate
+                }
+            }
+        }
+        importCandidates = candidatesByID.values.sorted {
+            $0.label.localizedStandardCompare($1.label) == .orderedAscending
+        }
+    }
+
+    private func grantedProfileCandidate(at folder: URL, source: BrowserImportSource) -> BrowserProfileCandidate {
+        switch source.family {
+        case .chromium:
+            let folderName = folder.lastPathComponent
+            let label: String
+            if folderName == "Default" {
+                label = source.displayName
+            } else {
+                label = "\(source.displayName) — \(folderName)"
+            }
+            return BrowserProfileCandidate(
+                source: source,
+                label: label,
+                folder: folder,
+                isReadable: true,
+                profileName: folderName
+            )
+        case .firefox:
+            return BrowserProfileCandidate(
+                source: source,
+                label: "\(source.displayName) — \(folder.lastPathComponent)",
+                folder: folder,
+                isReadable: true,
+                profileName: folder.lastPathComponent
+            )
+        case .safari:
+            return BrowserProfileCandidate(
+                source: source,
+                label: source.displayName,
+                folder: folder,
+                isReadable: true,
+                profileName: source.displayName
+            )
+        }
+    }
+
+    private func beginImport(source: BrowserImportSource) {
+        if let granted = ImportAccessStore.resolveURL(
+            candidateID: browserRootBookmarkID(for: source),
+            defaults: model.environment.userDefaults
+        ), handleGrantedFolder(granted, source: source, candidate: nil) {
+            return
+        }
+
+        let panel = NSOpenPanel()
+        panel.title = "Allow access to \(source.displayName)"
+        panel.message = "Choose \(source.displayName)’s browser data folder. Browsemium will find its profiles and show a preview before importing."
+        panel.prompt = "Find profiles"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = browserDataRoot(for: source)
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        handleGrantedFolder(folder, source: source, candidate: nil)
+    }
+
+    private func browserRootBookmarkID(for source: BrowserImportSource) -> String {
+        "\(source.rawValue)|installed-browser-root"
+    }
+
+    private func browserDataRoot(for source: BrowserImportSource) -> URL? {
+        // Firefox keeps its readable profile names in profiles.ini beside
+        // Profiles, so grant that containing folder rather than Profiles only.
+        source == .firefox ? source.profileRoot?.deletingLastPathComponent() : source.profileRoot
     }
 
     /// One click when access was granted before; otherwise macOS asks once and
@@ -997,12 +1137,6 @@ struct SettingsView: View {
             bookmarks: model.environment.bookmarkRepository,
             history: model.environment.historyRepository
         )
-        // Chromium's shared filenames cannot identify a moved profile's
-        // encryption key. Never fall back to the button's browser identity.
-        guard let source = BrowserImportSourceDetector.detect(in: folder) else {
-            statusMessage = "Could not identify the browser for this folder. Choose a profile inside its installed browser folder."
-            return
-        }
         importingID = candidate.id
         isPreparingPreview = true
         statusMessage = "Reading \(candidate.label)…"
@@ -1017,6 +1151,18 @@ struct SettingsView: View {
                     let scope = accessRoot ?? folder
                     let scoped = scope.startAccessingSecurityScopedResource()
                     defer { if scoped { scope.stopAccessingSecurityScopedResource() } }
+                    guard scoped else {
+                        throw BrowserDataImporter.ImportError.unreadableData(
+                            "macOS could not open that browser folder. Choose it again to grant access."
+                        )
+                    }
+                    // Chromium's shared filenames cannot identify a moved
+                    // profile's encryption key; never guess from the button.
+                    guard let source = BrowserImportSourceDetector.detect(in: folder) else {
+                        throw BrowserDataImporter.ImportError.unreadableData(
+                            "Could not identify this browser folder. Choose a profile inside its original browser folder."
+                        )
+                    }
                     return try importer.preview(at: folder, source: source)
                 }.value
                 importOptions = BrowserImportOptions()
@@ -1033,18 +1179,36 @@ struct SettingsView: View {
 
     /// After the user grants a folder: if it is a browser root holding several
     /// profiles, list them all; if it is one profile, preview it.
-    private func handleGrantedFolder(_ granted: URL, source: BrowserImportSource, candidate: BrowserProfileCandidate?) {
+    @discardableResult
+    private func handleGrantedFolder(_ granted: URL, source: BrowserImportSource, candidate: BrowserProfileCandidate?) -> Bool {
+        let opened = granted.startAccessingSecurityScopedResource()
+        guard opened else {
+            statusMessage = "macOS did not grant access to that browser folder. Choose it again to continue."
+            return false
+        }
+        defer { if opened { granted.stopAccessingSecurityScopedResource() } }
+        ImportAccessStore.save(
+            folder: granted,
+            for: browserRootBookmarkID(for: source),
+            defaults: model.environment.userDefaults
+        )
+
         let looksLikeProfile = BrowserDataImporter.profileLooksValid(granted, source: source)
         if !looksLikeProfile {
             let discovered = BrowserProfileLocator.profiles(insideBrowserRoot: granted, source: source)
-            if discovered.count > 1 || (discovered.count == 1 && discovered[0].folder.standardizedFileURL != granted.standardizedFileURL) {
+                .filter(\.isReadable)
+            if discovered.count > 1 {
                 var merged = importCandidates.filter { existing in
                     !discovered.contains { $0.id == existing.id }
                 }
                 merged.append(contentsOf: discovered)
                 importCandidates = merged.filter { $0.isReadable } + merged.filter { !$0.isReadable }
                 statusMessage = "Found \(discovered.count) profiles in \(source.displayName) — choose one to import"
-                return
+                return true
+            }
+            if let onlyProfile = discovered.first {
+                loadPreview(folder: onlyProfile.folder, candidate: onlyProfile, accessRoot: granted)
+                return true
             }
         }
         let target = candidate ?? BrowserProfileCandidate(
@@ -1053,7 +1217,8 @@ struct SettingsView: View {
             folder: granted,
             isReadable: true
         )
-        loadPreview(folder: granted, candidate: target, accessRoot: candidate == nil ? nil : granted)
+        loadPreview(folder: granted, candidate: target, accessRoot: granted)
+        return true
     }
 
     private func chooseImportFolder() {
@@ -1067,6 +1232,12 @@ struct SettingsView: View {
             panel.directoryURL = chrome
         }
         guard panel.runModal() == .OK, let folder = panel.url else { return }
+        let opened = folder.startAccessingSecurityScopedResource()
+        defer { if opened { folder.stopAccessingSecurityScopedResource() } }
+        guard opened else {
+            statusMessage = "macOS did not grant access to that folder. Choose it again to continue."
+            return
+        }
         guard let source = BrowserImportSourceDetector.detect(in: folder)
             ?? importCandidates.first(where: { $0.folder.standardizedFileURL == folder.standardizedFileURL })?.source else {
             statusMessage = "That folder could not be matched to a browser. Choose a profile from the list first."
@@ -1077,14 +1248,53 @@ struct SettingsView: View {
     }
 
     private func beginBatchReview(source: BrowserImportSource) {
+        let rememberedRoot = ImportAccessStore.resolveURL(
+            candidateID: browserRootBookmarkID(for: source),
+            defaults: model.environment.userDefaults
+        ) ?? importCandidates
+            .filter { $0.source == source && $0.isReadable }
+            .compactMap { ImportAccessStore.resolveAncestor(of: $0.folder, defaults: model.environment.userDefaults) }
+            .first
+
+        if let rememberedRoot {
+            let opened = rememberedRoot.startAccessingSecurityScopedResource()
+            let canEnumerateAllProfiles: Bool
+            if opened {
+                let isProfileFolder = BrowserDataImporter.profileLooksValid(rememberedRoot, source: source)
+                rememberedRoot.stopAccessingSecurityScopedResource()
+                // A grant for one profile cannot enumerate its siblings. Ask
+                // for the source root instead; Safari has a single profile.
+                canEnumerateAllProfiles = !isProfileFolder || source == .safari
+            } else {
+                canEnumerateAllProfiles = false
+            }
+            if canEnumerateAllProfiles {
+                prepareBatchReview(source: source, root: rememberedRoot)
+                return
+            }
+        }
+
         let panel = NSOpenPanel()
         panel.title = "Choose the \(source.displayName) browser folder"
-        panel.message = "Grant the folder that contains its profiles. Each one gets a separate Browsemium profile."
+        panel.message = source == .firefox
+            ? "Choose the Firefox folder containing profiles.ini and Profiles. Each profile gets a separate Browsemium profile."
+            : "Grant the folder that contains its profiles. Each one gets a separate Browsemium profile."
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
-        panel.directoryURL = source.profileRoot
+        panel.directoryURL = browserDataRoot(for: source)
         guard panel.runModal() == .OK, let root = panel.url else { return }
+        ImportAccessStore.save(folder: root,
+                               for: browserRootBookmarkID(for: source),
+                               defaults: model.environment.userDefaults)
+        prepareBatchReview(source: source, root: root)
+    }
+
+    private func prepareBatchReview(source: BrowserImportSource, root: URL) {
         let scoped = root.startAccessingSecurityScopedResource()
+        guard scoped else {
+            statusMessage = "macOS did not grant access to that browser folder. Choose it again to continue."
+            return
+        }
         defer { if scoped { root.stopAccessingSecurityScopedResource() } }
         let candidates = BrowserProfileLocator.profiles(insideBrowserRoot: root, source: source)
             .filter(\.isReadable)
@@ -1102,6 +1312,11 @@ struct SettingsView: View {
                 let entries = try await Task.detached {
                     let opened = root.startAccessingSecurityScopedResource()
                     defer { if opened { root.stopAccessingSecurityScopedResource() } }
+                    guard opened else {
+                        throw BrowserDataImporter.ImportError.unreadableData(
+                            "macOS could not open that browser folder. Choose it again to grant access."
+                        )
+                    }
                     return try candidates.map { candidate in
                         BatchImportEntry(candidate: candidate,
                                          preview: try importer.preview(at: candidate.folder, source: source))
@@ -1150,6 +1365,11 @@ struct SettingsView: View {
                     let result = try await Task.detached {
                         let opened = root.startAccessingSecurityScopedResource()
                         defer { if opened { root.stopAccessingSecurityScopedResource() } }
+                        guard opened else {
+                            throw BrowserDataImporter.ImportError.unreadableData(
+                                "macOS access to this browser folder expired. Choose the folder again to continue."
+                            )
+                        }
                         return try importer.apply(entry.preview, options: options,
                                                   keyProvider: keyProvider, profile: entry.candidate.folder)
                     }.value
@@ -1231,6 +1451,11 @@ struct SettingsView: View {
                     let scope = accessRoot ?? folder
                     let scoped = scope.startAccessingSecurityScopedResource()
                     defer { if scoped { scope.stopAccessingSecurityScopedResource() } }
+                    guard scoped else {
+                        throw BrowserDataImporter.ImportError.unreadableData(
+                            "macOS access to this browser folder expired. Choose the folder again to continue."
+                        )
+                    }
                     return try importer.apply(
                         preview,
                         options: options,
@@ -1349,6 +1574,10 @@ struct SettingsView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard scoped else {
+            statusMessage = "macOS did not grant access to that CSV file. Choose it again to continue."
+            return
+        }
         do {
             if let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
                size > 16 * 1024 * 1024 { throw BrowserPasswordCSV.CSVError.tooLarge }
@@ -1394,6 +1623,7 @@ struct SettingsView: View {
     private func writePrivateCSV(_ data: Data, to url: URL) -> Bool {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard scoped else { return false }
         let descriptor = url.path.withCString {
             Darwin.open($0, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, mode_t(0o600))
         }

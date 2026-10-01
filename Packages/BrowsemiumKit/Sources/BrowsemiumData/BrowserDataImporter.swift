@@ -274,7 +274,8 @@ public enum BrowserImportSourceDetector {
                 return source
             }
         }
-        if let firefoxRoot = BrowserImportSource.firefox.profileRoot?.resolvingSymlinksInPath().standardizedFileURL.path,
+        if let firefoxRoot = BrowserImportSource.firefox.profileRoot?.deletingLastPathComponent()
+            .resolvingSymlinksInPath().standardizedFileURL.path,
            path == firefoxRoot || path.hasPrefix(firefoxRoot + "/") {
             return .firefox
         }
@@ -357,9 +358,14 @@ public enum BrowserProfileLocator {
             let profilesDirectory = root.lastPathComponent == "Profiles"
                 ? root
                 : root.appendingPathComponent("Profiles", isDirectory: true)
-            let displayNames = firefoxDisplayNames(
-                profilesIniURL: profilesDirectory.deletingLastPathComponent().appendingPathComponent("profiles.ini")
-            )
+            let profilesIniURL = profilesDirectory.deletingLastPathComponent()
+                .appendingPathComponent("profiles.ini")
+            // A selected Profiles directory does not grant access to the
+            // sibling profiles.ini file. Only read names when that file is
+            // inside the user-selected root.
+            let displayNames = BrowserImportPathPolicy.isDescendant(profilesIniURL, of: root)
+                ? firefoxDisplayNames(profilesIniURL: profilesIniURL)
+                : [:]
             let entries = (try? FileManager.default.contentsOfDirectory(
                 at: profilesDirectory,
                 includingPropertiesForKeys: [.isDirectoryKey]

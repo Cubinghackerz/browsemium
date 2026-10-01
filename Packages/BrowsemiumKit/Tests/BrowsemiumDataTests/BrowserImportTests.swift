@@ -251,6 +251,22 @@ func chromiumFamilyIncludesTheNewerBrowsersWithTheirOwnKeys() {
 }
 
 @Test
+func installedBrowserDiscoveryOnlyReturnsSupportedInstalledApps() {
+    let allIdentifiers = BrowserImportSource.allCases.map(\.applicationBundleIdentifier)
+    let installed = Set([
+        BrowserImportSource.chrome.applicationBundleIdentifier,
+        BrowserImportSource.dia.applicationBundleIdentifier,
+        BrowserImportSource.firefox.applicationBundleIdentifier,
+        "com.example.UnrelatedApp"
+    ])
+
+    #expect(BrowserApplicationDiscovery.installedSources(in: installed) == [.chrome, .dia, .firefox])
+    #expect(BrowserImportSource.allCases.allSatisfy { !$0.applicationBundleIdentifier.isEmpty })
+    #expect(Set(allIdentifiers).count == allIdentifiers.count)
+    #expect(BrowserApplicationDiscovery.installedSources(in: Set(allIdentifiers)) == BrowserImportSource.allCases)
+}
+
+@Test
 func importingAFolderThatIsNotAProfileFailsClearly() throws {
     let folder = FileManager.default.temporaryDirectory
         .appendingPathComponent("browsemium-not-a-profile-\(UUID().uuidString)", isDirectory: true)
@@ -448,6 +464,24 @@ func firefoxProfileNamesComeFromProfilesIniBesideProfilesDirectory() throws {
 }
 
 @Test
+func firefoxProfileNamesAreNotReadFromOutsideTheSelectedProfilesFolder() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("browsemium-firefox-scope-\(UUID().uuidString)", isDirectory: true)
+    let profiles = root.appendingPathComponent("Profiles", isDirectory: true)
+    let profile = profiles.appendingPathComponent("abc.default-release", isDirectory: true)
+    try FileManager.default.createDirectory(at: profile, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try Data("[Profile0]\nName=Outside Grant\nPath=Profiles/abc.default-release\n".utf8)
+        .write(to: root.appendingPathComponent("profiles.ini"))
+    try Data().write(to: profile.appendingPathComponent("places.sqlite"))
+
+    let candidates = BrowserProfileLocator.profiles(insideBrowserRoot: profiles, source: .firefox)
+    #expect(candidates.count == 1)
+    #expect(candidates[0].profileName == "abc.default-release")
+    #expect(candidates[0].label == "Firefox — abc.default-release")
+}
+
+@Test
 func passwordCSVMapsCommonManagersWithoutPersistingPlaintext() throws {
     let fixtures: [(headers: String, row: String)] = [
         ("Title,URL,Username,Password,Notes", "Example,https://example.com,alice,fixture-secret,note"),
@@ -528,6 +562,9 @@ func sourceDetectionIdentifiesEachBrowserFromItsFiles() throws {
     defer { profile.cleanUp() }
     #expect(BrowserImportSourceDetector.detect(in: profile.folder) == nil,
             "A moved Chromium profile cannot safely be assumed to use Chrome's encryption key")
+    #expect(BrowserImportSourceDetector.detect(
+        in: BrowserImportSource.firefox.profileRoot!.deletingLastPathComponent()
+    ) == .firefox, "The Firefox folder is the grant root that contains profiles.ini and Profiles")
 
     let firefox = FileManager.default.temporaryDirectory
         .appendingPathComponent("browsemium-ff-\(UUID().uuidString)", isDirectory: true)
