@@ -116,8 +116,9 @@ cloud; (2) honest engineering — measured launch/memory numbers, no invented cl
 (3) durability — no account, no telemetry, no dependency on a vendor's
 browser strategy. Build Mode (an in-browser coding agent) and a later ACP
 agent chat both shipped, were verified, and were then removed by owner
-decision — they are not current differentiators. Gaps worth closing to match Search: per-site element
-hiding (⌘⇧H), import from other browsers, Web Inspector in debug builds.
+decision — they are not current differentiators. Per-site element hiding (⌘⇧H)
+and the existing browser importer are shipped. Local Web Inspector access is
+not implemented yet; there is no debug-build Inspector feature to claim.
 
 ### Cohort B — Gecko challengers (different engine, same users)
 
@@ -527,6 +528,25 @@ ordinary user-list rules do not broaden into main-frame blocking.
   either is promised publicly.
 - The corrected memory benchmark stays a release gate: no comparative claim
   until the 20% target passes.
+
+### Ad-hoc daily-driver and agent-ready cycle — IN PROGRESS
+
+Signing stays ad-hoc. Developer ID, notarization, Sparkle updates, browser
+passkey entitlement work, Web Push, and per-space storage isolation are deferred
+or research-only; no new feature in this cycle may require them. No accounts,
+sync, telemetry, autonomous AI, or CEF feature work is authorized.
+
+Groundwork: command-palette row construction now lives in small catalog/tab/
+intent/library providers rather than the window model. The extraction preserves
+existing row order, fuzzy ranking, IDs, command routing, and locked-tab filtering.
+Print/find/reader/hide rows are next; Inspect waits for a real Inspector path.
+
+Finish the written plans in this order: user filter lists → extension site
+controls → smart space routing → remaining import coverage. Then close the
+ad-hoc-safe switchability gaps before the CLI/MCP, shared app-command interface,
+opt-in local page index, Markdown skills, and reviewed cross-tab context work.
+All claims remain implementation-specific. Native QA and the unchanged memory
+gate remain separate from automated build/test evidence.
 
 ## Verification
 

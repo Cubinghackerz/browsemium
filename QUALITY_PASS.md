@@ -2,6 +2,17 @@
 
 Changes here are committed source, not a published 2.1.1 release.
 
+## Ad-hoc cycle groundwork — 2026-10-01
+
+- Corrected the unsupported debug-build Inspector claim; Inspector remains
+  unimplemented until its setting, engine path, and tests exist.
+- Moved palette catalog, tab/recent-tab, intent, library, and ranking builders
+  into small value-only providers. Storage reads and dispatch stay in the model;
+  unlock filtering occurs before tab row construction. No secret reads were added.
+- Existing palette tests: 11 passed unchanged, with no edits to the existing
+  UI-model test files. Headless build/runner, full Swift package tests, generated
+  app build/test, project verification, and whitespace checks passed.
+
 ## Baseline
 
 - No stale SwiftPM test processes were found.

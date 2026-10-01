@@ -8,41 +8,6 @@ import Observation
 import WebKit
 import BrowsemiumEngineKit
 
-public struct BrowserPaletteCommand: Identifiable, Hashable, Sendable {
-    /// What a row is, so the palette can show the right icon.
-    public enum Kind: String, Sendable, Hashable {
-        case tab
-        case history
-        case bookmark
-        case action
-        case command
-    }
-
-    public let id: String
-    public let title: String
-    public let shortcut: String
-    public let kind: Kind
-    /// Secondary line: a host for pages, a context hint for actions.
-    public let subtitle: String
-    public let command: BrowserCommand
-
-    public init(
-        id: String,
-        title: String,
-        shortcut: String,
-        kind: Kind = .command,
-        subtitle: String = "",
-        command: BrowserCommand
-    ) {
-        self.id = id
-        self.title = title
-        self.shortcut = shortcut
-        self.kind = kind
-        self.subtitle = subtitle
-        self.command = command
-    }
-}
-
 @MainActor
 @Observable
 public final class BrowserWindowModel: PermissionPrompting {
@@ -139,41 +104,7 @@ public final class BrowserWindowModel: PermissionPrompting {
     /// release profile-scoped web content, like AI provider panels.
     public private(set) var profileSwitchToken = 0
 
-    public let paletteCommands: [BrowserPaletteCommand] = [
-        BrowserPaletteCommand(id: "new-tab", title: "New Tab", shortcut: "⌘T", command: .newTab),
-        BrowserPaletteCommand(id: "close-tab", title: "Close Tab", shortcut: "⌘W", command: .closeTab(TabID())),
-        BrowserPaletteCommand(id: "reload", title: "Reload Page", shortcut: "⌘R", command: .reload),
-        BrowserPaletteCommand(id: "reopen", title: "Reopen Closed Tab", shortcut: "⇧⌘T", command: .reopenClosedTab),
-        BrowserPaletteCommand(id: "bookmark", title: "Bookmark This Page", shortcut: "⌘D", command: .toggleBookmark),
-        BrowserPaletteCommand(id: "history", title: "Open History", shortcut: "⌘Y", command: .openHistory),
-        BrowserPaletteCommand(id: "bookmarks", title: "Open Bookmarks", shortcut: "⌥⌘B", command: .openBookmarks),
-        BrowserPaletteCommand(id: "downloads", title: "Open Downloads", shortcut: "⇧⌘J", command: .openDownloads),
-        BrowserPaletteCommand(id: "settings", title: "Open Settings", shortcut: "⌘,", command: .openSettings),
-        BrowserPaletteCommand(id: "import", title: "Import from Another Browser", shortcut: "", command: .openImportWizard),
-        BrowserPaletteCommand(id: "toggle-ai", title: "Toggle Assistant", shortcut: "⇧⌘A", command: .toggleAIDock),
-        BrowserPaletteCommand(id: "ai-summarize", title: "AI: Summarize This Page", shortcut: "", command: .aiQuickAction(.summarizePage)),
-        BrowserPaletteCommand(id: "ai-keypoints", title: "AI: Extract Key Points", shortcut: "", command: .aiQuickAction(.keyPoints)),
-        BrowserPaletteCommand(id: "ai-explain", title: "AI: Explain Selection", shortcut: "", command: .aiQuickAction(.explainSelection)),
-        BrowserPaletteCommand(id: "zoom-in", title: "Zoom In", shortcut: "⌘+", command: .zoomIn),
-        BrowserPaletteCommand(id: "zoom-out", title: "Zoom Out", shortcut: "⌘-", command: .zoomOut),
-        BrowserPaletteCommand(id: "zoom-reset", title: "Reset Zoom", shortcut: "⌘0", command: .resetZoom),
-        BrowserPaletteCommand(id: "save-pdf", title: "Save Page as PDF", shortcut: "", command: .savePageAsPDF),
-        BrowserPaletteCommand(id: "save-screenshot", title: "Save Page Screenshot", shortcut: "", command: .savePageScreenshot),
-        BrowserPaletteCommand(id: "pip", title: "Picture in Picture", shortcut: "", command: .togglePictureInPicture),
-        BrowserPaletteCommand(id: "clear-data", title: "Clear Browsing Data", shortcut: "", command: .clearBrowsingData),
-        BrowserPaletteCommand(id: "tab-layout", title: "Switch Between Top and Sidebar Tabs", shortcut: "", command: .toggleTabLayout),
-        BrowserPaletteCommand(id: "split-view", title: "Toggle Split View", shortcut: "⇧⌘D", command: .toggleSplitView),
-        BrowserPaletteCommand(id: "duplicate-tab", title: "Duplicate Tab", shortcut: "", command: .duplicateTab(TabID())),
-        BrowserPaletteCommand(id: "copy-url", title: "Copy Current URL", shortcut: "⇧⌘C", command: .copyTabURL(TabID())),
-        BrowserPaletteCommand(id: "next-tab", title: "Select Next Tab", shortcut: "⌃⇥", command: .selectAdjacentTab(forward: true)),
-        BrowserPaletteCommand(id: "previous-tab", title: "Select Previous Tab", shortcut: "⌃⇧⇥", command: .selectAdjacentTab(forward: false)),
-        BrowserPaletteCommand(id: "close-others", title: "Close Other Tabs", shortcut: "", command: .closeOtherTabs(TabID())),
-        BrowserPaletteCommand(id: "private-window", title: "New Private Window", shortcut: "⇧⌘N", command: .newPrivateWindow),
-        BrowserPaletteCommand(id: "ai-summarize-tabs", title: "AI: Summarize Open Tabs", shortcut: "", command: .summarizeOpenTabs),
-        BrowserPaletteCommand(id: "ai-rewrite", title: "AI: Rewrite Selection", shortcut: "", command: .aiQuickAction(.rewriteSelection)),
-        BrowserPaletteCommand(id: "ai-shorten", title: "AI: Shorten Selection", shortcut: "", command: .aiQuickAction(.shortenSelection)),
-        BrowserPaletteCommand(id: "ai-bullets", title: "AI: Selection to Bullets", shortcut: "", command: .aiQuickAction(.bulletPoints))
-    ]
+    public let paletteCommands: [BrowserPaletteCommand] = PaletteCommandCatalog.commands()
 
     public init(environment: BrowserEnvironment = BrowserEnvironment.inMemory()) {
         self.environment = environment
@@ -2443,238 +2374,26 @@ public final class BrowserWindowModel: PermissionPrompting {
     /// bookmarks. Fuzzy-ranked, so a few letters of a title or host are enough.
     public func filteredCommands(query: String) -> [BrowserPaletteCommand] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let unlockedSpaceIDs = Set(session.tabs.map(\.spaceID).filter { isSpaceUnlocked($0) })
         guard !trimmedQuery.isEmpty else {
-            return recentTabPaletteCommands(limit: 5) + paletteCommands
+            return TabPaletteCommandProvider.commands(in: session, unlockedSpaceIDs: unlockedSpaceIDs, recentLimit: 5) + paletteCommands
         }
 
         var results: [BrowserPaletteCommand] = []
-        if let primary = primaryPaletteIntent(for: trimmedQuery) {
+        if let primary = IntentPaletteCommandProvider.primary(for: trimmedQuery,
+            searchTemplate: environment.loadSettings().searchEngineTemplate, searchEngineName: activeSearchEngineName) {
             results.append(primary)
         }
-        results += rankedCommands(assistantSkillCommands(), query: trimmedQuery, limit: 4)
-        results += rankedCommands(intentPaletteCommands(), query: trimmedQuery, limit: 6)
-        results += rankedCommands(tabPaletteCommands(), query: trimmedQuery, limit: 8)
-        results += rankedCommands(paletteCommands, query: trimmedQuery, limit: 8)
-        results += historyPaletteCommands(matching: trimmedQuery)
-        results += rankedCommands(bookmarkPaletteCommands(), query: trimmedQuery, limit: 5)
+        results += LibraryPaletteCommandProvider.ranked(LibraryPaletteCommandProvider.skills(aiSkills), query: trimmedQuery, limit: 4)
+        results += LibraryPaletteCommandProvider.ranked(IntentPaletteCommandProvider.commands(in: session, activeTab: activeTab,
+            activeFolders: activeFolders, isSplitViewActive: isSplitViewActive), query: trimmedQuery, limit: 6)
+        results += LibraryPaletteCommandProvider.ranked(TabPaletteCommandProvider.commands(in: session,
+            unlockedSpaceIDs: unlockedSpaceIDs), query: trimmedQuery, limit: 8)
+        results += LibraryPaletteCommandProvider.ranked(paletteCommands, query: trimmedQuery, limit: 8)
+        results += LibraryPaletteCommandProvider.history((try? environment.historyRepository.recent(limit: 200)) ?? [],
+            query: trimmedQuery, session: session, tabURLs: tabURLs)
+        results += LibraryPaletteCommandProvider.ranked(LibraryPaletteCommandProvider.bookmarks(bookmarks), query: trimmedQuery, limit: 5)
         return results
-    }
-
-    /// Saved skills as palette rows: ⌘K → the first words of a skill runs it.
-    private func assistantSkillCommands() -> [BrowserPaletteCommand] {
-        aiSkills.map { skill in
-            BrowserPaletteCommand(
-                id: "skill-\(skill.id.uuidString)",
-                title: "Run Skill: \(skill.name)",
-                shortcut: "",
-                kind: .action,
-                subtitle: String(skill.prompt.prefix(80)),
-                command: .runAISkill(skill)
-            )
-        }
-    }
-
-    /// Fuzzy-ranks palette rows by their title and subtitle.
-    private func rankedCommands(
-        _ commands: [BrowserPaletteCommand],
-        query: String,
-        limit: Int
-    ) -> [BrowserPaletteCommand] {
-        commands
-            .compactMap { command -> (BrowserPaletteCommand, Int)? in
-                let best = [command.title, command.subtitle]
-                    .compactMap { FuzzyMatcher.score(query: query, candidate: $0) }
-                    .max()
-                guard let best else { return nil }
-                return (command, best)
-            }
-            .sorted { $0.1 > $1.1 }
-            .prefix(limit)
-            .map(\.0)
-    }
-
-    /// The first row: what pressing Return does with exactly this input —
-    /// open a URL, or search — resolved the same way the address bar does,
-    /// so the two can never disagree.
-    private func primaryPaletteIntent(for query: String) -> BrowserPaletteCommand? {
-        let template = URL(string: environment.loadSettings().searchEngineTemplate)
-            ?? URL(string: SearchEnginePreset.google.template)!
-        guard let request = try? NavigationResolver(searchURL: template).resolve(query) else {
-            return nil
-        }
-        // Same heuristic the address bar uses to tell a URL from a search.
-        let looksLikeURL = query.contains("://") || (query.contains(".") && !query.contains(" "))
-        if looksLikeURL {
-            return BrowserPaletteCommand(
-                id: "open-url",
-                title: "Open \(request.url.absoluteString)",
-                shortcut: "↵",
-                kind: .action,
-                subtitle: "Open in a new tab",
-                command: .openURLInNewTab(request.url)
-            )
-        }
-        return BrowserPaletteCommand(
-            id: "search",
-            title: "Search for “\(query)”",
-            shortcut: "↵",
-            kind: .action,
-            subtitle: "with \(activeSearchEngineName)",
-            command: .searchFor(query)
-        )
-    }
-
-    /// Intent rows: switching space, moving the active tab, tiling tabs in
-    /// the split view. Each is a single, explicit action.
-    private func intentPaletteCommands() -> [BrowserPaletteCommand] {
-        var intents: [BrowserPaletteCommand] = []
-
-        for space in session.spaces where space.id != session.activeSpaceID {
-            intents.append(BrowserPaletteCommand(
-                id: "switch-space-\(space.id.rawValue.uuidString)",
-                title: "Switch to Space: \(space.name)",
-                shortcut: "",
-                kind: .action,
-                subtitle: "Show this space's tabs",
-                command: .switchSpace(space.id)
-            ))
-        }
-
-        if let activeTab {
-            for space in session.spaces where space.id != activeTab.spaceID {
-                intents.append(BrowserPaletteCommand(
-                    id: "move-to-space-\(space.id.rawValue.uuidString)",
-                    title: "Move “\(activeTab.title)” to Space: \(space.name)",
-                    shortcut: "",
-                    kind: .action,
-                    subtitle: "Move the active tab",
-                    command: .moveTabToSpace(activeTab.id, space.id)
-                ))
-            }
-            for folder in activeFolders where folder.id != activeTab.folderID {
-                intents.append(BrowserPaletteCommand(
-                    id: "move-to-folder-\(folder.id.rawValue.uuidString)",
-                    title: "Move “\(activeTab.title)” to Folder: \(folder.name)",
-                    shortcut: "",
-                    kind: .action,
-                    subtitle: "Move the active tab",
-                    command: .assignTabToFolder(activeTab.id, folder.id)
-                ))
-            }
-            if activeTab.folderID != nil {
-                intents.append(BrowserPaletteCommand(
-                    id: "leave-folder",
-                    title: "Remove “\(activeTab.title)” from its Folder",
-                    shortcut: "",
-                    kind: .action,
-                    subtitle: "Move the active tab",
-                    command: .assignTabToFolder(activeTab.id, nil)
-                ))
-            }
-        }
-
-        if isSplitViewActive {
-            intents.append(BrowserPaletteCommand(
-                id: "close-split",
-                title: "Close Split View",
-                shortcut: "⇧⌘D",
-                kind: .action,
-                subtitle: "Keep the tabs open",
-                command: .toggleSplitView
-            ))
-        } else {
-            for tab in session.tabs
-            where tab.spaceID == session.activeSpaceID && tab.id != session.activeTabID {
-                intents.append(BrowserPaletteCommand(
-                    id: "split-with-\(tab.id.rawValue.uuidString)",
-                    title: "Open “\(tab.title)” in Split View",
-                    shortcut: "",
-                    kind: .action,
-                    subtitle: tab.lastCommittedURL?.host ?? "Split view",
-                    command: .openTabInSplit(tab.id)
-                ))
-            }
-        }
-
-        return intents
-    }
-
-    /// Open tabs as palette results, so ⌘K doubles as a tab switcher: type a
-    /// few letters of a page title or address and jump straight to it. The
-    /// active tab is never listed — jumping to where you already are is noise.
-    /// Tabs in a locked, still-locked space are never listed either: their
-    /// titles are exactly what the lock protects.
-    private func tabPaletteCommands() -> [BrowserPaletteCommand] {
-        session.tabs
-            .filter { $0.id != session.activeTabID && isSpaceUnlocked($0.spaceID) }
-            .map { tab in
-            BrowserPaletteCommand(
-                id: "tab-\(tab.id.rawValue.uuidString)",
-                title: tab.title,
-                shortcut: tab.lastCommittedURL?.host ?? "",
-                kind: .tab,
-                subtitle: tab.lastCommittedURL?.host ?? "Open tab",
-                command: .selectTab(tab.id)
-            )
-        }
-    }
-
-    private func recentTabPaletteCommands(limit: Int) -> [BrowserPaletteCommand] {
-        session.tabs
-            .filter { $0.id != session.activeTabID && isSpaceUnlocked($0.spaceID) }
-            .sorted { $0.lastAccessedAt > $1.lastAccessedAt }
-            .prefix(limit)
-            .map { tab in
-                BrowserPaletteCommand(
-                    id: "tab-\(tab.id.rawValue.uuidString)",
-                    title: tab.title,
-                    shortcut: tab.lastCommittedURL?.host ?? "",
-                    kind: .tab,
-                    subtitle: tab.lastCommittedURL?.host ?? "Open tab",
-                    command: .selectTab(tab.id)
-                )
-            }
-    }
-
-    /// Recent history, fuzzy-matched. Read from the local database only.
-    private func historyPaletteCommands(matching query: String) -> [BrowserPaletteCommand] {
-        let openTabURLs = Set(session.tabs.compactMap { tab -> String? in
-            (tabURLs[tab.id] ?? tab.lastCommittedURL)?.absoluteString
-        })
-        var seen = openTabURLs
-        return (try? environment.historyRepository.recent(limit: 200))?
-            .compactMap { visit -> (BrowserPaletteCommand, Int)? in
-                guard seen.insert(visit.url.absoluteString).inserted else { return nil }
-                let title = visit.title.isEmpty ? (visit.url.host ?? visit.url.absoluteString) : visit.title
-                let best = [title, visit.url.absoluteString]
-                    .compactMap { FuzzyMatcher.score(query: query, candidate: $0) }
-                    .max()
-                guard let best else { return nil }
-                return (BrowserPaletteCommand(
-                    id: "history-\(visit.url.absoluteString)",
-                    title: title,
-                    shortcut: visit.url.host ?? "",
-                    kind: .history,
-                    subtitle: visit.url.host ?? visit.url.absoluteString,
-                    command: .openURLInNewTab(visit.url)
-                ), best)
-            }
-            .sorted { $0.1 > $1.1 }
-            .prefix(5)
-            .map(\.0) ?? []
-    }
-
-    private func bookmarkPaletteCommands() -> [BrowserPaletteCommand] {
-        bookmarks.map { bookmark in
-            BrowserPaletteCommand(
-                id: "bookmark-\(bookmark.url.absoluteString)",
-                title: bookmark.title.isEmpty ? (bookmark.url.host ?? bookmark.url.absoluteString) : bookmark.title,
-                shortcut: bookmark.url.host ?? "",
-                kind: .bookmark,
-                subtitle: bookmark.url.host ?? bookmark.url.absoluteString,
-                command: .openURLInNewTab(bookmark.url)
-            )
-        }
     }
 
     /// Searches with the configured engine, in a new tab — the palette's
