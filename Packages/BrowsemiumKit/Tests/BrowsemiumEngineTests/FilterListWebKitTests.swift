@@ -8,8 +8,9 @@ import WebKit
         let conversion = try FilterListConverter.convert(Data("""
             @@||allowed.example^
             ||ads.example^
-            ||resources.example^$image,script,stylesheet,font,media,xmlhttprequest,document
+            ||resources.example^$image,script,stylesheet,font,media
             """.utf8))
+        #expect(conversion.acceptedCount == 3 && conversion.skipped.isEmpty)
         let store = try #require(WKContentRuleListStore.default())
         let identifier = "BrowsemiumFixture-" + UUID().uuidString
         defer { store.removeContentRuleList(forIdentifier: identifier) { _ in } }

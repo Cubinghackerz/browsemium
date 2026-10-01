@@ -124,8 +124,14 @@ public enum FilterListConverter {
             // The host is validated ASCII, so only dots need regex escaping.
             // No alternation: one anchored expression per request hostname.
             let escaped = host.replacingOccurrences(of: ".", with: "\\.")
+            // Ordinary ABP/AdGuard blocking does not target main-frame page
+            // loads. WebKit's document type includes child documents too;
+            // omit both until a faithful frame-specific mapping is supported.
+            let types: [String]? = resources.isEmpty
+                ? (isException ? nil : ["image", "style-sheet", "script", "font", "media", "raw", "svg-document"])
+                : resources
             return Rule(trigger: .init(urlFilter: "^https?://([a-z0-9-]+\\.)*" + escaped + "[:/]",
-                                       resourceType: resources.isEmpty ? nil : resources),
+                                       resourceType: types),
                         action: .init(type: isException ? "ignore-previous-rules" : "block"))
         }
     }
@@ -169,10 +175,9 @@ public enum FilterListConverter {
                 case "stylesheet": resource = "style-sheet"
                 case "font": resource = "font"
                 case "media": resource = "media"
-                case "xmlhttprequest": resource = "raw"
-                // ABP exception $document disables page-wide filtering, which
-                // is not the same as a WebKit request-resource exception.
-                case "document" where !isException: resource = "document"
+                // WebKit raw is broader than XHR; document is broader than
+                // main-frame-only, and exception $document is page-wide.
+                // Reject the whole source rule instead of widening it.
                 default: return .failure(.unsupportedModifier)
                 }
                 resources.insert(resource)

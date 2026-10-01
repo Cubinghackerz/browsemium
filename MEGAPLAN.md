@@ -444,6 +444,8 @@ syntax rather than widening rules. Profile-local last-good transactions are
 implemented with stale-result, rollback, and aggregate-limit fixtures. Runtime
 wiring and Settings import controls remain open; user lists are not yet usable
 in the app.
+Resource-semantics audit: document/XHR qualifiers remain unsupported and
+ordinary user-list rules do not broaden into main-frame blocking.
 
 - Import user-selected ABP/AdGuard lists from a local file or HTTPS source.
 - Lists compile in the background; on failure the last working version stays

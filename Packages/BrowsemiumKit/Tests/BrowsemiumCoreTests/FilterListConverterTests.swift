@@ -113,4 +113,32 @@ import Testing
             })
         }
     }
+
+    @Test func ambiguousResourceMappingsAreRejectedWithoutDroppingOtherModifiers() throws {
+        let conversion = try FilterListConverter.convert(Data("""
+            ||supported.example^$image
+            ||document.example^$document
+            ||xhr.example^$xmlhttprequest
+            ||mixed.example^$image,xmlhttprequest
+            """.utf8))
+        #expect(conversion.acceptedCount == 1)
+        #expect(conversion.skipped == [
+            .init(line: 2, reason: .unsupportedModifier),
+            .init(line: 3, reason: .unsupportedModifier),
+            .init(line: 4, reason: .unsupportedModifier)
+        ])
+        #expect(!conversion.rulesJSON.contains("document.example"))
+        #expect(!conversion.rulesJSON.contains("xhr.example"))
+        #expect(!conversion.rulesJSON.contains("mixed.example"))
+    }
+
+    @Test func ordinaryBlockingRulesDoNotBroadenIntoMainFrameBlocking() throws {
+        let conversion = try FilterListConverter.convert(Data("||fixture.example^".utf8))
+        let rules = try #require(JSONSerialization.jsonObject(with: Data(conversion.rulesJSON.utf8)) as? [[String: Any]])
+        let trigger = try #require(rules[0]["trigger"] as? [String: Any])
+        let resources = try #require(trigger["resource-type"] as? [String])
+        #expect(!resources.contains("document"))
+        #expect(!resources.contains("popup"))
+        #expect(Set(resources) == Set(["image", "style-sheet", "script", "font", "media", "raw", "svg-document"]))
+    }
 }
