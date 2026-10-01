@@ -1,6 +1,8 @@
 # Phase 6 — Remaining switching work
 
-Status: scoped follow-on plan, not shipped. Extend the existing importer,
+Status: reporting unit implemented with generated fixtures; native report QA
+remains before release. Session and Firefox crypto units are not shipped.
+Extend the existing importer,
 preview, Keychain, and profile mapping; never replace them or read real user
 source profiles for development tests.
 

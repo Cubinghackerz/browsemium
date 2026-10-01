@@ -182,6 +182,154 @@ func importingTwiceDoesNotDuplicateAnything() throws {
 }
 
 @Test
+func importReportExplainsParsedDuplicatesUnsupportedItemsAndReimports() throws {
+    let profile = try FakeChromeProfile(bookmarks: [
+        ["type": "url", "name": "Secret title", "url": "https://example.com/?secret=private"],
+        ["type": "url", "name": "Duplicate", "url": "https://example.com/?secret=private"],
+        ["type": "url", "name": "Unsupported", "url": "javascript:privateSecret()"]
+    ], visits: [("https://example.com", "Private history title", chromeMicros(Date()))])
+    defer { profile.cleanUp() }
+    let (importer, _, _, _) = try makeImporter()
+    let preview = try importer.preview(at: profile.folder, source: .chrome)
+    #expect(preview.report.count(.accepted, stage: .preview) == 2)
+    #expect(preview.report.count(.duplicate, stage: .preview) == 1)
+    #expect(preview.report.count(.unsupported, stage: .preview) == 1)
+    let first = try importer.apply(preview)
+    #expect(first.report.count(.accepted, stage: .persistence) == 2)
+    let second = try importer.apply(preview)
+    #expect(second.report.count(.accepted, stage: .persistence) == 0)
+    #expect(second.report.count(.duplicate, stage: .persistence) == 2)
+    let encoded = String(decoding: try JSONEncoder().encode(second.report), as: UTF8.self)
+    #expect(!encoded.contains("private"))
+    #expect(!encoded.contains("example.com"))
+    #expect(!encoded.contains("Secret title"))
+}
+
+@Test
+func importReportRecordsPartialWritesWithoutLeakingDatabaseErrors() throws {
+    let profile = try FakeChromeProfile(bookmarks: [
+        ["type": "url", "name": "Good", "url": "https://good.example"],
+        ["type": "url", "name": "Bad", "url": "https://bad.example"]
+    ], visits: [])
+    defer { profile.cleanUp() }
+    let (importer, bookmarks, _, database) = try makeImporter()
+    try database.databaseQueue.write { db in
+        try db.execute(sql: """
+            CREATE TRIGGER reject_fixture BEFORE INSERT ON bookmarks
+            WHEN NEW.url = 'https://bad.example'
+            BEGIN SELECT RAISE(ABORT, 'private SQL error password=never-report'); END
+            """)
+    }
+    let result = try importer.apply(importer.preview(at: profile.folder, source: .chrome))
+    #expect(result.bookmarks == 1)
+    #expect(try bookmarks.all().count == 1)
+    #expect(result.report.count(.failed, stage: .persistence) == 1)
+    #expect(result.report.items.contains { $0.reason == .destinationWriteFailed })
+    let encoded = String(decoding: try JSONEncoder().encode(result.report), as: UTF8.self)
+    #expect(!encoded.contains("never-report"))
+    #expect(!encoded.contains("SQL"))
+}
+
+@Test
+func importReportDistinguishesMalformedSourcesFromEmptySources() throws {
+    let profile = try FakeChromeProfile(bookmarks: [], visits: [])
+    defer { profile.cleanUp() }
+    try Data("not-json-private-token".utf8).write(to: profile.folder.appendingPathComponent("Bookmarks"))
+    let (importer, _, _, _) = try makeImporter()
+    let preview = try importer.preview(at: profile.folder, source: .chrome)
+    #expect(preview.report.items.contains {
+        $0.category == .bookmark && $0.ordinal == 0 && $0.outcome == .failed && $0.reason == .sourceUnreadable
+    })
+    #expect(preview.report.count(.failed, stage: .preview) == 0, "An unreadable file cannot invent item counts")
+}
+
+@Test
+func importReportKeepsCredentialTransferSeparateFromPersistence() throws {
+    let profile = try FakeChromeProfile(bookmarks: [], visits: [])
+    defer { profile.cleanUp() }
+    let key = try ChromeCredentialCrypto.derivedKey(safeStoragePassword: "fixture-only")
+    let encrypted = try ChromeCredentialCrypto.encryptForTesting("never-report-password", key: key)
+    let queue = try DatabaseQueue(path: profile.folder.appendingPathComponent("Login Data").path)
+    try queue.write { db in
+        try db.execute(sql: "CREATE TABLE logins (origin_url TEXT, username_value TEXT, password_value BLOB)")
+        for blob in [encrypted, Data("broken-encrypted-password".utf8)] {
+            try db.execute(sql: "INSERT INTO logins VALUES (?, ?, ?)",
+                           arguments: ["https://private.example/login?token=private", "never-report-username", blob])
+        }
+    }
+    let (importer, _, _, _) = try makeImporter()
+    let preview = try importer.preview(at: profile.folder, source: .chrome)
+    let result = try importer.apply(preview, options: BrowserImportOptions(includesPasswords: true),
+                                    keyProvider: StubKeyProvider(key: key), profile: profile.folder)
+    #expect(result.credentials.count == 1)
+    #expect(result.report.items.contains { $0.category == .password && $0.stage == .transfer && $0.reason == .decryptionFailed })
+    #expect(result.report.count(.accepted, stage: .transfer) == 1)
+    #expect(!result.report.items.contains { $0.category == .password && $0.stage == .persistence })
+    let encoded = String(decoding: try JSONEncoder().encode(result.report), as: UTF8.self)
+    #expect(!encoded.contains("never-report"))
+    #expect(!encoded.contains("private.example"))
+    var completed = result.report
+    let didComplete = completed.completeTransfer(.password, outcomes: [.failed])
+    #expect(didComplete)
+    #expect(completed.count(.failed, stage: .persistence) == 1)
+    let didCompleteAgain = completed.completeTransfer(.password, outcomes: [.accepted])
+    #expect(!didCompleteAgain, "A transfer cannot be counted twice")
+    var mismatched = result.report
+    let didCompleteMismatch = mismatched.completeTransfer(.password, outcomes: [])
+    #expect(!didCompleteMismatch)
+    #expect(mismatched.count(.accepted, stage: .persistence) == 0)
+}
+
+@Test
+func importReportNeverCountsRolledBackWritesAsAccepted() throws {
+    let profile = try FakeChromeProfile(bookmarks: [
+        ["type": "url", "name": "First", "url": "https://first.example"],
+        ["type": "url", "name": "Rollback", "url": "https://rollback.example"]
+    ], visits: [])
+    defer { profile.cleanUp() }
+    let (importer, bookmarks, _, database) = try makeImporter()
+    try database.databaseQueue.write { db in
+        try db.execute(sql: """
+            CREATE TRIGGER rollback_fixture BEFORE INSERT ON bookmarks
+            WHEN NEW.url = 'https://rollback.example'
+            BEGIN SELECT RAISE(ROLLBACK, 'fixture rollback'); END
+            """)
+    }
+    let result = try importer.apply(importer.preview(at: profile.folder, source: .chrome))
+    #expect(result.bookmarks == 0)
+    #expect(try bookmarks.all().isEmpty)
+    #expect(result.report.count(.accepted, stage: .persistence) == 0)
+    #expect(result.report.count(.failed, stage: .persistence) == 2)
+}
+
+@Test
+func importReportUsesFirefoxAndSafariParsingInsteadOfInventedCounts() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("browsemium-report-formats-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let queue = try DatabaseQueue(path: root.appendingPathComponent("places.sqlite").path)
+    try queue.write { db in
+        try db.execute(sql: "CREATE TABLE moz_places (id INTEGER PRIMARY KEY, url TEXT, title TEXT, last_visit_date INTEGER)")
+        try db.execute(sql: "CREATE TABLE moz_bookmarks (fk INTEGER, title TEXT, type INTEGER, dateAdded INTEGER)")
+        try db.execute(sql: "INSERT INTO moz_places VALUES (1, 'https://fixture.example', 'Title', 1000000), (2, 'javascript:secret()', 'Title', 1000000)")
+        try db.execute(sql: "INSERT INTO moz_bookmarks VALUES (1, 'Title', 1, 1), (2, 'Title', 1, 1)")
+    }
+    let (importer, _, _, _) = try makeImporter()
+    let firefox = try importer.preview(at: root, source: .firefox)
+    #expect(firefox.report.count(.accepted, stage: .preview) == 2)
+    #expect(firefox.report.count(.unsupported, stage: .preview) == 2)
+    let safari: [String: Any] = ["Children": [
+        ["URLString": "https://fixture.example", "WebBookmarkType": "WebBookmarkTypeLeaf"],
+        ["URLString": "javascript:secret()", "WebBookmarkType": "WebBookmarkTypeLeaf"]
+    ]]
+    try PropertyListSerialization.data(fromPropertyList: safari, format: .binary, options: 0)
+        .write(to: root.appendingPathComponent("Bookmarks.plist"))
+    let safariPreview = try importer.preview(at: root, source: .safari)
+    #expect(safariPreview.report.count(.accepted, stage: .preview) == 1)
+    #expect(safariPreview.report.count(.unsupported, stage: .preview) == 1)
+}
+
+@Test
 func previewIncludesUncheckpointedHistoryWALFromARunningBrowser() throws {
     let profile = try FakeChromeProfile(bookmarks: [], visits: [])
     defer { profile.cleanUp() }

@@ -165,6 +165,34 @@ public final class HistoryRepository: @unchecked Sendable {
         }
     }
 
+    func importMany(_ items: [(url: URL, title: String, visitedAt: Date)]) throws -> [BrowserImportReport.Outcome] {
+        try database.databaseQueue.write { db in
+            var seen = Set<String>()
+            for start in stride(from: 0, to: items.count, by: 400) {
+                let keys = items[start..<min(start + 400, items.count)].map { $0.url.absoluteString }
+                let placeholders = Array(repeating: "?", count: keys.count).joined(separator: ",")
+                seen.formUnion(try String.fetchAll(db,
+                    sql: "SELECT DISTINCT url FROM history_visits WHERE url IN (\(placeholders))",
+                    arguments: StatementArguments(keys)))
+            }
+            return items.map { item in
+                let key = item.url.absoluteString
+                guard !seen.contains(key) else { return .duplicate }
+                do {
+                    try db.inSavepoint {
+                        try db.execute(sql: "INSERT INTO history_visits (url, title, visited_at) VALUES (?, ?, ?)",
+                                       arguments: [key, item.title, item.visitedAt])
+                        return .commit
+                    }
+                    seen.insert(key)
+                    return .accepted
+                } catch {
+                    return .failed
+                }
+            }
+        }
+    }
+
     public func deleteAll() throws {
         try write("DELETE FROM history_visits")
     }

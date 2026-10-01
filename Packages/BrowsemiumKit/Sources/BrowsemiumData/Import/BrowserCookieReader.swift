@@ -34,25 +34,46 @@ public struct BrowserImportCookie: Sendable, Hashable {
 /// The format is undocumented; malformed and unknown records are skipped.
 public enum SafariBinaryCookieReader {
     public static func parse(_ data: Data) -> [BrowserImportCookie] {
+        var report = BrowserImportReport()
+        return parse(data, report: &report)
+    }
+
+    static func parse(_ data: Data, report: inout BrowserImportReport) -> [BrowserImportCookie] {
         guard data.count >= 12, data.count <= 64 * 1024 * 1024,
               data.prefix(4) == Data("cook".utf8),
               let pageCount = be32(data, 4), pageCount <= 4096,
-              8 + Int(pageCount) * 4 <= data.count else { return [] }
+              8 + Int(pageCount) * 4 <= data.count else {
+            report.record(.cookie, ordinal: 0, stage: .transfer, outcome: .failed, reason: .sourceUnreadable)
+            return []
+        }
         var pageStart = 8 + Int(pageCount) * 4
         var output: [BrowserImportCookie] = []
+        var ordinal = 0
         for pageIndex in 0..<Int(pageCount) {
             guard let pageSize = be32(data, 8 + pageIndex * 4),
                   pageSize >= 12, pageSize <= 16 * 1024 * 1024,
-                  pageStart <= data.count - Int(pageSize) else { return output }
+                  pageStart <= data.count - Int(pageSize) else {
+                report.record(.cookie, ordinal: 0, stage: .transfer, outcome: .failed, reason: .sourceUnreadable)
+                return output
+            }
             let pageEnd = pageStart + Int(pageSize)
             guard let count = le32(data, pageStart + 4), count <= 50_000,
                   pageStart + 8 + Int(count) * 4 <= pageEnd else {
+                report.record(.cookie, ordinal: 0, stage: .transfer, outcome: .failed, reason: .sourceUnreadable)
                 pageStart = pageEnd
                 continue
             }
             for index in 0..<Int(count) {
+                guard ordinal < 50_000 else {
+                    report.record(.cookie, ordinal: 0, stage: .transfer, outcome: .unsupported, reason: .invalidItem)
+                    return output
+                }
+                ordinal += 1
                 guard let offset = le32(data, pageStart + 8 + index * 4),
-                      Int(offset) <= Int(pageSize) - 56 else { continue }
+                      Int(offset) <= Int(pageSize) - 56 else {
+                    report.record(.cookie, ordinal: ordinal, stage: .transfer, outcome: .unsupported, reason: .invalidItem)
+                    continue
+                }
                 let start = pageStart + Int(offset)
                 guard let size = le32(data, start), size >= 56,
                       start <= pageEnd - Int(size),
@@ -65,7 +86,10 @@ public enum SafariBinaryCookieReader {
                       let domain = cString(data, start: start, size: Int(size), offset: domainOffset),
                       let name = cString(data, start: start, size: Int(size), offset: nameOffset),
                       let path = cString(data, start: start, size: Int(size), offset: pathOffset),
-                      let value = cString(data, start: start, size: Int(size), offset: valueOffset) else { continue }
+                      let value = cString(data, start: start, size: Int(size), offset: valueOffset) else {
+                    report.record(.cookie, ordinal: ordinal, stage: .transfer, outcome: .unsupported, reason: .invalidItem)
+                    continue
+                }
                 let seconds = Double(bitPattern: expiryBits)
                 let expires = seconds.isFinite && seconds > 0
                     ? Date(timeIntervalSinceReferenceDate: seconds) : nil
@@ -75,6 +99,9 @@ public enum SafariBinaryCookieReader {
                     isHTTPOnly: flags & 4 != 0
                 ) {
                     output.append(cookie)
+                    report.record(.cookie, ordinal: ordinal, stage: .transfer, outcome: .accepted, reason: .preparedForTransfer)
+                } else {
+                    report.record(.cookie, ordinal: ordinal, stage: .transfer, outcome: .unsupported, reason: .invalidItem)
                 }
             }
             pageStart = pageEnd

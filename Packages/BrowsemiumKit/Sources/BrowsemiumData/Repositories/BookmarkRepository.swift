@@ -110,6 +110,34 @@ public final class BookmarkRepository: @unchecked Sendable {
         }
     }
 
+    /// Per-item outcomes are decided beside the writes, in the same
+    /// transaction, not inferred from a before/after count. Savepoints isolate
+    /// ordinary item failures; a whole-transaction rollback fails the batch.
+    func importMany(_ items: [(url: URL, title: String, folder: String?)]) throws -> [BrowserImportReport.Outcome] {
+        try database.databaseQueue.write { db in
+            var seen = try Set(String.fetchAll(db, sql: "SELECT url FROM bookmarks"))
+            var order = try Int.fetchOne(db, sql: "SELECT COALESCE(MAX(sort_order), 0) FROM bookmarks") ?? 0
+            return items.map { item in
+                let key = item.url.absoluteString
+                guard !seen.contains(key) else { return .duplicate }
+                do {
+                    try db.inSavepoint {
+                        try db.execute(sql: """
+                            INSERT INTO bookmarks (id, url, title, folder, sort_order, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            """, arguments: [UUID().uuidString, key, item.title, item.folder, order + 1, Date()])
+                        return .commit
+                    }
+                    seen.insert(key)
+                    order += 1
+                    return .accepted
+                } catch {
+                    return .failed
+                }
+            }
+        }
+    }
+
     public func search(_ query: String) throws -> [Bookmark] {
         let pattern = "%\(query)%"
         return try read(

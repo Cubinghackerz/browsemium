@@ -484,12 +484,21 @@ site controls are the remaining work, not a duplicate toolbar implementation.
   explicit column map and Keychain storage; plaintext CSV export requires a
   confirmation. These paths must pass fixture and UI verification before
   release claims change.
+- Per-item import reports distinguish preview parsing, prepared transfers, and
+  destination writes. Source ordinals and closed reason codes explain duplicates,
+  unsupported items, selection skips, decryption failures, and partial write
+  failures without including URLs, usernames, secret values, or raw database
+  errors. Bookmark/history outcomes are recorded with transactional writes;
+  credentials and cookies are not called saved merely because they were parsed.
+  Generated-fixture regressions cover the three browser families, malformed
+  bookmarks, rollback, repeat import, and secret-free reports. Native report
+  light/dark QA remains a user check before release.
 - Still open: direct Firefox `key4.db` login decryption, Safari cookie access
   when sandbox scope does not cover the file, custom search engine/keyword
   lists, batch extension reinstall, autofill addresses, open/pinned session
-  restoration, bookmark/history portable backups, and per-item import reports.
+  restoration, and bookmark/history portable backups.
   The ordered reporting/session/Firefox follow-on scope is recorded in
-  `Plans/6-import-completion.md`; none is claimed shipped by that plan.
+  `Plans/6-import-completion.md`; session and Firefox crypto units remain open.
 - This cycle's quality gate is a whole-app visual pass in light and dark plus
   scoped motion polish. Smart routing, advanced blocking, per-site extension
   controls, passkeys, password health, CLI/MCP, and optional encrypted sync are

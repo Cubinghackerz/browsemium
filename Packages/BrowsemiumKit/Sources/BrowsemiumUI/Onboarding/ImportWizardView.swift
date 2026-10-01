@@ -26,6 +26,7 @@ struct ImportBatchSheet: View {
     let completedCount: Int
     let currentProfile: String?
     let report: [String]
+    let detailedReports: [BrowserImportReport]
     let onCancel: () -> Void
     let onImport: () -> Void
 
@@ -69,6 +70,7 @@ struct ImportBatchSheet: View {
                             .font(.system(size: 10.5))
                             .foregroundStyle(Color.browsemiumSecondary)
                     }
+                    ImportReportDetails(report: entry.preview.report)
                 }
                 Toggle("Bookmarks (\(bookmarkCount))", isOn: $options.includesBookmarks)
                 Toggle("History (\(historyCount))", isOn: $options.includesHistory)
@@ -90,6 +92,9 @@ struct ImportBatchSheet: View {
             } else {
                 ForEach(report, id: \.self) { line in
                     Text(line).font(.system(size: 11.5)).textSelection(.enabled)
+                }
+                ForEach(detailedReports.indices, id: \.self) { index in
+                    ImportReportDetails(report: detailedReports[index])
                 }
             }
             HStack {

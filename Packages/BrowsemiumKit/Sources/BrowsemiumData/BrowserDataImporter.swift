@@ -91,6 +91,7 @@ public enum BrowserImportSource: String, CaseIterable, Identifiable, Sendable {
 }
 
 public struct BrowserImportResult: Sendable {
+    public let report: BrowserImportReport
     public let bookmarks: Int
     public let historyVisits: Int
     /// Decrypted logins for the caller to store. Empty unless the user asked
@@ -109,7 +110,8 @@ public struct BrowserImportResult: Sendable {
         credentials: [ChromeLogin] = [],
         cookies: [BrowserImportCookie] = [],
         extensionIDs: [String] = [],
-        searchEngine: BrowserImportPreview.SearchEngine? = nil
+        searchEngine: BrowserImportPreview.SearchEngine? = nil,
+        report: BrowserImportReport = BrowserImportReport()
     ) {
         self.bookmarks = bookmarks
         self.historyVisits = historyVisits
@@ -117,6 +119,7 @@ public struct BrowserImportResult: Sendable {
         self.cookies = cookies
         self.extensionIDs = extensionIDs
         self.searchEngine = searchEngine
+        self.report = report
     }
 
     public var isEmpty: Bool {
@@ -126,13 +129,16 @@ public struct BrowserImportResult: Sendable {
 
 /// What a profile contains, before anything is written to Browsemium.
 public struct BrowserImportPreview: Sendable {
+    public internal(set) var report = BrowserImportReport()
     public struct Bookmark: Sendable, Hashable {
+        let ordinal: Int
         public let url: URL
         public let title: String
         public let folder: String?
     }
 
     public struct Visit: Sendable, Hashable {
+        let ordinal: Int
         public let url: URL
         public let title: String
         public let visitedAt: Date
@@ -661,12 +667,14 @@ public final class BrowserDataImporter: @unchecked Sendable {
     }
 
     private struct ImportedBookmark {
+        let ordinal: Int
         let url: URL
         let title: String
         let folder: String?
     }
 
     private struct ImportedVisit {
+        let ordinal: Int
         let url: URL
         let title: String
         let visitedAt: Date
@@ -689,33 +697,48 @@ public final class BrowserDataImporter: @unchecked Sendable {
         }
         try BrowserImportPathPolicy.validate(profile, source: source)
 
+        var recorder = ImportReportRecorder()
         let read: ([ImportedBookmark], [ImportedVisit])
         switch source.family {
         case .chromium:
-            read = try readChromium(profile)
+            read = try readChromium(profile, recorder: &recorder)
         case .firefox:
-            read = try readFirefox(profile)
+            read = try readFirefox(profile, recorder: &recorder)
         case .safari:
-            read = try readSafari(profile)
+            read = try readSafari(profile, recorder: &recorder)
         }
 
         let dedupedBookmarks = Self.dedupeBookmarks(read.0)
         let dedupedVisits = Self.dedupeVisits(read.1)
         let folders = Array(Set(dedupedBookmarks.compactMap(\.folder))).sorted()
 
+        let credentials = credentialSummary(in: profile, source: source, report: &recorder.report)
+        let cookies = cookieCount(in: profile, source: source, report: &recorder.report)
+        let extensionIDs = Self.extensionIDs(in: profile, source: source)
+        let engine = searchEngine(in: profile, source: source)
+        for index in 0..<(source.family == .safari ? 0 : cookies) {
+            recorder.report.record(.cookie, ordinal: index + 1, outcome: .accepted, reason: .parsed)
+        }
+        for index in extensionIDs.indices {
+            recorder.report.record(.extension, ordinal: index + 1, outcome: .accepted, reason: .parsed)
+        }
+        if engine != nil {
+            recorder.report.record(.searchEngine, ordinal: 1, outcome: .accepted, reason: .parsed)
+        }
         return BrowserImportPreview(
+            report: recorder.report,
             source: source,
             bookmarks: dedupedBookmarks.map {
-                BrowserImportPreview.Bookmark(url: $0.url, title: $0.title, folder: $0.folder)
+                BrowserImportPreview.Bookmark(ordinal: $0.ordinal, url: $0.url, title: $0.title, folder: $0.folder)
             },
             visits: dedupedVisits.map {
-                BrowserImportPreview.Visit(url: $0.url, title: $0.title, visitedAt: $0.visitedAt)
+                BrowserImportPreview.Visit(ordinal: $0.ordinal, url: $0.url, title: $0.title, visitedAt: $0.visitedAt)
             },
             folders: folders,
-            credentials: credentialSummary(in: profile, source: source),
-            cookieCount: cookieCount(in: profile, source: source),
-            extensionIDs: Self.extensionIDs(in: profile, source: source),
-            searchEngine: searchEngine(in: profile, source: source),
+            credentials: credentials,
+            cookieCount: cookies,
+            extensionIDs: extensionIDs,
+            searchEngine: engine,
             notImportable: Self.notImportable(for: source)
         )
     }
@@ -723,35 +746,58 @@ public final class BrowserDataImporter: @unchecked Sendable {
     /// Counts saved logins without decrypting them.
     private func credentialSummary(
         in profile: URL,
-        source: BrowserImportSource
+        source: BrowserImportSource,
+        report: inout BrowserImportReport
     ) -> [BrowserImportPreview.Credential] {
         guard source.supportsPasswordImport else { return [] }
         let databaseURL = profile.appendingPathComponent("Login Data")
         guard FileManager.default.fileExists(atPath: databaseURL.path) else { return [] }
-        let rows = (try? readSQLite(databaseURL) { db in
-            try ChromeLoginDataReader.summarize(database: db)
-        }) ?? []
+        let rows: [(url: URL, username: String)]
+        do {
+            rows = try readSQLite(databaseURL) { db in
+                try ChromeLoginDataReader.summarize(database: db, report: &report)
+            }
+        } catch {
+            report.record(.password, ordinal: 0, outcome: .failed, reason: .sourceUnreadable)
+            return []
+        }
         return rows.map { BrowserImportPreview.Credential(url: $0.url, username: $0.username) }
     }
 
-    private func cookieCount(in profile: URL, source: BrowserImportSource) -> Int {
+    private func cookieCount(in profile: URL, source: BrowserImportSource, report: inout BrowserImportReport) -> Int {
+        let count: Int
+        do {
         switch source.family {
         case .chromium:
             guard let url = Self.chromiumCookieURL(in: profile) else { return 0 }
-            return (try? readSQLite(url) { db in
+            count = try readSQLite(url) { db in
                 try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM cookies WHERE length(value) > 0 OR length(encrypted_value) > 0") ?? 0
-            }) ?? 0
+            }
         case .firefox:
             let url = profile.appendingPathComponent("cookies.sqlite")
             guard FileManager.default.fileExists(atPath: url.path) else { return 0 }
-            return (try? readSQLite(url) { db in
+            count = try readSQLite(url) { db in
                 try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM moz_cookies WHERE length(value) > 0") ?? 0
-            }) ?? 0
+            }
         case .safari:
-            guard let url = Self.safariCookieURL(in: profile),
-                  let data = try? Data(contentsOf: url) else { return 0 }
-            return SafariBinaryCookieReader.parse(data).count
+            guard let url = Self.safariCookieURL(in: profile) else { return 0 }
+            var parsingReport = BrowserImportReport()
+            count = SafariBinaryCookieReader.parse(try Data(contentsOf: url), report: &parsingReport).count
+            // Preview exposes metadata, never a claim that cookie values were
+            // transferred to WebKit.
+            report.items += parsingReport.items.map {
+                BrowserImportReport.Item(category: .cookie, ordinal: $0.ordinal, stage: .preview,
+                                         outcome: $0.outcome, reason: $0.outcome == .accepted ? .parsed : $0.reason)
+            }
         }
+        } catch {
+            report.record(.cookie, ordinal: 0, outcome: .failed, reason: .sourceUnreadable)
+            return 0
+        }
+        if count > 50_000 {
+            report.record(.cookie, ordinal: 0, outcome: .unsupported, reason: .limitExceeded)
+        }
+        return min(count, 50_000)
     }
 
     private static func extensionIDs(in profile: URL, source: BrowserImportSource) -> [String] {
@@ -829,6 +875,7 @@ public final class BrowserDataImporter: @unchecked Sendable {
         profile: URL? = nil
     ) throws -> BrowserImportResult {
         if let profile { try BrowserImportPathPolicy.validate(profile, source: preview.source) }
+        var report = preview.report
         var credentials: [ChromeLogin] = []
         var cookies: [BrowserImportCookie] = []
         let needsChromiumKey = preview.source.family == .chromium
@@ -849,19 +896,46 @@ public final class BrowserDataImporter: @unchecked Sendable {
             }
             let databaseURL = profile.appendingPathComponent("Login Data")
             credentials = try readSQLite(databaseURL) { db in
-                try ChromeLoginDataReader.decryptLogins(database: db, key: key)
+                try ChromeLoginDataReader.decryptLogins(database: db, key: key, report: &report)
             }
         }
         if options.includesCookies, preview.cookieCount > 0 {
             guard let profile else { throw ImportError.unreadableData("The source profile is unavailable.") }
-            cookies = try readCookies(in: profile, source: preview.source, key: key)
+            cookies = try readCookies(in: profile, source: preview.source, key: key, report: &report)
         }
 
+        let selections: [(BrowserImportReport.Category, Bool)] = [
+            (.password, options.includesPasswords), (.cookie, options.includesCookies),
+            (.extension, options.includesExtensions), (.searchEngine, options.includesSearchEngine)
+        ]
+        for (category, selected) in selections {
+            let entries = preview.report.items.filter { $0.category == category && $0.outcome == .accepted }
+            for item in entries {
+                if !selected {
+                    report.record(category, ordinal: item.ordinal, stage: .transfer, outcome: .skipped, reason: .notSelected)
+                } else if category == .extension || category == .searchEngine {
+                    report.record(category, ordinal: item.ordinal, stage: .transfer, outcome: .accepted, reason: .preparedForTransfer)
+                }
+            }
+        }
         var bookmarkCount = 0
         if options.includesBookmarks {
-            bookmarkCount = try bookmarks.addMany(
-                preview.bookmarks.map { (url: $0.url, title: $0.title, folder: $0.folder) }
-            )
+            let outcomes: [BrowserImportReport.Outcome]
+            do {
+                outcomes = try bookmarks.importMany(
+                    preview.bookmarks.map { (url: $0.url, title: $0.title, folder: $0.folder) })
+            } catch {
+                outcomes = Array(repeating: .failed, count: preview.bookmarks.count)
+            }
+            bookmarkCount = outcomes.filter { $0 == .accepted }.count
+            for (item, outcome) in zip(preview.bookmarks, outcomes) {
+                report.record(.bookmark, ordinal: item.ordinal, stage: .persistence, outcome: outcome,
+                              reason: Self.writeReason(outcome))
+            }
+        } else {
+            for item in preview.bookmarks {
+                report.record(.bookmark, ordinal: item.ordinal, stage: .persistence, outcome: .skipped, reason: .notSelected)
+            }
         }
 
         var historyCount = 0
@@ -870,17 +944,27 @@ public final class BrowserDataImporter: @unchecked Sendable {
             var candidates = preview.visits
                 .filter { cutoff == nil || $0.visitedAt >= cutoff! }
                 .sorted { $0.visitedAt > $1.visitedAt }
-            if candidates.count > options.historyLimit {
-                candidates = Array(candidates.prefix(options.historyLimit))
+            candidates = Array(candidates.prefix(max(0, options.historyLimit)))
+            let selected = Set(candidates.map(\.ordinal))
+            for item in preview.visits where !selected.contains(item.ordinal) {
+                report.record(.history, ordinal: item.ordinal, stage: .persistence, outcome: .skipped, reason: .outsideSelection)
             }
-
-            // Skip anything already in history so importing twice does not
-            // double the timeline.
-            let existing = (try? history.existingURLs(among: candidates.map(\.url))) ?? []
-            let fresh = candidates.filter { !existing.contains($0.url.absoluteString) }
-            historyCount = try history.recordMany(
-                fresh.map { (url: $0.url, title: $0.title, visitedAt: $0.visitedAt) }
-            )
+            let outcomes: [BrowserImportReport.Outcome]
+            do {
+                outcomes = try history.importMany(
+                    candidates.map { (url: $0.url, title: $0.title, visitedAt: $0.visitedAt) })
+            } catch {
+                outcomes = Array(repeating: .failed, count: candidates.count)
+            }
+            historyCount = outcomes.filter { $0 == .accepted }.count
+            for (item, outcome) in zip(candidates, outcomes) {
+                report.record(.history, ordinal: item.ordinal, stage: .persistence, outcome: outcome,
+                              reason: Self.writeReason(outcome))
+            }
+        } else {
+            for item in preview.visits {
+                report.record(.history, ordinal: item.ordinal, stage: .persistence, outcome: .skipped, reason: .notSelected)
+            }
         }
 
         return BrowserImportResult(
@@ -889,24 +973,36 @@ public final class BrowserDataImporter: @unchecked Sendable {
             credentials: credentials,
             cookies: cookies,
             extensionIDs: options.includesExtensions ? preview.extensionIDs : [],
-            searchEngine: options.includesSearchEngine ? preview.searchEngine : nil
+            searchEngine: options.includesSearchEngine ? preview.searchEngine : nil,
+            report: report
         )
     }
 
-    private func readCookies(in profile: URL, source: BrowserImportSource, key: Data?) throws -> [BrowserImportCookie] {
+    private static func writeReason(_ outcome: BrowserImportReport.Outcome) -> BrowserImportReport.Reason {
+        switch outcome {
+        case .accepted: .imported
+        case .duplicate: .alreadyPresent
+        default: .destinationWriteFailed
+        }
+    }
+
+    private func readCookies(in profile: URL, source: BrowserImportSource, key: Data?, report: inout BrowserImportReport) throws -> [BrowserImportCookie] {
         switch source.family {
         case .chromium:
             guard let url = Self.chromiumCookieURL(in: profile), let key else { return [] }
             return try readSQLite(url) { db in
-                let rows = try Row.fetchAll(db, sql: "SELECT host_key, name, value, encrypted_value, path, expires_utc, is_secure, is_httponly FROM cookies LIMIT 50000")
-                return rows.compactMap { row in
+                let rows = try Row.fetchAll(db, sql: "SELECT host_key, name, value, encrypted_value, path, expires_utc, is_secure, is_httponly FROM cookies WHERE length(value) > 0 OR length(encrypted_value) > 0 ORDER BY rowid LIMIT 50000")
+                return rows.enumerated().compactMap { index, row in
                     let plaintext = row["value"] as String? ?? ""
                     let encrypted = row["encrypted_value"] as Data? ?? Data()
                     let value = plaintext.isEmpty ? (try? ChromeCredentialCrypto.decrypt(encrypted, key: key)) : plaintext
                     let rawExpiry = row["expires_utc"] as Int64? ?? 0
                     let expiry = rawExpiry > 0 ? Date(timeIntervalSince1970: Double(rawExpiry) / 1_000_000 - 11_644_473_600) : nil
-                    guard let value else { return nil }
-                    return BrowserImportCookie(
+                    guard let value else {
+                        report.record(.cookie, ordinal: index + 1, stage: .transfer, outcome: .failed, reason: .decryptionFailed)
+                        return nil
+                    }
+                    let cookie = BrowserImportCookie(
                         domain: row["host_key"] as String? ?? "",
                         name: row["name"] as String? ?? "",
                         value: value,
@@ -915,15 +1011,19 @@ public final class BrowserDataImporter: @unchecked Sendable {
                         isSecure: (row["is_secure"] as Int? ?? 0) != 0,
                         isHTTPOnly: (row["is_httponly"] as Int? ?? 0) != 0
                     )
+                    report.record(.cookie, ordinal: index + 1, stage: .transfer,
+                                  outcome: cookie == nil ? .unsupported : .accepted,
+                                  reason: cookie == nil ? .invalidItem : .preparedForTransfer)
+                    return cookie
                 }
             }
         case .firefox:
             let url = profile.appendingPathComponent("cookies.sqlite")
             return try readSQLiteIfPresent(url) { db in
-                let rows = try Row.fetchAll(db, sql: "SELECT host, name, value, path, expiry, isSecure, isHttpOnly FROM moz_cookies LIMIT 50000")
-                return rows.compactMap { row in
+                let rows = try Row.fetchAll(db, sql: "SELECT host, name, value, path, expiry, isSecure, isHttpOnly FROM moz_cookies WHERE length(value) > 0 ORDER BY rowid LIMIT 50000")
+                return rows.enumerated().compactMap { index, row in
                     let rawExpiry = row["expiry"] as Int64? ?? 0
-                    return BrowserImportCookie(
+                    let cookie = BrowserImportCookie(
                         domain: row["host"] as String? ?? "",
                         name: row["name"] as String? ?? "",
                         value: row["value"] as String? ?? "",
@@ -932,11 +1032,15 @@ public final class BrowserDataImporter: @unchecked Sendable {
                         isSecure: (row["isSecure"] as Int? ?? 0) != 0,
                         isHTTPOnly: (row["isHttpOnly"] as Int? ?? 0) != 0
                     )
+                    report.record(.cookie, ordinal: index + 1, stage: .transfer,
+                                  outcome: cookie == nil ? .unsupported : .accepted,
+                                  reason: cookie == nil ? .invalidItem : .preparedForTransfer)
+                    return cookie
                 }
             }
         case .safari:
             guard let url = Self.safariCookieURL(in: profile) else { return [] }
-            return SafariBinaryCookieReader.parse(try Data(contentsOf: url))
+            return SafariBinaryCookieReader.parse(try Data(contentsOf: url), report: &report)
         }
     }
 
@@ -974,7 +1078,7 @@ public final class BrowserDataImporter: @unchecked Sendable {
 
     /// Every Chromium-family browser shares this layout: Chrome, Brave, Edge,
     /// Vivaldi, Arc, Dia, Helium, Opera, and Chromium itself.
-    private func readChromium(_ folder: URL) throws -> ([ImportedBookmark], [ImportedVisit]) {
+    private func readChromium(_ folder: URL, recorder: inout ImportReportRecorder) throws -> ([ImportedBookmark], [ImportedVisit]) {
         let bookmarksURL = folder.appendingPathComponent("Bookmarks")
         let historyURL = folder.appendingPathComponent("History")
         guard FileManager.default.fileExists(atPath: bookmarksURL.path) ||
@@ -987,9 +1091,13 @@ public final class BrowserDataImporter: @unchecked Sendable {
         if let data = try? Data(contentsOf: bookmarksURL),
            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let roots = root["roots"] as? [String: Any] {
-            for (folderName, value) in roots {
-                collectChromeBookmarks(value, folder: folderName, into: &importedBookmarks)
+            for folderName in roots.keys.sorted() {
+                if let value = roots[folderName] {
+                    collectChromeBookmarks(value, folder: folderName, into: &importedBookmarks, recorder: &recorder)
+                }
             }
+        } else if FileManager.default.fileExists(atPath: bookmarksURL.path) {
+            recorder.unreadable(.bookmark)
         }
 
         let visits = try readSQLiteIfPresent(historyURL) { db in
@@ -998,15 +1106,18 @@ public final class BrowserDataImporter: @unchecked Sendable {
                 sql: """
                     SELECT url, title, last_visit_time
                     FROM urls
-                    WHERE url LIKE 'http%'
                     ORDER BY last_visit_time DESC
                     LIMIT 50000
                     """
             ).compactMap { row -> ImportedVisit? in
-                guard let rawURL = row["url"] as String?, let url = Self.webURL(rawURL) else { return nil }
+                guard let rawURL = row["url"] as String?, let url = Self.webURL(rawURL) else {
+                    recorder.rejected(.history)
+                    return nil
+                }
                 let micros = row["last_visit_time"] as Int64? ?? 0
                 let seconds = Double(micros) / 1_000_000 - 11_644_473_600
                 return ImportedVisit(
+                    ordinal: recorder.parsed(.history, key: rawURL),
                     url: url,
                     title: row["title"] ?? (url.host ?? rawURL),
                     visitedAt: Date(timeIntervalSince1970: max(seconds, 0))
@@ -1016,18 +1127,21 @@ public final class BrowserDataImporter: @unchecked Sendable {
         return (importedBookmarks, visits)
     }
 
-    private func collectChromeBookmarks(_ value: Any, folder: String?, into output: inout [ImportedBookmark]) {
+    private func collectChromeBookmarks(_ value: Any, folder: String?, into output: inout [ImportedBookmark], recorder: inout ImportReportRecorder, depth: Int = 0) {
+        guard depth < 128 else { recorder.rejected(.bookmark, reason: .invalidItem); return }
         guard let node = value as? [String: Any] else { return }
         let currentFolder = (node["name"] as? String).flatMap { $0.isEmpty ? folder : $0 } ?? folder
         if let rawURL = node["url"] as? String, let url = Self.webURL(rawURL) {
-            output.append(ImportedBookmark(url: url, title: node["name"] as? String ?? url.host ?? rawURL, folder: folder))
+            output.append(ImportedBookmark(ordinal: recorder.parsed(.bookmark, key: rawURL), url: url, title: node["name"] as? String ?? url.host ?? rawURL, folder: folder))
+        } else if node["url"] != nil || node["type"] as? String == "url" {
+            recorder.rejected(.bookmark)
         }
         for child in node["children"] as? [Any] ?? [] {
-            collectChromeBookmarks(child, folder: currentFolder, into: &output)
+            collectChromeBookmarks(child, folder: currentFolder, into: &output, recorder: &recorder, depth: depth + 1)
         }
     }
 
-    private func readFirefox(_ folder: URL) throws -> ([ImportedBookmark], [ImportedVisit]) {
+    private func readFirefox(_ folder: URL, recorder: inout ImportReportRecorder) throws -> ([ImportedBookmark], [ImportedVisit]) {
         let databaseURL = folder.appendingPathComponent("places.sqlite")
         guard FileManager.default.fileExists(atPath: databaseURL.path) else {
             throw ImportError.unsupportedFolder("Firefox")
@@ -1040,12 +1154,16 @@ public final class BrowserDataImporter: @unchecked Sendable {
                     SELECT p.url, COALESCE(b.title, p.title, p.url) AS title
                     FROM moz_bookmarks b
                     JOIN moz_places p ON p.id = b.fk
-                    WHERE b.type = 1 AND p.url LIKE 'http%'
+                    WHERE b.type = 1
                     ORDER BY b.dateAdded DESC
+                    LIMIT 50000
                     """
             ).compactMap { row -> ImportedBookmark? in
-                guard let rawURL = row["url"] as String?, let url = Self.webURL(rawURL) else { return nil }
-                return ImportedBookmark(url: url, title: row["title"] ?? url.host ?? rawURL, folder: "Firefox")
+                guard let rawURL = row["url"] as String?, let url = Self.webURL(rawURL) else {
+                    recorder.rejected(.bookmark)
+                    return nil
+                }
+                return ImportedBookmark(ordinal: recorder.parsed(.bookmark, key: rawURL), url: url, title: row["title"] ?? url.host ?? rawURL, folder: "Firefox")
             }
 
             let visits = try Row.fetchAll(
@@ -1053,14 +1171,18 @@ public final class BrowserDataImporter: @unchecked Sendable {
                 sql: """
                     SELECT url, COALESCE(title, url) AS title, last_visit_date
                     FROM moz_places
-                    WHERE url LIKE 'http%' AND last_visit_date IS NOT NULL
+                    WHERE last_visit_date IS NOT NULL
                     ORDER BY last_visit_date DESC
                     LIMIT 5000
                     """
             ).compactMap { row -> ImportedVisit? in
-                guard let rawURL = row["url"] as String?, let url = Self.webURL(rawURL) else { return nil }
+                guard let rawURL = row["url"] as String?, let url = Self.webURL(rawURL) else {
+                    recorder.rejected(.history)
+                    return nil
+                }
                 let micros = row["last_visit_date"] as Int64? ?? 0
                 return ImportedVisit(
+                    ordinal: recorder.parsed(.history, key: rawURL),
                     url: url,
                     title: row["title"] ?? url.host ?? rawURL,
                     visitedAt: Date(timeIntervalSince1970: Double(micros) / 1_000_000)
@@ -1070,7 +1192,7 @@ public final class BrowserDataImporter: @unchecked Sendable {
         }
     }
 
-    private func readSafari(_ folder: URL) throws -> ([ImportedBookmark], [ImportedVisit]) {
+    private func readSafari(_ folder: URL, recorder: inout ImportReportRecorder) throws -> ([ImportedBookmark], [ImportedVisit]) {
         let bookmarksURL = folder.appendingPathComponent("Bookmarks.plist")
         let historyURL = folder.appendingPathComponent("History.db")
         guard FileManager.default.fileExists(atPath: bookmarksURL.path) ||
@@ -1081,7 +1203,9 @@ public final class BrowserDataImporter: @unchecked Sendable {
         var importedBookmarks: [ImportedBookmark] = []
         if let data = try? Data(contentsOf: bookmarksURL),
            let root = try? PropertyListSerialization.propertyList(from: data, format: nil) {
-            collectSafariBookmarks(root, folder: "Safari", into: &importedBookmarks)
+            collectSafariBookmarks(root, folder: "Safari", into: &importedBookmarks, recorder: &recorder)
+        } else if FileManager.default.fileExists(atPath: bookmarksURL.path) {
+            recorder.unreadable(.bookmark)
         }
 
         let visits = try readSQLiteIfPresent(historyURL) { db in
@@ -1091,14 +1215,17 @@ public final class BrowserDataImporter: @unchecked Sendable {
                     SELECT i.url, COALESCE(i.title, i.url) AS title, v.visit_time
                     FROM history_visits v
                     JOIN history_items i ON i.id = v.history_item
-                    WHERE i.url LIKE 'http%'
                     ORDER BY v.visit_time DESC
                     LIMIT 5000
                     """
             ).compactMap { row -> ImportedVisit? in
-                guard let rawURL = row["url"] as String?, let url = Self.webURL(rawURL) else { return nil }
+                guard let rawURL = row["url"] as String?, let url = Self.webURL(rawURL) else {
+                    recorder.rejected(.history)
+                    return nil
+                }
                 let seconds = row["visit_time"] as Double? ?? 0
                 return ImportedVisit(
+                    ordinal: recorder.parsed(.history, key: rawURL),
                     url: url,
                     title: row["title"] ?? url.host ?? rawURL,
                     visitedAt: Date(timeIntervalSinceReferenceDate: seconds)
@@ -1108,16 +1235,19 @@ public final class BrowserDataImporter: @unchecked Sendable {
         return (importedBookmarks, visits)
     }
 
-    private func collectSafariBookmarks(_ value: Any, folder: String?, into output: inout [ImportedBookmark]) {
+    private func collectSafariBookmarks(_ value: Any, folder: String?, into output: inout [ImportedBookmark], recorder: inout ImportReportRecorder, depth: Int = 0) {
+        guard depth < 128 else { recorder.rejected(.bookmark, reason: .invalidItem); return }
         guard let node = value as? [String: Any] else { return }
         let currentFolder = (node["Title"] as? String).flatMap { $0.isEmpty ? folder : $0 } ?? folder
         if let rawURL = node["URLString"] as? String, let url = Self.webURL(rawURL) {
             let dictionary = node["URIDictionary"] as? [String: Any]
             let title = dictionary?["title"] as? String ?? url.host ?? rawURL
-            output.append(ImportedBookmark(url: url, title: title, folder: folder))
+            output.append(ImportedBookmark(ordinal: recorder.parsed(.bookmark, key: rawURL), url: url, title: title, folder: folder))
+        } else if node["URLString"] != nil || node["WebBookmarkType"] as? String == "WebBookmarkTypeLeaf" {
+            recorder.rejected(.bookmark)
         }
         for child in node["Children"] as? [Any] ?? [] {
-            collectSafariBookmarks(child, folder: currentFolder, into: &output)
+            collectSafariBookmarks(child, folder: currentFolder, into: &output, recorder: &recorder, depth: depth + 1)
         }
     }
 
@@ -1159,7 +1289,7 @@ public final class BrowserDataImporter: @unchecked Sendable {
                 }
             }
         } catch {
-            throw ImportError.unreadableData(error.localizedDescription)
+            throw ImportError.unreadableData("The source database could not be copied. Close the source browser and retry.")
         }
 
         do {
@@ -1168,7 +1298,7 @@ public final class BrowserDataImporter: @unchecked Sendable {
             let queue = try DatabaseQueue(path: copy.path, configuration: configuration)
             return try queue.read(body)
         } catch {
-            throw ImportError.unreadableData(error.localizedDescription)
+            throw ImportError.unreadableData("The source database could not be read. Close the source browser and retry.")
         }
     }
 

@@ -35,6 +35,10 @@ struct ImportPreviewSheet: View {
 
             summary
 
+            if !preview.report.items.isEmpty {
+                ImportReportDetails(report: preview.report)
+            }
+
             destinationPicker
 
             if preview.bookmarkCount > 0 {

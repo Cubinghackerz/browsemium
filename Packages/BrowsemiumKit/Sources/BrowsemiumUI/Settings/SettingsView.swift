@@ -36,6 +36,7 @@ struct SettingsView: View {
     @State private var importOptions = BrowserImportOptions()
     @State private var importFolder: URL?
     @State private var importLastSummary: String?
+    @State private var importLastReport: BrowserImportReport?
     @State private var isPreparingPreview = false
     @State private var importDestination: BrowserImportDestination = .currentProfile
     @State private var importNewProfileName = ""
@@ -60,6 +61,7 @@ struct SettingsView: View {
     @State private var batchOptions = BrowserImportOptions()
     @State private var batchAccessRoot: URL?
     @State private var batchReport: [String] = []
+    @State private var batchDetailedReports: [BrowserImportReport] = []
     @State private var isShowingBatch = false
     @State private var isBatchImporting = false
     @State private var batchCompletedCount = 0
@@ -162,6 +164,7 @@ struct SettingsView: View {
                              completedCount: batchCompletedCount,
                              currentProfile: batchCurrentProfile,
                              report: batchReport,
+                             detailedReports: batchDetailedReports,
                              onCancel: { isShowingBatch = false },
                              onImport: commitBatchImport)
         }
@@ -630,8 +633,12 @@ struct SettingsView: View {
                 SettingsRow("Last import") {
                     Text(importLastSummary)
                         .font(.system(size: 11.5))
-                        .foregroundStyle(Color.browsemiumSuccess)
+                        .foregroundStyle(Color.browsemiumPrimary)
                 }
+            }
+
+            if let importLastReport {
+                ImportReportDetails(report: importLastReport)
             }
 
             if isPreparingPreview {
@@ -1326,6 +1333,7 @@ struct SettingsView: View {
                 batchAccessRoot = root
                 batchOptions = BrowserImportOptions()
                 batchReport = []
+                batchDetailedReports = []
                 batchCompletedCount = 0
                 batchCurrentProfile = nil
                 isShowingBatch = true
@@ -1373,11 +1381,17 @@ struct SettingsView: View {
                         return try importer.apply(entry.preview, options: options,
                                                   keyProvider: keyProvider, profile: entry.candidate.folder)
                     }.value
-                    let stored = storeCredentials(result.credentials, profile: destinationProfile)
-                    let storedCookies = await storeCookies(result.cookies, profile: destinationProfile)
-                    applyImportedSearchEngine(result.searchEngine, profile: destinationProfile)
+                    let passwordOutcomes = storeCredentials(result.credentials, profile: destinationProfile)
+                    let cookieOutcomes = await storeCookies(result.cookies, profile: destinationProfile)
+                    let searchSaved = applyImportedSearchEngine(result.searchEngine, profile: destinationProfile)
+                    let finalReport = completedImportReport(result, passwords: passwordOutcomes, cookies: cookieOutcomes, searchSaved: searchSaved)
+                    batchDetailedReports.append(finalReport)
                     if destinationProfile.id == model.activeProfile.id { model.refreshBookmarks() }
-                    report.append("\(entry.candidate.label): \(importSummary(entry.preview, options: options, result: result, storedCredentials: stored, storedCookies: storedCookies)).")
+                    let summary = importSummary(entry.preview, options: options, result: result,
+                        storedCredentials: passwordOutcomes.filter { $0 == .accepted }.count,
+                        storedCookies: cookieOutcomes.filter { $0 == .accepted }.count,
+                        report: finalReport, searchSaved: searchSaved)
+                    report.append("\(entry.candidate.label): \(summary).")
                 } catch {
                     report.append("\(entry.candidate.label): \(error.localizedDescription)")
                 }
@@ -1463,11 +1477,16 @@ struct SettingsView: View {
                         profile: folder
                     )
                 }.value
-                let storedCredentials = storeCredentials(result.credentials, profile: destinationProfile)
-                let storedCookies = await storeCookies(result.cookies, profile: destinationProfile)
-                applyImportedSearchEngine(result.searchEngine, profile: destinationProfile)
+                let passwordOutcomes = storeCredentials(result.credentials, profile: destinationProfile)
+                let cookieOutcomes = await storeCookies(result.cookies, profile: destinationProfile)
+                let searchSaved = applyImportedSearchEngine(result.searchEngine, profile: destinationProfile)
+                let finalReport = completedImportReport(result, passwords: passwordOutcomes, cookies: cookieOutcomes, searchSaved: searchSaved)
+                importLastReport = finalReport
                 if destinationProfile.id == model.activeProfile.id { model.refreshBookmarks() }
-                importLastSummary = importSummary(preview, options: options, result: result, storedCredentials: storedCredentials, storedCookies: storedCookies)
+                importLastSummary = importSummary(preview, options: options, result: result,
+                    storedCredentials: passwordOutcomes.filter { $0 == .accepted }.count,
+                    storedCookies: cookieOutcomes.filter { $0 == .accepted }.count,
+                    report: finalReport, searchSaved: searchSaved)
                 statusMessage = importLastSummary
                 if !result.extensionIDs.isEmpty {
                     pendingExtensionIDs = result.extensionIDs
@@ -1483,17 +1502,15 @@ struct SettingsView: View {
     }
 
     /// Saved logins go straight into the keychain, never to disk in the clear.
-    private func storeCredentials(_ credentials: [ChromeLogin], profile: BrowserProfile) -> Int {
-        var stored = 0
-        for credential in credentials {
-            if model.saveCredential(
+    private func storeCredentials(_ credentials: [ChromeLogin], profile: BrowserProfile) -> [BrowserImportReport.Outcome] {
+        credentials.map { credential in
+            model.saveCredential(
                 host: credential.url.host ?? credential.url.absoluteString,
                 username: credential.username,
                 password: credential.password,
                 profile: profile
-            ) { stored += 1 }
+            ) ? .accepted : .failed
         }
-        return stored
     }
 
     private func importKeyProvider(for preview: BrowserImportPreview, options: BrowserImportOptions) throws -> any BrowserCredentialKeyProviding {
@@ -1508,10 +1525,10 @@ struct SettingsView: View {
         return UnlockedImportKeyProvider(key: key)
     }
 
-    private func storeCookies(_ cookies: [BrowserImportCookie], profile: BrowserProfile) async -> Int {
-        guard !cookies.isEmpty else { return 0 }
+    private func storeCookies(_ cookies: [BrowserImportCookie], profile: BrowserProfile) async -> [BrowserImportReport.Outcome] {
+        guard !cookies.isEmpty else { return [] }
         let store = WKWebsiteDataStore(forIdentifier: profile.dataStoreUUID).httpCookieStore
-        var stored = 0
+        var expected: [HTTPCookie?] = []
         for imported in cookies {
             var properties: [HTTPCookiePropertyKey: Any] = [
                 .domain: imported.domain,
@@ -1522,45 +1539,69 @@ struct SettingsView: View {
                 HTTPCookiePropertyKey("HttpOnly"): imported.isHTTPOnly ? "TRUE" : "FALSE"
             ]
             if let expires = imported.expires { properties[.expires] = expires }
-            guard let cookie = HTTPCookie(properties: properties) else { continue }
+            let cookie = HTTPCookie(properties: properties)
+            expected.append(cookie)
+            guard let cookie else { continue }
             await store.setCookie(cookie)
-            stored += 1
         }
-        return stored
+        let saved = await store.allCookies()
+        // Compare native normalized properties, with one lookup per item.
+        // Values remain transient and never enter the structured report.
+        let installed = Set(saved.map { [$0.domain, $0.path, $0.name, $0.value] })
+        return expected.map { cookie in
+            guard let cookie else { return .failed }
+            return installed.contains([cookie.domain, cookie.path, cookie.name, cookie.value]) ? .accepted : .failed
+        }
     }
 
-    private func applyImportedSearchEngine(_ engine: BrowserImportPreview.SearchEngine?, profile: BrowserProfile) {
-        guard let engine else { return }
-        if profile.id == model.activeProfile.id {
-            model.updateSettings { $0.searchEngineTemplate = engine.template }
-            return
-        }
+    private func applyImportedSearchEngine(_ engine: BrowserImportPreview.SearchEngine?, profile: BrowserProfile) -> Bool {
+        guard let engine else { return false }
         do {
             let database = try model.environment.profileStore.database(for: profile)
             let repository = SettingsRepository(database: database)
             var settings = try repository.load()
             settings.searchEngineTemplate = engine.template
             try repository.save(settings)
+            if profile.id == model.activeProfile.id {
+                model.updateSettings { $0.searchEngineTemplate = engine.template }
+            }
+            return true
         } catch {
-            statusMessage = "The search engine could not be imported: \(error.localizedDescription)"
+            statusMessage = "The search engine could not be saved. Retry the import."
+            return false
         }
     }
 
+    private func completedImportReport(_ result: BrowserImportResult,
+                                      passwords: [BrowserImportReport.Outcome],
+                                      cookies: [BrowserImportReport.Outcome], searchSaved: Bool) -> BrowserImportReport {
+        var report = result.report
+        report.completeTransfer(.password, outcomes: passwords)
+        report.completeTransfer(.cookie, outcomes: cookies)
+        if result.searchEngine != nil {
+            report.completeTransfer(.searchEngine, outcomes: [searchSaved ? .accepted : .failed])
+        }
+        return report
+    }
+
     private func importSummary(_ preview: BrowserImportPreview, options: BrowserImportOptions,
-                               result: BrowserImportResult, storedCredentials: Int, storedCookies: Int) -> String {
+                               result: BrowserImportResult, storedCredentials: Int, storedCookies: Int,
+                               report: BrowserImportReport, searchSaved: Bool) -> String {
         var moved: [String] = []
         var notes: [String] = []
         if result.bookmarks > 0 { moved.append("\(result.bookmarks) bookmarks") }
         if result.historyVisits > 0 { moved.append("\(result.historyVisits) history entries") }
         if storedCredentials > 0 { moved.append("\(storedCredentials) passwords") }
         if storedCookies > 0 { moved.append("\(storedCookies) cookies") }
-        if result.searchEngine != nil { moved.append("default search engine") }
+        if searchSaved { moved.append("default search engine") }
         if options.includesPasswords && storedCredentials < preview.credentialCount {
             notes.append("\(preview.credentialCount - storedCredentials) passwords skipped or unreadable")
         }
         if options.includesCookies && storedCookies < preview.cookieCount {
             notes.append("\(preview.cookieCount - storedCookies) cookies skipped, expired, or unreadable")
         }
+        let failures = report.items.filter { $0.outcome == .failed }
+        if !failures.isEmpty { notes.append("\(failures.count) read or save failures; see the item report") }
         let headline = moved.isEmpty ? "Nothing imported" : "Imported " + moved.joined(separator: ", ")
         return notes.isEmpty ? headline : headline + "; " + notes.joined(separator: ", ")
     }
@@ -1589,7 +1630,7 @@ struct SettingsView: View {
     }
 
     private func importPasswordsFromCSV(_ credentials: [ChromeLogin]) {
-        let count = storeCredentials(credentials, profile: model.activeProfile)
+        let count = storeCredentials(credentials, profile: model.activeProfile).filter { $0 == .accepted }.count
         csvImport = nil
         isShowingCSVImport = false
         statusMessage = "Imported \(count) passwords to Keychain; \(credentials.count - count) skipped."
