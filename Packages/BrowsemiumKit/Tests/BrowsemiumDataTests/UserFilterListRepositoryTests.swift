@@ -5,6 +5,20 @@ import GRDB
 import Testing
 
 @Suite struct UserFilterListRepositoryTests {
+    @Test func togglesAndRemovalRejectStaleDisplayedRevisions() throws {
+        let repository = UserFilterListRepository(database: try .inMemoryProfile(), profileID: UUID())
+        let candidate = try repository.prepare(conversion(), name: "Fixture", source: .localFile)
+        let saved = try repository.commit(candidate, compiledIdentifier: candidate.compiledIdentifier)
+        try repository.setEnabled(false, id: saved.id, expectedRevision: saved.revision)
+        #expect(throws: UserFilterListRepository.RepositoryError.staleCandidate) {
+            try repository.setEnabled(true, id: saved.id, expectedRevision: saved.revision)
+        }
+        #expect(throws: UserFilterListRepository.RepositoryError.staleCandidate) {
+            try repository.remove(id: saved.id, expectedRevision: saved.revision)
+        }
+        #expect(try repository.all().first?.isEnabled == false)
+    }
+
     private func conversion(_ host: String = "fixture.example") throws -> FilterListConversion {
         try FilterListConverter.convert(Data("||\(host)^\n||unsupported.example^$third-party".utf8))
     }

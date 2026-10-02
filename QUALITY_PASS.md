@@ -105,8 +105,48 @@ Changes here are committed source, not a published 2.1.1 release.
   and whitespace/source review passed. Saved Xcode results show 408 distinct
   passing tests (450 parameterized runs), zero failures/skips, and zero build
   errors. No assertion was weakened or test skipped.
-- File/HTTPS ingestion and Settings controls remain the next delivery unit.
-  No new visible UI or native loading/error/light/dark QA is claimed here.
+- This runtime-only unit preceded the ingestion/Settings unit below. No native
+  loading/error/light/dark interaction QA is claimed by its automated tests.
+
+## User filter list ingestion and Settings — 2026-10-02
+
+- Added bounded regular-file reads and HTTPS downloads with cookie, credential,
+  and cache stores disabled. Initial, redirected, and final URLs are checked;
+  non-trust authentication challenges are cancelled, while system certificate
+  validation is unchanged. Input errors omit source contents and addresses.
+- Added native Settings import/re-import, enable/disable, and confirmed removal.
+  Sources are transient, not subscriptions. Counts describe supported/skipped
+  rules, not blocked requests. Existing Theme tokens and Settings components
+  are reused; no new dependency, bundled list, or large-model logic was added.
+- Review reproduced two draft operation races: duplicate actions replaced the
+  task handle, and an old completion cleared a newer busy state. Ownership and
+  duplicate guards fixed both. Final-response HTTPS validation and stale
+  displayed toggle/removal transactions have regression coverage. Removing
+  these guards made four tests fail again; restored without weakening tests.
+- Generated fixtures cover file bounds/encoding/symlinks, HTTPS validation,
+  redirect policy, stream/header byte ceilings, sanitized failures, cancellation,
+  private write refusal, import/toggle/removal, and light/dark rendering. No real
+  browser profile, password, or remote source was read. Eight fixture renders
+  were inspected in two rounds; these are smoke checks, not pixel-diff or native
+  interaction QA. The fresh finish review led to higher-contrast error text,
+  list-specific accessible action labels, and incumbent monochrome controls.
+- A misplaced revision guard while restoring reverted-red code caused a build
+  failure. It was moved into the transaction's revision check; the unchanged
+  focused regression then passed. No failure was ignored or assertion changed.
+- Headless build/runner, the full Swift package suite, Xcode Debug build/test,
+  generated-project verification, and whitespace review passed. Saved Xcode
+  results show 421 distinct passing tests (466 parameterized runs), zero
+  failures/skips, and zero build errors. The two new rendering checks pass in
+  the Swift package suite (the snapshot suite is not an Xcode scheme target).
+  Two existing legacy no-interaction Keychain assertion deprecation warnings
+  remain; no security guard was removed to silence them. User-run native
+  picker/keyboard/VoiceOver and whole-app light/dark QA remain pending; no
+  release or memory claim follows.
+- Installed and relaunched the tested ad-hoc Debug product in Applications.
+  File hashes and symlink targets match the tested product; code-signature
+  verification passed. The previous app is recoverable at
+  `/Applications/.browsemium-install.pQ1Cik/Previous Browsemium.app`.
+  Version/build remain 2.1.0/210; this is not a published release.
 
 ## Initial baseline checks
 

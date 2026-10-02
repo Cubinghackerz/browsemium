@@ -102,6 +102,9 @@ struct SettingsView: View {
                             }
                         }
                         privacySection
+                        if let controller = model.environment.userFilterLists {
+                            UserFilterListSettingsView(model: model, controller: controller, settings: settings)
+                        }
                         extensionsSection
                         sitePermissionsSection
                         passwordsSection
@@ -1825,7 +1828,7 @@ private struct PasswordEditorSheet: View {
 }
 
 @MainActor
-private struct SettingsCard<Content: View>: View {
+struct SettingsCard<Content: View>: View {
     let title: String
     let systemImage: String
     @ViewBuilder let content: Content
@@ -1864,7 +1867,7 @@ private struct SettingsCard<Content: View>: View {
 }
 
 @MainActor
-private struct SettingsRow<Content: View>: View {
+struct SettingsRow<Content: View>: View {
     let label: String
     @ViewBuilder let content: Content
 
@@ -1926,7 +1929,7 @@ private struct SettingsToggleRow: View {
 }
 
 @MainActor
-private struct SettingsNote: View {
+struct SettingsNote: View {
     let text: String
 
     init(_ text: String) {

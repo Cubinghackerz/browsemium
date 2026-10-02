@@ -152,20 +152,20 @@ public final class UserFilterListRepository: @unchecked Sendable {
         }
     }
 
-    public func setEnabled(_ enabled: Bool, id: UUID) throws {
-        try changing(id: id) { db, next in
+    public func setEnabled(_ enabled: Bool, id: UUID, expectedRevision: Int64? = nil) throws {
+        try changing(id: id, expectedRevision: expectedRevision) { db, next in
             try db.execute(sql: "UPDATE user_filter_lists SET is_enabled = ?, revision = ?, updated_at = ? WHERE id = ?",
                            arguments: [enabled, next, Date(), id.uuidString])
         }
     }
 
-    public func remove(id: UUID) throws {
-        try changing(id: id) { db, _ in
+    public func remove(id: UUID, expectedRevision: Int64? = nil) throws {
+        try changing(id: id, expectedRevision: expectedRevision) { db, _ in
             try db.execute(sql: "DELETE FROM user_filter_lists WHERE id = ?", arguments: [id.uuidString])
         }
     }
 
-    private func changing(id: UUID, body: (Database, Int64) throws -> Void) throws {
+    private func changing(id: UUID, expectedRevision: Int64?, body: (Database, Int64) throws -> Void) throws {
         guard allowsWrites else { throw RepositoryError.readOnly }
         try accessing {
             try database.databaseQueue.write { db in
@@ -173,6 +173,7 @@ public final class UserFilterListRepository: @unchecked Sendable {
                                                        arguments: [id.uuidString]), revision < Int64.max else {
                     throw RepositoryError.notFound
                 }
+                if let expectedRevision, revision != expectedRevision { throw RepositoryError.staleCandidate }
                 try db.execute(sql: "UPDATE user_filter_list_revisions SET revision = ? WHERE id = ?",
                                arguments: [revision + 1, id.uuidString])
                 try body(db, revision + 1)

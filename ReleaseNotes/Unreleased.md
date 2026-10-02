@@ -34,8 +34,15 @@ claim follows from this work.
 - Tabs apply all enabled lists alongside the starter list on their next
   navigation, subject to global blocking and site pauses. Counts describe
   rules only, not blocked requests. No third-party list is bundled.
-- This is the runtime unit. File/HTTPS ingestion and Settings controls are
-  still open, so no user-facing filter-list import feature is claimed yet.
+- Settings now accepts an explicitly chosen UTF-8 file or HTTPS address,
+  with a 4 MiB input ceiling. It shows supported/skipped rule counts and
+  compile state, with re-import, enable/disable, and confirmed removal.
+- HTTPS imports do not use browser cookies, saved credentials, or a cache.
+  Redirects and final addresses are checked; addresses are not stored or
+  refreshed automatically. This remains a limited hostname subset, not full
+  ABP/AdGuard compatibility. Native interaction QA is still pending.
+- Fixed draft import cancellation ownership and stale toggle/removal edits.
+  Cancelling one import cannot cancel the wrong task or unlock a newer one.
 
 ## Remaining gates and queue
 
@@ -43,6 +50,6 @@ The 2026-10-02 memory attempt stopped at the quiet-machine preflight, before
 any trials. There are no comparative results to publish. Whole-app native
 light/dark QA and logged-in site compatibility checks remain user-run gates.
 
-User-filter file/HTTPS ingestion and Settings, per-site extension controls, smart
-space routing, and the remaining import units precede the next switchability
+Per-site extension controls, smart space routing, and the remaining import
+units precede the next switchability
 and agent-ready features. Native light/dark QA and release gates remain open.

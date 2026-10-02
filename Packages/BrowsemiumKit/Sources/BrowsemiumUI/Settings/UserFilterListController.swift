@@ -8,27 +8,31 @@ import Observation
 /// no database write occurs until compilation and cancellation checks succeed.
 @Observable @MainActor final class UserFilterListController {
     enum State: Equatable {
-        case idle, parsing, compiling, active
+        case idle, fetching, parsing, compiling, active
         case failed(String, usesLastGood: Bool)
     }
 
     private(set) var state: State = .idle
     private(set) var lists: [UserFilterList] = []
-    var isBusy: Bool { state == .parsing || state == .compiling }
+    var isBusy: Bool { state == .fetching || state == .parsing || state == .compiling }
+    var profileID: UUID { repository.profileID }
 
     @ObservationIgnored private var repository: UserFilterListRepository
     @ObservationIgnored private let manager: ContentRuleListManager
     @ObservationIgnored private let allowsChanges: () -> Bool
+    @ObservationIgnored private let fetcher: any UserFilterListFetching
     @ObservationIgnored private var generation = UUID()
     @ObservationIgnored private var receipts: [String: CompiledUserContentRules] = [:]
     @ObservationIgnored private var restoreTask: Task<Void, Never>?
     @ObservationIgnored private var hasRestored = false
 
     init(repository: UserFilterListRepository, manager: ContentRuleListManager,
+         fetcher: any UserFilterListFetching = HTTPSUserFilterListFetcher(),
          allowsChanges: @escaping () -> Bool = { true }) {
         self.repository = repository
         self.manager = manager
         self.allowsChanges = allowsChanges
+        self.fetcher = fetcher
         manager.beginUserProfile(repository.profileID)
     }
 
@@ -107,12 +111,74 @@ import Observation
             try requireChangesAllowed()
             // Do not suspend between the final authorization/staleness check,
             // the revision-checked commit, and the runtime swap.
-            let saved = try repository.commit(candidate, compiledIdentifier: receipt.identifier)
+            _ = try repository.commit(candidate, compiledIdentifier: receipt.identifier)
             receipts[receipt.identifier] = receipt
-            let updated = (lists.filter { $0.id != saved.id } + [saved]).sorted {
-                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            try apply(repository.all())
+            state = .active
+        } catch { report(error, token: token) }
+    }
+
+    func importURL(_ url: URL, name: String, replacing id: UUID? = nil) async {
+        let fetcher = fetcher
+        await readAndImport(name: name, source: .https, replacing: id) { try await fetcher.fetch(url) }
+    }
+
+    func importFile(_ url: URL, name: String, replacing id: UUID? = nil) async {
+        await readAndImport(name: name, source: .localFile, replacing: id) {
+            try await Self.background { try UserFilterListInput.readFile(url) }
+        }
+    }
+
+    private func readAndImport(name: String, source: UserFilterList.Source, replacing id: UUID?,
+                               read: @Sendable () async throws -> Data) async {
+        guard !isBusy else { return }
+        let token = generation
+        do {
+            try requireChangesAllowed()
+            guard hasRestored else { throw UserFilterListRepository.RepositoryError.storageFailure }
+            state = .fetching
+            let data = try await read()
+            try validate(token)
+            state = .idle
+            await importData(data, name: name, source: source, replacing: id)
+        } catch { report(error, token: token) }
+    }
+
+    func setEnabled(_ enabled: Bool, id: UUID) async {
+        guard !isBusy else { return }
+        let token = generation
+        do {
+            try requireChangesAllowed()
+            guard hasRestored, let selected = lists.first(where: { $0.id == id }) else {
+                throw UserFilterListRepository.RepositoryError.notFound
             }
-            try apply(updated)
+            if enabled {
+                let identifier = Self.identifier(for: selected, profileID: repository.profileID)
+                if receipts[identifier] == nil {
+                    state = .compiling
+                    let compiled = try await manager.compileUserRules(identifier: identifier, rulesJSON: selected.rulesJSON)
+                    try validate(token)
+                    receipts[identifier] = compiled
+                }
+            }
+            try validate(token)
+            try requireChangesAllowed()
+            try repository.setEnabled(enabled, id: id, expectedRevision: selected.revision)
+            try apply(repository.all())
+            state = .active
+        } catch { report(error, token: token) }
+    }
+
+    func remove(id: UUID) {
+        guard !isBusy else { return }
+        let token = generation
+        do {
+            try requireChangesAllowed()
+            guard hasRestored, let selected = lists.first(where: { $0.id == id }) else {
+                throw UserFilterListRepository.RepositoryError.notFound
+            }
+            try repository.remove(id: id, expectedRevision: selected.revision)
+            try apply(repository.all())
             state = .active
         } catch { report(error, token: token) }
     }
@@ -146,6 +212,7 @@ import Observation
         }
         let message: String
         switch error {
+        case let error as UserFilterListInput.InputError: message = error.localizedDescription
         case let error as FilterListConverter.ConversionError: message = error.localizedDescription
         case let error as UserFilterListRepository.RepositoryError: message = error.localizedDescription
         case let error as ContentRuleListManager.UserRuleError: message = error.localizedDescription

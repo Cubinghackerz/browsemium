@@ -258,8 +258,8 @@ Still open in this phase:
 - Toolbar action host (`WKWebExtensionAction` buttons + popovers) — the
   delegate hooks exist; the chrome does not.
 - Per-site extension toggles.
-- User-supplied filter lists via `ContentBlockerConverter`; the licence gate
-  in `AGENTS.md` still applies to *bundled* lists.
+- Native interaction QA for user-supplied filter lists (implemented in
+  development under §2.4); the licence gate still applies to *bundled* lists.
 - Honest copy already in Settings: no request interception (first-party
   blocking stays on `WKContentRuleList`), no devtools APIs, no action
   popovers yet.
@@ -446,8 +446,11 @@ implemented with stale-result, rollback, and aggregate-limit fixtures. Async
 runtime wiring restores profile-local lists, validates compile receipts,
 commits before activation, and rejects cancellation/private/profile-switch
 races. Existing tabs receive the full enabled set on their next navigation;
-global blocking and site pauses remain respected. File/HTTPS ingestion and
-Settings import controls remain open; users cannot yet add lists through the UI.
+global blocking and site pauses remain respected. Bounded UTF-8 file/HTTPS
+ingestion and Settings import/re-import, enable/disable, and confirmed removal
+are implemented in development. Downloads have no ambient cookie/credential
+store; sources are not saved or refreshed automatically. Stale displayed edits
+and duplicate operations are rejected. Native interaction QA remains open.
 Resource-semantics audit: document/XHR qualifiers remain unsupported and
 ordinary user-list rules do not broaden into main-frame blocking.
 
@@ -565,7 +568,8 @@ gate remain separate from automated build/test evidence.
 
 Claim-gate preflight (2026-10-02): local Playwright artifacts are ignored and
 the narrow Geist exception was reviewed against the owner's brand brief.
-The verified password-import Debug build is installed in Applications. The
+The verified Debug build with password-import recovery and user filter-list
+controls is installed in Applications (version/build still 2.1.0/210). The
 unchanged five-trial, 60-second memory attempt was refused before measurement
 because other WebKit processes were running; no comparative result exists.
 The whole-app light/dark walkthrough remains user QA, not an automated pass.
