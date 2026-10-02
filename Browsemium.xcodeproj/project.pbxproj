@@ -27,6 +27,7 @@
 		33893BDB24AD92E6658D3FC8 /* StubEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E70C515A23A70E8442D0B51 /* StubEngine.swift */; };
 		3911284D883AB6D29F2A4AE6 /* NavigationCompatibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FADC3A384F0A0F68E7D60C20 /* NavigationCompatibilityTests.swift */; };
 		3A94F1E8F12590971F2797A9 /* ProfileStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2637D77BAD284CF0902651C /* ProfileStoreTests.swift */; };
+		3D78B761A43FC86EC8C24D67 /* UserContentRuleManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73255D90F3B5349E2CA3BE5D /* UserContentRuleManagerTests.swift */; };
 		3EC92D4DED8CD9FAA97056C5 /* ExtensionIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1779C27926DC0FA9F05B5833 /* ExtensionIntegrationTests.swift */; };
 		42C1F42BD16BFC39636C7833 /* ElementHidingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBA4925D7E1AF469F92F7410 /* ElementHidingTests.swift */; };
 		465CB1C7AC1E277795165191 /* BrowserImportKeychainTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05990E6DE636712E493F4753 /* BrowserImportKeychainTests.swift */; };
@@ -80,6 +81,7 @@
 		DD706E0D06C743A5DE4785B6 /* TabGroupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19B22CFE5D0235239124921C /* TabGroupTests.swift */; };
 		DE5C96D58285CD45A668E630 /* PersistenceFailureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D7A712EA197F46E70513927 /* PersistenceFailureTests.swift */; };
 		E336230A0178FD0DFDF7DF4D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F08B8B1A92C60E9FA0044EC7 /* Assets.xcassets */; };
+		E444C2B1200F10050D8C2CC8 /* UserFilterListControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDE86FD7F29A930D4C9821D3 /* UserFilterListControllerTests.swift */; };
 		E697BAE65A58B25D1E26647D /* IdentifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCE2972DAB23FD93D253FE06 /* IdentifierTests.swift */; };
 		E81DFC30360847B365F6672F /* LockedSpaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31A3A7EACAB67CE69BCBD2E0 /* LockedSpaceTests.swift */; };
 		F23A0FABB3DB1F24DA84E53B /* FuzzyMatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D3CA786932D9D1791B4D595 /* FuzzyMatcherTests.swift */; };
@@ -164,6 +166,7 @@
 		64372261E97F025488A37994 /* AppShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShell.swift; sourceTree = "<group>"; };
 		6D05EA31FE74DCCF949EBFFE /* BrowsemiumCEFInternal.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BrowsemiumCEFInternal.h; sourceTree = "<group>"; };
 		6E70C515A23A70E8442D0B51 /* StubEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StubEngine.swift; sourceTree = "<group>"; };
+		73255D90F3B5349E2CA3BE5D /* UserContentRuleManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserContentRuleManagerTests.swift; sourceTree = "<group>"; };
 		73C508CC79988C6D9E9B728C /* ChromiumTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromiumTab.swift; sourceTree = "<group>"; };
 		752980B53B0C6B13B10C7E47 /* CEFBrowserClient.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = CEFBrowserClient.mm; sourceTree = "<group>"; };
 		78F12BF67B7BD7598E4D9672 /* ProviderPanelPrivacyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderPanelPrivacyTests.swift; sourceTree = "<group>"; };
@@ -202,6 +205,7 @@
 		FADC3A384F0A0F68E7D60C20 /* NavigationCompatibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationCompatibilityTests.swift; sourceTree = "<group>"; };
 		FBA4925D7E1AF469F92F7410 /* ElementHidingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElementHidingTests.swift; sourceTree = "<group>"; };
 		FCE2972DAB23FD93D253FE06 /* IdentifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentifierTests.swift; sourceTree = "<group>"; };
+		FDE86FD7F29A930D4C9821D3 /* UserFilterListControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserFilterListControllerTests.swift; sourceTree = "<group>"; };
 		FDF2605B2A94D6C2D8785DCC /* DefaultsIsolationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultsIsolationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -367,6 +371,7 @@
 				1675C0CE68E40A9B9729A608 /* TabFolderTests.swift */,
 				19B22CFE5D0235239124921C /* TabGroupTests.swift */,
 				A200FC8FDABE3EE75058D6E5 /* TabQualityOfLifeTests.swift */,
+				FDE86FD7F29A930D4C9821D3 /* UserFilterListControllerTests.swift */,
 				28AE8FE14F1B6068E57D8DD9 /* WaitFor.swift */,
 			);
 			name = BrowsemiumUITests;
@@ -384,6 +389,7 @@
 				092AFEBFCCE5140FAC9EFF7C /* NavigationResolverTests.swift */,
 				E478DBB06EF4B704DBC746E1 /* PrivateBrowsingTests.swift */,
 				459EF24F1D3ECBCFA13AC28D /* TabRuntimeTests.swift */,
+				73255D90F3B5349E2CA3BE5D /* UserContentRuleManagerTests.swift */,
 				80A7DDF930F8A06F1E5A5DA4 /* WaitFor.swift */,
 				41034F5EB2BB3844FCF19562 /* WebNavigationDelegateTests.swift */,
 			);
@@ -773,6 +779,7 @@
 				58E7D0F34BCF556BD7DB76B6 /* TabFolderTests.swift in Sources */,
 				DD706E0D06C743A5DE4785B6 /* TabGroupTests.swift in Sources */,
 				C2BA4D29D16F2F8FF5E6D0CC /* TabQualityOfLifeTests.swift in Sources */,
+				E444C2B1200F10050D8C2CC8 /* UserFilterListControllerTests.swift in Sources */,
 				A861CD7CCAB97CA42DD55765 /* WaitFor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -833,6 +840,7 @@
 				2BB3726FC425007492319E3A /* NavigationResolverTests.swift in Sources */,
 				09793980FBD27A8B11A683E3 /* PrivateBrowsingTests.swift in Sources */,
 				A99A9EFC28B3F27836595697 /* TabRuntimeTests.swift in Sources */,
+				3D78B761A43FC86EC8C24D67 /* UserContentRuleManagerTests.swift in Sources */,
 				5A9BAFF8F96D9A5DEE445ABF /* WaitFor.swift in Sources */,
 				21F03488B53DE651E6412057 /* WebNavigationDelegateTests.swift in Sources */,
 			);

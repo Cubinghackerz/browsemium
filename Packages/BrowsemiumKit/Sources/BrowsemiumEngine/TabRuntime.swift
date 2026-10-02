@@ -261,9 +261,8 @@ public final class TabRuntime {
         guard let webView else { return }
         let controller = webView.configuration.userContentController
         controller.removeAllContentRuleLists()
-        guard !contentRulesSuppressed, protectionLevel.blocksContentRules,
-              let ruleList = contentRules?.compiledRuleList else { return }
-        controller.add(ruleList)
+        guard !contentRulesSuppressed, protectionLevel.blocksContentRules else { return }
+        contentRules?.apply(to: webView.configuration)
     }
 
     public func setContentRulesSuppressed(_ suppressed: Bool) {

@@ -17,6 +17,7 @@ public final class BrowserEnvironment {
     /// The web engine this window browses with. WebKit by default; the
     /// Chromium edition passes its own.
     public let engine: any BrowserEngine
+    private(set) var userFilterLists: UserFilterListController?
     public private(set) var settingsRepository: SettingsRepository
     public private(set) var sessionRepository: BrowserSessionRepository
     public private(set) var historyRepository: HistoryRepository
@@ -94,6 +95,12 @@ public final class BrowserEnvironment {
         self.userDefaults = userDefaults
         WebViewFactory.dataStoreIdentifier = activeProfile.dataStoreUUID
         rebuildExtensionHost()
+        if let runtime = self.engine as? BrowserRuntimeController {
+            let repository = UserFilterListRepository(database: database, profileID: activeProfile.id)
+            userFilterLists = UserFilterListController(repository: repository, manager: runtime.contentRules,
+                allowsChanges: { [weak runtime] in runtime?.isPrivateBrowsingEnabled == false })
+            userFilterLists?.startRestoring()
+        }
     }
 
     public static func live(engine: (any BrowserEngine)? = nil) throws -> BrowserEnvironment {
@@ -213,6 +220,7 @@ public final class BrowserEnvironment {
         maintenance = DatabaseMaintenance(database: database)
         WebViewFactory.dataStoreIdentifier = profile.dataStoreUUID
         rebuildExtensionHost()
+        userFilterLists?.bind(UserFilterListRepository(database: database, profileID: profile.id))
         try? profileStore.touch(id: profile.id)
     }
 

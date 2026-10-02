@@ -82,7 +82,33 @@ Changes here are committed source, not a published 2.1.1 release.
   palette, Settings, import sheets, private window, and locked space. Fixture
   rendering and automated tests are not evidence of this whole-app walkthrough.
 
-## Original quality-pass baseline
+## User filter list runtime — 2026-10-02
+
+- Extended the existing rule manager to install the enabled set atomically;
+  compile receipts bind to the manager and profile generation. JSON validation,
+  conversion, and repository preparation run off the main actor. WebKit uses
+  its asynchronous compiler. No new dependency or bundled filter list was added.
+- The profile-local coordinator restores persisted lists on launch/switch,
+  requires successful restoration before edits, and checks cancellation,
+  profile generation, and private-mode authorization before the revision-checked
+  database commit. Failure retains the working runtime set. Global blocking
+  and per-site pause/protection gates apply to the complete set.
+- Thirteen new fixture tests cover real WebKit compilation/rejection and
+  application calls, sanitized failures, last-good retention, mismatched
+  identifiers, cancellation, profile/private isolation, mid-compile private
+  mode, and revisions changed while compiling. No remote source was fetched.
+- The tests initially failed on missing runtime/coordinator APIs. They passed
+  with implementation; removing the generation, receipt, global-toggle,
+  restoration, and private-write guards caused seven tests to fail again.
+  Guards were restored without weakening assertions. Headless build/runner,
+  the full Swift package suite, Xcode Debug build/test, project verification,
+  and whitespace/source review passed. Saved Xcode results show 408 distinct
+  passing tests (450 parameterized runs), zero failures/skips, and zero build
+  errors. No assertion was weakened or test skipped.
+- File/HTTPS ingestion and Settings controls remain the next delivery unit.
+  No new visible UI or native loading/error/light/dark QA is claimed here.
+
+## Initial baseline checks
 
 - No stale SwiftPM test processes were found.
 - Headless runner: passed.

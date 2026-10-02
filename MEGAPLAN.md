@@ -442,9 +442,12 @@ site controls are the remaining work, not a duplicate toolbar implementation.
 The bounded, cancellable hostname converter is implemented with generated
 regression fixtures and real WebKit compilation coverage. It reports unsupported
 syntax rather than widening rules. Profile-local last-good transactions are
-implemented with stale-result, rollback, and aggregate-limit fixtures. Runtime
-wiring and Settings import controls remain open; user lists are not yet usable
-in the app.
+implemented with stale-result, rollback, and aggregate-limit fixtures. Async
+runtime wiring restores profile-local lists, validates compile receipts,
+commits before activation, and rejects cancellation/private/profile-switch
+races. Existing tabs receive the full enabled set on their next navigation;
+global blocking and site pauses remain respected. File/HTTPS ingestion and
+Settings import controls remain open; users cannot yet add lists through the UI.
 Resource-semantics audit: document/XHR qualifiers remain unsupported and
 ordinary user-list rules do not broaden into main-frame blocking.
 

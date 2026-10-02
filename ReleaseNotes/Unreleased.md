@@ -25,12 +25,24 @@ claim follows from this work.
 - Fixed password whitespace being trimmed during vault writes. Passwords now
   keep their exact value; API-key entry retains its existing trimming behavior.
 
-## Still open
+## User filter list runtime
+
+- Added profile-local restoration and a staged parse → compile → commit →
+  activate path. Failed, cancelled, mismatched, or stale compilation does not
+  replace the working set. Private-mode authorization is checked again before
+  saving, and profile changes invalidate pending receipts.
+- Tabs apply all enabled lists alongside the starter list on their next
+  navigation, subject to global blocking and site pauses. Counts describe
+  rules only, not blocked requests. No third-party list is bundled.
+- This is the runtime unit. File/HTTPS ingestion and Settings controls are
+  still open, so no user-facing filter-list import feature is claimed yet.
+
+## Remaining gates and queue
 
 The 2026-10-02 memory attempt stopped at the quiet-machine preflight, before
 any trials. There are no comparative results to publish. Whole-app native
 light/dark QA and logged-in site compatibility checks remain user-run gates.
 
-User-filter runtime wiring and Settings, per-site extension controls, smart
+User-filter file/HTTPS ingestion and Settings, per-site extension controls, smart
 space routing, and the remaining import units precede the next switchability
 and agent-ready features. Native light/dark QA and release gates remain open.
