@@ -66,7 +66,23 @@ Changes here are committed source, not a published 2.1.1 release.
   deliberately alongside the modern context for source keys in the file-based
   login Keychain; no warnings or tests are globally suppressed.
 
-## Baseline
+## Claim-gate preflight — 2026-10-02
+
+- Installed the verified password-import development build in Applications;
+  its file hashes and symlink targets match the tested Debug product, and its
+  ad-hoc code signature verifies. The previous app remains a rollback copy.
+- Ignored local `.playwright-mcp/` artifacts. Reviewed the narrow Geist ignore:
+  it records the owner's explicit brand choice, not a blanket design exemption.
+  The superseded, untracked `HANDOFF.md` is left unchanged.
+- Ran the unchanged memory harness with five trials and a 60-second settle.
+  Preflight refused with exit 3: three WebKit processes were already running.
+  Chrome was also open. No trials or memory figures were produced; the 20%
+  gate remains open. Other apps were not quit and the method was not changed.
+- User-run native QA remains pending in both appearances: New Tab, sidebar,
+  palette, Settings, import sheets, private window, and locked space. Fixture
+  rendering and automated tests are not evidence of this whole-app walkthrough.
+
+## Original quality-pass baseline
 
 - No stale SwiftPM test processes were found.
 - Headless runner: passed.

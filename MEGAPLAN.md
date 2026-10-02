@@ -560,6 +560,13 @@ opt-in local page index, Markdown skills, and reviewed cross-tab context work.
 All claims remain implementation-specific. Native QA and the unchanged memory
 gate remain separate from automated build/test evidence.
 
+Claim-gate preflight (2026-10-02): local Playwright artifacts are ignored and
+the narrow Geist exception was reviewed against the owner's brand brief.
+The verified password-import Debug build is installed in Applications. The
+unchanged five-trial, 60-second memory attempt was refused before measurement
+because other WebKit processes were running; no comparative result exists.
+The whole-app light/dark walkthrough remains user QA, not an automated pass.
+
 ## Verification
 
 - `BROWSEMIUM_HEADLESS=1 swift build/test` on `Packages/BrowsemiumKit` stays

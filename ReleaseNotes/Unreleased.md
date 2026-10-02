@@ -27,6 +27,10 @@ claim follows from this work.
 
 ## Still open
 
+The 2026-10-02 memory attempt stopped at the quiet-machine preflight, before
+any trials. There are no comparative results to publish. Whole-app native
+light/dark QA and logged-in site compatibility checks remain user-run gates.
+
 User-filter runtime wiring and Settings, per-site extension controls, smart
 space routing, and the remaining import units precede the next switchability
 and agent-ready features. Native light/dark QA and release gates remain open.
