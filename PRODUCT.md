@@ -74,6 +74,16 @@ that require an account.
   prompt can appear during development. Signed, notarized builds do not show
   it for end users
 
+## Approved future work, not shipped
+
+Task-scoped external MCP automation is approved in
+`Plans/7-polished-autonomous-workspace.md`. A connected client would work in
+task-owned tabs under a temporary, explicit grant, with Stop/takeover and
+separate confirmation for consequential or unknown actions. This does not
+authorize a built-in autonomous assistant, accounts or a cloud service.
+No endpoint or page actuator is implemented by the AI dock redesign; the
+current review-before-send and no-page-operation claims above still apply.
+
 ## Voice
 
 Plain, specific, unhurried. States limits as readily as capabilities. Never

@@ -2,6 +2,55 @@
 
 Changes here are committed source, not a published 2.1.1 release.
 
+## AI dock workspace — 2026-10-03
+
+- Split connection/empty-state and composer presentation into small files;
+  the large window model and AI provider/send implementations are unchanged.
+  A 40-point secure key field, page-aware starting actions, grouped attachment
+  and skill menus, Review/Stop and clearer transcript spacing replace the
+  cramped setup row and scattered composer controls.
+- Reproduced the undersized key field and review availability during context
+  preparation. Their regression tests passed after the fixes, failed again
+  with the two fixes reverted, and the implementation was restored. Private,
+  locked, uncommitted and unsupported page eligibility is separately tested.
+- Fixture correction, not a production-policy change: locking the only
+  unlocked space is deliberately refused. The test creates a second space,
+  asserts it actually locked, and checks the original tab cannot be shared.
+  Render fixtures lay out the hosting view before polling for its startup
+  credential check; no deadline was shortened or assertion removed.
+- Twelve synthetic light/dark renders cover 360-, 420- and 560-point widths,
+  a short error/attachment state, private pages, connected conversation and
+  streaming. These are rendering smoke tests, not pixel-diff baselines or
+  interactive keyboard/VoiceOver QA. No real key or browser profile is used.
+  Native SwiftUI is outside the web detector's coverage; no new suppression
+  was added. Independent review found an unavailable-page prompt mismatch and
+  a clipped short-window welcome. Context-aware copy and a compact fallback
+  fixed them; a subsequent height regression was caught with a 280-point
+  fitting-budget test (300 points before correction, red → green → reverted-red).
+  The reviewer scored those two fixes and the introduced regression resolved;
+  that verdict covers its fix list, not live interactions.
+- Final-suite triage reproduced `anOpenPeekIsNeverReplacedByHovering` timing
+  out while twelve native renders shared its main-actor test process. The
+  fixture batch now runs in a separate `BrowsemiumAIDockRenderingTests` target
+  registered in both SwiftPM and `project.yml`. All six new tests still run;
+  no existing assertion, 20-second wait or 700 ms product debounce changed.
+  The full package suite passed afterward; the unchanged hover test completed
+  in about eight seconds. Headless build/runner, the full package suite,
+  regenerated Xcode Debug build/test, project verification and whitespace
+  checks passed after the test-target change. Xcode recorded 439 distinct
+  passing tests (484 parameterized runs), with zero failures/skips. Native
+  keyboard/VoiceOver and whole-app QA remain separately open.
+- `DESIGN.md` and its schema-2 sidecar document the existing native palette and
+  controls, not a new identity or runtime web UI. Local render artifacts are
+  ignored. The user's untracked `HANDOFF.md` remains unchanged.
+- The approved task-scoped autonomous MCP direction is saved separately in
+  `Plans/7-polished-autonomous-workspace.md`. No endpoint, actuator or agent
+  control is enabled here. Existing API review-before-send remains intact.
+- Installed and launched the tested development app at
+  `/Applications/Browsemium.app` (still 2.1.0/210, ad-hoc). Its signature verifies;
+  file hashes and symlink targets match the Debug product. The previous app is
+  recoverable at `/Applications/.browsemium-install.0lKPiS/Previous Browsemium.app`.
+
 ## Ad-hoc cycle groundwork — 2026-10-01
 
 - Corrected the unsupported debug-build Inspector claim; Inspector remains

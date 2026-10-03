@@ -9,6 +9,20 @@
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "D736849DD3E978222042B31B"
+               BuildableName = "BrowsemiumAIDockRenderingTests.xctest"
+               BlueprintName = "BrowsemiumAIDockRenderingTests"
+               ReferencedContainer = "container:Browsemium.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
             buildForRunning = "YES"
             buildForProfiling = "YES"
             buildForArchiving = "YES"
@@ -137,6 +151,17 @@
                BlueprintIdentifier = "05D15E2A34CD45E8147CAE0B"
                BuildableName = "BrowsemiumUITests.xctest"
                BlueprintName = "BrowsemiumUITests"
+               ReferencedContainer = "container:Browsemium.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "D736849DD3E978222042B31B"
+               BuildableName = "BrowsemiumAIDockRenderingTests.xctest"
+               BlueprintName = "BrowsemiumAIDockRenderingTests"
                ReferencedContainer = "container:Browsemium.xcodeproj">
             </BuildableReference>
          </TestableReference>

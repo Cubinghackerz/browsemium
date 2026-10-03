@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-03T06:38:36Z",
+  "title": "Design System: Browsemium native macOS",
+  "extensions": {
+    "colorMeta": {
+      "browsemium-accent-light": { "role": "primary", "displayName": "Monochrome emphasis · light" },
+      "browsemium-accent-dark": { "role": "primary", "displayName": "Monochrome emphasis · dark" },
+      "browsemium-canvas-light": { "role": "neutral", "displayName": "Window backdrop · light" },
+      "browsemium-canvas-dark": { "role": "neutral", "displayName": "Window backdrop · dark" },
+      "browsemium-surface-light": { "role": "neutral", "displayName": "Quiet panel · light" },
+      "browsemium-surface-dark": { "role": "neutral", "displayName": "Quiet panel · dark" },
+      "browsemium-raised-light": { "role": "neutral", "displayName": "Raised neutral · light" },
+      "browsemium-raised-dark": { "role": "neutral", "displayName": "Raised neutral · dark" }
+    },
+    "typographyMeta": {
+      "body": { "displayName": "Native body", "purpose": "Representative .system(size: 13) content text; exact styles remain component-specific." },
+      "label": { "displayName": "Native action label", "purpose": "Shared primary buttons and medium-weight compact labels." },
+      "section": { "displayName": "Native section header", "purpose": "BrowsemiumSectionHeader; native accessibility header trait." },
+      "empty-title": { "displayName": "Native empty-state title", "purpose": "BrowsemiumEmptyState title; not a global display scale." },
+      "wordmark": { "displayName": "Bundled brand wordmark", "purpose": "BrowsemiumWordmark only; system semibold fallback when bundled registration is unavailable." }
+    },
+    "shadows": [
+      { "name": "find-bar", "value": "SwiftUI .shadow(color: .black.opacity(0.14), radius: 10, y: 3)", "purpose": "Existing FindBar overlay. Native points; not a CSS blur equivalence or shared token." },
+      { "name": "address-suggestions", "value": "SwiftUI .shadow(color: .black.opacity(0.22), radius: 14, y: 5)", "purpose": "Existing AddressSuggestionList overlay. Native points; not a CSS blur equivalence or shared token." },
+      { "name": "peek-overlay", "value": "SwiftUI .shadow(color: .black.opacity(0.22), radius: 24, y: 8)", "purpose": "Existing PeekOverlay. Native points; not a CSS blur equivalence or shared token." }
+    ],
+    "motion": [
+      { "name": "current-page-change", "value": "SwiftUI .easeOut(duration: 0.15)", "purpose": "Existing CurrentPageBar tab-id change only; not a universal motion token." }
+    ],
+    "breakpoints": [],
+    "nativeReference": {
+      "platform": "macOS / SwiftUI / AppKit",
+      "source": "Packages/BrowsemiumKit/Sources/BrowsemiumUI/DesignSystem/Theme.swift",
+      "units": "Frontmatter pt values denote native logical points. HTML illustrations use CSS pixels for comparable logical dimensions, not CSS physical points.",
+      "appearance": "Paired light/dark primitives describe dynamic NSColor tokens. Runtime resolves appearance automatically; previews below illustrate light appearance only.",
+      "focus": "Runtime focus color comes from NSColor.keyboardFocusIndicatorColor, where individual controls implement focus. Demo Highlight outlines illustrate keyboard focus only.",
+      "tonalRamps": "Omitted: no eight-step tonal ramp exists in native source. Alpha tints and dynamic appearance pairs must not be presented as synthetic implemented scales.",
+      "demoStatus": "Every HTML/CSS component below is an illustrative design-panel adapter. None is adopted by SwiftUI/AppKit runtime; web hover/focus rules and SVG marks are not native implementation or native interaction QA.",
+      "qa": "Twelve AI dock fixture captures cover six states in both appearances. Native keyboard/VoiceOver and whole-app QA remain unverified."
+    }
+  },
+  "components": [
+    {
+      "name": "Primary button · native illustration",
+      "kind": "button",
+      "refersTo": "primary-button-light",
+      "description": "Illustrates BrowsemiumPrimaryButton inversion, size and disabled state. Demo focus is a web adapter; no bespoke hover animation exists in native source.",
+      "html": "<button class=\"ds-primary\">Save changes</button><button class=\"ds-primary\" disabled>Save changes</button>",
+      "css": ".ds-primary{font:500 12px system-ui;background:rgb(11% 11% 11%);color:rgb(98% 98% 98%);border:0;border-radius:8px;padding:0 12px;height:26px;margin:4px}.ds-primary:hover:not(:disabled){cursor:pointer}.ds-primary:focus-visible{outline:2px solid Highlight;outline-offset:2px}.ds-primary:active:not(:disabled){cursor:pointer}.ds-primary:disabled{background:rgb(0 0 0 / .045);color:rgb(0 0 0 / .38)}"
+    },
+    {
+      "name": "Icon button · native illustration",
+      "kind": "button",
+      "refersTo": "icon-button",
+      "description": "Illustrates a named 26-point action with foreground tint on hover. Inline SVG is illustrative, not the runtime SF Symbol.",
+      "html": "<button class=\"ds-icon\" aria-label=\"Close assistant\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 16 16\" fill=\"none\" aria-hidden=\"true\"><path d=\"M4 4l8 8M12 4l-8 8\" stroke=\"currentColor\" stroke-width=\"1.5\"/></svg></button>",
+      "css": ".ds-icon{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:0;border-radius:8px;background:transparent;color:rgb(0 0 0 / .56)}.ds-icon:hover:not(:disabled){background:rgb(0 0 0 / .055)}.ds-icon:focus-visible{outline:2px solid Highlight;outline-offset:2px}.ds-icon:disabled{color:rgb(0 0 0 / .38)}"
+    },
+    {
+      "name": "Text action · native illustration",
+      "kind": "button",
+      "refersTo": "text-button-light",
+      "description": "Illustrates BrowsemiumTextButton's quiet normal role. Hover/focus below serve the design-panel adapter.",
+      "html": "<button class=\"ds-text\">Clear</button>",
+      "css": ".ds-text{font:400 12px system-ui;background:transparent;border:0;padding:0;color:rgb(0 0 0 / .56)}.ds-text:hover{cursor:pointer}.ds-text:focus-visible{outline:2px solid Highlight;outline-offset:2px}"
+    },
+    {
+      "name": "Tab picker · native illustration",
+      "kind": "nav",
+      "refersTo": "segmented-control",
+      "description": "Illustrates BrowsemiumTabPicker monochrome selected/unselected segments. Buttons do not switch application modes in this preview.",
+      "html": "<div class=\"ds-picker\" role=\"group\" aria-label=\"Assistant mode\"><button aria-pressed=\"false\">Web</button><button aria-pressed=\"true\">API</button></div>",
+      "css": ".ds-picker{display:inline-flex;gap:2px;padding:2px;border-radius:10px;background:rgb(0 0 0 / .045)}.ds-picker button{height:22px;padding:0 10px;border:0;border-radius:8px;font:400 12px system-ui;background:transparent;color:rgb(0 0 0 / .56)}.ds-picker button[aria-pressed=true]{background:rgb(0 0 0 / .09);font-weight:500;color:rgb(0 0 0 / .88)}.ds-picker button:hover:not([aria-pressed=true]){background:rgb(0 0 0 / .055)}.ds-picker button:focus-visible{outline:2px solid Highlight;outline-offset:2px}"
+    },
+    {
+      "name": "Panel · native illustration",
+      "kind": "card",
+      "refersTo": "panel-light",
+      "description": "Illustrates shared surface, border and radius. Demo content padding is illustrative; browsemiumPanel() defines no padding.",
+      "html": "<section class=\"ds-panel\"><div class=\"ds-panel-content\">Quiet native panel</div></section>",
+      "css": ".ds-panel{border:1px solid rgb(0 0 0 / .10);border-radius:10px;background:rgb(94.9% 94.9% 94.9%);color:rgb(0 0 0 / .88);font:400 13px system-ui;overflow:hidden}.ds-panel-content{padding:12px}"
+    },
+    {
+      "name": "Field · native illustration",
+      "kind": "input",
+      "refersTo": "field-light",
+      "description": "Illustrates browsemiumField() fill, radius and border. Demo padding and focus outline are illustrative; the native helper itself does not track focus.",
+      "html": "<label class=\"ds-field-label\">Name <input class=\"ds-field\" placeholder=\"Enter a name\"/></label>",
+      "css": ".ds-field-label{display:block;font:400 12px system-ui;color:rgb(0 0 0 / .88)}.ds-field{display:block;margin-top:6px;padding:8px 10px;font:400 13px system-ui;border:1px solid rgb(0 0 0 / .10);border-radius:8px;background:rgb(0 0 0 / .045);color:rgb(0 0 0 / .88)}.ds-field:hover{cursor:text}.ds-field:focus-visible{outline:2px solid Highlight;outline-offset:2px}"
+    },
+    {
+      "name": "Attachment chip · native illustration",
+      "kind": "chip",
+      "description": "Illustrates an existing AttachmentChip and labelled remove action. Static example attachment; no claim of user data or activity.",
+      "html": "<span class=\"ds-chip\"><svg width=\"9\" height=\"9\" viewBox=\"0 0 16 16\" fill=\"none\" aria-hidden=\"true\"><path d=\"M6 11l5-5a2 2 0 00-3-3L3 8a4 4 0 006 6l5-5\" stroke=\"currentColor\"/></svg>Example.txt<button aria-label=\"Remove Example.txt\">×</button></span>",
+      "css": ".ds-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border-radius:999px;background:rgb(0 0 0 / .045);color:rgb(0 0 0 / .56);font:400 10.5px system-ui}.ds-chip:hover{background:rgb(0 0 0 / .09)}.ds-chip button{background:transparent;border:0;padding:0;color:rgb(0 0 0 / .38);font:700 10px system-ui}.ds-chip button:hover{cursor:pointer}.ds-chip button:focus-visible{outline:2px solid Highlight;outline-offset:2px}"
+    },
+    {
+      "name": "Secure key field · native illustration",
+      "kind": "input",
+      "description": "Illustrates AIAPIKeyField's 40-point height and focus border. This is a local AI key-entry control, not a global field-height token. Preview has no credential submission.",
+      "html": "<input class=\"ds-key\" type=\"password\" aria-label=\"Provider API key\" placeholder=\"Provider API key\" autocomplete=\"off\"/>",
+      "css": ".ds-key{height:40px;padding:0 12px;border:1px solid rgb(0 0 0 / .18);border-radius:8px;background:rgb(97.6% 97.6% 97.6%);color:rgb(0 0 0 / .88);font:400 13px system-ui}.ds-key:hover{cursor:text}.ds-key:focus-visible{border-color:Highlight;outline:none}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Restrained monochrome, native task clarity",
+    "overview": "Browsemium's native chrome recedes around the page. Compact controls, quiet foreground tints and continuous rounded panels make actions legible without turning the browser into a decorative dashboard. This captures the incumbent SwiftUI/AppKit system; it does not introduce a replacement identity.\n\nThe scope is the native macOS application. The source of truth is `Packages/BrowsemiumKit/Sources/BrowsemiumUI/DesignSystem/Theme.swift`, including `BrowserPalette`, `BrowserMetrics` and the shared control views. The site is a separate surface with its own styling. Geist is confirmed for branding and the site; native controls use the macOS system font. The AI dock's composition and approved future work remain in `Plans/7-polished-autonomous-workspace.md`. `PRODUCT.md` governs capability and privacy claims, not layout tokens.",
+    "keyCharacteristics": [
+      "Monochrome emphasis with automatic light/dark appearance.",
+      "Compact native controls with named actions and explicit state.",
+      "Quiet panels, hairline borders and restrained overlay elevation.",
+      "Real browser context and honest capability labels."
+    ],
+    "rules": [
+      { "name": "The Semantic Color Rule", "body": "Keep chrome monochrome except where color names a meaningful status, preserves source identity, or communicates system focus.", "section": "colors" },
+      { "name": "The Platform Type Rule", "body": "Keep macOS system type for native controls and reserve bundled Geist for the established wordmark/brand scope.", "section": "typography" },
+      { "name": "The Quiet Panel Rule", "body": "Use the incumbent border and tonal layers for ordinary panels; reserve elevation for overlays that already require separation.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use the existing dynamic native palette and resolve both appearances.",
+      "Do preserve system type, native control semantics and labelled actions.",
+      "Do use foreground hierarchy to make tasks and supporting information readable.",
+      "Do represent actual context, capabilities and operation state in the interface.",
+      "Do adapt content to the available native panel space while keeping actions reachable."
+    ],
+    "donts": [
+      "Don't replace the incumbent monochrome identity with a new decorative palette.",
+      "Don't apply site typography or site breakpoints to native controls.",
+      "Don't add ornamental glow, invented activity or unverifiable counts.",
+      "Don't promote the AI dock's local composition into a rule for every surface.",
+      "Don't describe approved future automation or fixture inspection as shipped capability or completed native QA."
+    ]
+  }
+}

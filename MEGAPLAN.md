@@ -469,6 +469,13 @@ ordinary user-list rules do not broaden into main-frame blocking.
 
 ### Phase 6 — Switch & Shine — IN PROGRESS
 
+- AI dock workspace (development source): a 40-point secure key field,
+  page-aware starting actions, one multiline composer with attachment/skill
+  menus and explicit Review/Stop, and more readable conversation spacing.
+  Page actions exclude private, locked and unsupported pages; API review-before-
+  send and provider-website behavior remain unchanged. Fixture rendering does
+  not close the native keyboard/VoiceOver or whole-app light/dark QA gate.
+
 - Quality pass (committed, not yet released): A1 keeps a committed page active
   after navigation failure; A2 gates external app launches on user activation
   and frame policy; A3 prompts for transient HTTP credentials without saving
@@ -544,7 +551,9 @@ ordinary user-list rules do not broaden into main-frame blocking.
 
 - Markdown import/export for saved AI skills.
 - Opt-in `browsemium-ctl` CLI and token-authenticated localhost MCP, scoped to
-  reads and explicit user commands.
+  reads and explicit user commands. The separately approved task-grant
+  automation extension is planned in `Plans/7-polished-autonomous-workspace.md`,
+  not implemented; it supersedes the earlier per-click Plan 7 proposal.
 - Research spikes for passkeys and per-space WebKit data isolation before
   either is promised publicly.
 - The corrected memory benchmark stays a release gate: no comparative claim
@@ -555,7 +564,13 @@ ordinary user-list rules do not broaden into main-frame blocking.
 Signing stays ad-hoc. Developer ID, notarization, Sparkle updates, browser
 passkey entitlement work, Web Push, and per-space storage isolation are deferred
 or research-only; no new feature in this cycle may require them. No accounts,
-sync, telemetry, autonomous AI, or CEF feature work is authorized.
+sync, telemetry, built-in autonomous AI, or CEF feature work is authorized.
+The owner approved task-scoped external MCP automation on 2026-10-03;
+`Plans/7-polished-autonomous-workspace.md` supersedes Plan 7's D1/per-click
+proposal. It remains a plan, not a running endpoint or shipped page actuator.
+The existing assistant still does not operate pages. Grants, task-owned spaces,
+Stop/takeover, origin boundaries and consequential-action confirmation must be
+implemented and tested before that product contract changes.
 
 Groundwork: command-palette row construction now lives in small catalog/tab/
 intent/library providers rather than the window model. The extraction preserves

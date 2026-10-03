@@ -302,6 +302,23 @@ targets:
         product: BrowsemiumEngine
       - package: BrowsemiumKit
         product: BrowsemiumUI
+  BrowsemiumAIDockRenderingTests:
+    type: bundle.unit-test
+    platform: macOS
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_NAME: BrowsemiumAIDockRenderingTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.browsemium.browser.tests.ai-dock-rendering
+    sources:
+      - Packages/BrowsemiumKit/Tests/BrowsemiumAIDockRenderingTests
+    dependencies:
+      - package: BrowsemiumKit
+        product: BrowsemiumCore
+      - package: BrowsemiumKit
+        product: BrowsemiumEngineKit
+      - package: BrowsemiumKit
+        product: BrowsemiumUI
 schemes:
   Browsemium:
     build:
@@ -311,6 +328,7 @@ schemes:
         BrowsemiumEngineTests: [test]
         BrowsemiumDataTests: [test]
         BrowsemiumUITests: [test]
+        BrowsemiumAIDockRenderingTests: [test]
     run:
       config: Debug
     test:
@@ -321,6 +339,7 @@ schemes:
         - BrowsemiumEngineTests
         - BrowsemiumDataTests
         - BrowsemiumUITests
+        - BrowsemiumAIDockRenderingTests
     archive:
       config: Release
   BrowsemiumChromium:

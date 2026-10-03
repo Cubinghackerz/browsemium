@@ -25,6 +25,7 @@ Vendors/CEF/
 # Local agent configuration
 .devin/config.local.json
 .playwright-mcp/
+.impeccable/review/
 
 # Xcode user state
 xcuserdata/

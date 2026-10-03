@@ -8,6 +8,10 @@ import BrowsemiumEngineKit
 
 @MainActor
 struct AIDockView: View {
+    // Direction: a native, monochrome reading-and-writing workspace. Provider
+    // chrome stays compact; page actions lead the empty state; one generous
+    // composer owns attachment tools and an explicit review action. No decorative
+    // glow, fabricated activity, or behavior changes to provider sends.
     @Bindable var model: BrowserWindowModel
     @Bindable var ai: AIDockViewModel
     @FocusState private var composerFocused: Bool
@@ -169,16 +173,16 @@ struct AIDockView: View {
                     isProviderPanelPresented = true
                 } label: {
                     HStack(spacing: 6) {
-                        ProviderMark(provider: ai.provider, size: 16)
+                        ProviderMark(provider: ai.provider, size: 20)
                         Text(ai.descriptor.displayName)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Color.browsemiumPrimary)
                         Image(systemName: "chevron.up.chevron.down")
                             .font(.system(size: 8, weight: .semibold))
                             .foregroundStyle(Color.browsemiumTertiary)
                     }
-                    .padding(.horizontal, 6)
-                    .frame(height: 26)
+                    .padding(.horizontal, 4)
+                    .frame(height: 32)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -212,9 +216,9 @@ struct AIDockView: View {
                 apiControls
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.top, 8)
-        .padding(.bottom, ai.mode == .api ? 8 : 4)
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, ai.mode == .api ? 12 : 8)
     }
 
     private var webContextMenu: some View {
@@ -311,24 +315,19 @@ struct AIDockView: View {
                     .labelsHidden()
                     .accessibilityLabel("Model")
 
-                    BrowsemiumTextButton("Remove key", role: .destructive) { ai.disconnect() }
+                    Menu {
+                        Button("Refresh models") { Task { await ai.loadModels() } }
+                        Button("Remove key", role: .destructive) { ai.disconnect() }
+                    } label: {
+                        Image(systemName: "ellipsis").frame(width: 28, height: 28)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .accessibilityLabel("API connection options")
                 }
             } else {
-                HStack(spacing: 6) {
-                    SecureField("\(ai.descriptor.displayName) API key", text: $ai.credentialInput)
-                        .font(.system(size: 12))
-                        .browsemiumField()
-                        .frame(height: 26)
-                        .padding(.horizontal, 8)
-                        .accessibilityLabel("API key")
-                    BrowsemiumPrimaryButton("Connect", isDisabled: ai.isWorking) {
-                        Task { await ai.connect() }
-                    }
-                }
-                Text("Stored in Keychain. Sent only to \(ai.descriptor.displayName). A chat subscription is not an API key.")
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(Color.browsemiumTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+                AIDockConnectionCard(ai: ai)
             }
 
             if let status = ai.credentialStatus {
@@ -402,146 +401,21 @@ struct AIDockView: View {
     }
 
     private var composer: some View {
-        VStack(spacing: 8) {
-            CurrentPageBar(model: model)
+        AIDockComposer(model: model, ai: ai, focus: $composerFocused,
+            actions: assistMenu, attachments: attachmentStrip,
+            attach: { kind, confirmation in attachContext(kind, confirmation: confirmation) },
+            quickAction: runQuickAction)
+    }
 
-            if !ai.attachments.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(Array(ai.attachments.enumerated()), id: \.offset) { index, attachment in
-                            AttachmentChip(
-                                label: ai.label(for: attachment),
-                                thumbnail: ai.thumbnail(for: attachment),
-                                dragProvider: { dragProvider(for: attachment) }
-                            ) {
-                                ai.removeAttachment(at: index)
-                            }
-                            .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                        }
-                    }
-                    .padding(.horizontal, 2)
-                }
-                .animation(.easeOut(duration: 0.15), value: ai.attachments.count)
-            }
-
-            // One-tap workflows: each captures its context and opens the
-            // review sheet — a shortcut to a review, not a silent send.
+    private var attachmentStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                quickActionChip("Summarize", systemImage: "doc.text.magnifyingglass", action: .summarizePage)
-                quickActionChip("Key points", systemImage: "list.bullet", action: .keyPoints)
-                quickActionChip("Explain", systemImage: "text.bubble", action: .explainSelection)
-                Spacer()
-            }
-
-            HStack(alignment: .bottom, spacing: 8) {
-                Button(action: { ai.addFiles() }) {
-                    Image(systemName: "paperclip")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Color.browsemiumSecondary)
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Add file attachment")
-                .help("Attach a file")
-
-                assistMenu
-
-                VStack(spacing: 0) {
-                    TextField("Ask about this page…", text: $ai.draft, axis: .vertical)
-                        .font(.system(size: 12.5))
-                        .lineLimit(1...4)
-                        .textFieldStyle(.plain)
-                        .focused($composerFocused)
-                        .accessibilityLabel("Assistant prompt")
-                        .onSubmit {
-                            if ai.canSend { ai.beginReview(tabID: model.session.activeTabID) }
-                        }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous)
-                        .fill(Color.browsemiumField)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous)
-                        .stroke(Color.browsemiumBorder, lineWidth: 1)
-                }
-
-                if ai.isStreaming {
-                    Button(action: { ai.stop() }) {
-                        Image(systemName: "stop.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundStyle(Color.browsemiumSecondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Stop generating")
-                } else {
-                    Button(action: { ai.beginReview(tabID: model.session.activeTabID) }) {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundStyle(ai.canSend ? Color.browsemiumAccentFill : Color.browsemiumTertiary)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!ai.canSend)
-                    .accessibilityLabel("Send")
-                }
-            }
-
-            HStack(spacing: 6) {
-                contextButton(systemName: "text.cursor", label: "Selection") {
-                    attachContext(.selection, confirmation: "Selection attached")
-                }
-                contextButton(systemName: "doc.text", label: "Page") {
-                    attachContext(.readablePage, confirmation: "Page text attached")
-                }
-                contextButton(systemName: "camera.viewfinder", label: "Capture") {
-                    attachContext(.viewportImage, confirmation: "Screenshot attached — describe what to do with it")
-                }
-                contextButton(systemName: "rectangle.portrait.and.arrow.forward", label: "Full page") {
-                    attachContext(.fullPageImage, confirmation: "Full page screenshot attached")
-                }
-                Spacer()
-
-                // Opt-in: attach this page's text to every send. The review
-                // sheet still lists it before anything leaves the Mac.
-                Toggle(
-                    "Auto page",
-                    isOn: Binding(
-                        get: { model.environment.loadSettings().includePageContextInAPIAI },
-                        set: { enabled in
-                            model.updateSettings { $0.includePageContextInAPIAI = enabled }
-                        }
-                    )
-                )
-                .toggleStyle(.checkbox)
-                .font(.system(size: 10.5))
-                .foregroundStyle(Color.browsemiumSecondary)
-                .help("Attach this page's text to every message — the review sheet still shows it first")
-                .accessibilityLabel("Attach page text to every message")
-            }
-
-            if let error = ai.errorMessage {
-                HStack(spacing: 8) {
-                    Text(error)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color.browsemiumDestructive)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityAddTraits(.isStaticText)
-                    if ai.lastFailedSend != nil {
-                        Button("Try again") { ai.retryLastSend() }
-                            .buttonStyle(.plain)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Color.browsemiumAccent)
-                            .accessibilityLabel("Retry the failed message")
-                    }
+                ForEach(Array(ai.attachments.enumerated()), id: \.offset) { index, attachment in
+                    AttachmentChip(label: ai.label(for: attachment), thumbnail: ai.thumbnail(for: attachment),
+                        dragProvider: { dragProvider(for: attachment) }) { ai.removeAttachment(at: index) }
                 }
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.top, 4)
-        .padding(.bottom, 10)
     }
 
     private func attachContext(_ kind: CaptureKind, confirmation: String) {
@@ -595,58 +469,17 @@ struct AIDockView: View {
         }
     }
 
-    private func quickActionChip(_ label: String, systemImage: String, action: AIQuickAction) -> some View {
-        Button {
-            Task { await ai.runQuickAction(action, tabID: model.session.activeTabID) }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 9.5))
-                Text(label)
-                    .font(.system(size: 10.5, weight: .medium))
-            }
-            .foregroundStyle(Color.browsemiumAccent)
-            .padding(.horizontal, 8)
-            .frame(height: 20)
-            .background(
-                Capsule().fill(Color.browsemiumAccent.opacity(0.12))
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(ai.isWorking || ai.isStreaming)
-        .help("\(action.title) — opens the review sheet before anything is sent")
-        .accessibilityLabel(action.title)
-    }
-
-    private func contextButton(systemName: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
-                Image(systemName: systemName)
-                    .font(.system(size: 9.5))
-                Text(label)
-                    .font(.system(size: 10.5))
-            }
-            .foregroundStyle(Color.browsemiumSecondary)
-            .padding(.horizontal, 7)
-            .frame(height: 20)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(ai.isWorking)
-        .accessibilityLabel("Attach \(label.lowercased()) context")
-        .help("Attach \(label.lowercased()) to your next message")
-    }
 }
 
 /// Shows which page the assistant context buttons will read from. Follows
 /// the active tab automatically as the user switches pages.
 @MainActor
-private struct CurrentPageBar: View {
+struct CurrentPageBar: View {
     let model: BrowserWindowModel
 
     private var tab: BrowserTab? {
-        guard let tab = model.activeTab, tab.lastCommittedURL != nil else { return nil }
+        guard let tab = model.activeTab, tab.lastCommittedURL != nil,
+              AIDockPresentation.pageContextIsAvailable(in: model) else { return nil }
         return tab
     }
 
@@ -674,10 +507,11 @@ private struct CurrentPageBar: View {
 
                 Spacer(minLength: 4)
 
-                Text(url.host ?? "")
+                if tab.title != url.host { Text(url.host ?? "")
                     .font(.system(size: 9.5))
                     .foregroundStyle(Color.browsemiumTertiary)
                     .lineLimit(1)
+                }
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 7)
@@ -825,31 +659,29 @@ private struct AIChatTranscript: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
-                    if ai.messages.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Ask about this page.")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(Color.browsemiumPrimary)
-                            Text("Attach a selection or the page first. Nothing is sent until you review it.")
-                                .font(.system(size: 11.5))
-                                .foregroundStyle(Color.browsemiumSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .padding(14)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(
-                            RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous)
-                                .fill(Color.browsemiumField)
-                        )
-                    }
-
+                LazyVStack(alignment: .leading, spacing: 20) {
                     ForEach(ai.messages) { message in
                         MessageBubble(message: message)
                             .id(message.id)
                     }
                 }
                 .padding(12)
+            }
+            .overlay {
+                if ai.messages.isEmpty {
+                    ViewThatFits(in: .vertical) {
+                        AIDockWelcome(canUsePage: AIDockPresentation.pageContextIsAvailable(in: model),
+                            isWorking: ai.isWorking || ai.isStreaming) { action in
+                            Task { await ai.runQuickAction(action, tabID: model.session.activeTabID) }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 12)
+                        .fixedSize(horizontal: false, vertical: true)
+                        compactWelcome.fixedSize(horizontal: false, vertical: true)
+                        ScrollView { compactWelcome }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                }
             }
             .onChange(of: ai.messages.last?.content) {
                 if let last = ai.messages.last {
@@ -865,6 +697,13 @@ private struct AIChatTranscript: View {
             return .handled
         })
     }
+
+    private var compactWelcome: some View {
+        AIDockCompactWelcome(canUsePage: AIDockPresentation.pageContextIsAvailable(in: model),
+            isWorking: ai.isWorking || ai.isStreaming) { action in
+            Task { await ai.runQuickAction(action, tabID: model.session.activeTabID) }
+        }
+    }
 }
 
 @MainActor
@@ -872,13 +711,15 @@ private struct MessageBubble: View {
     let message: AIMessage
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(message.role == .user ? "You" : "Assistant")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Color.browsemiumTertiary)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.browsemiumSecondary)
             messageBody
+                .lineSpacing(3)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.leading, message.role == .user ? 24 : 0)
     }
 
     @ViewBuilder
@@ -912,11 +753,11 @@ private struct MessageBubble: View {
                 .foregroundStyle(Color.browsemiumPrimary)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(10)
+                .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
-                    RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous)
-                        .fill(Color.browsemiumField)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.browsemiumRaised)
                 )
         }
     }

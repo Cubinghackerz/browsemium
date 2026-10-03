@@ -56,6 +56,20 @@ claim follows from this work.
 - The pause explanation now includes user lists as well as the starter list.
   Light/dark fixture rendering is not a native interaction QA pass.
 
+## AI dock workspace
+
+- Replaced the cramped API-key row with a readable secure field and connection
+  card. Connection options and model refresh are grouped together once connected.
+- Added page-aware starting actions and one multiline composer containing
+  attachment and skill menus, with explicit Review/Stop controls. Review is
+  unavailable while context is being prepared. API messages still require review.
+- Private, locked and unsupported pages do not expose page-context actions.
+  Conversation labels and spacing are clearer in both appearances. Fixture
+  renders cover narrow, wide, short, error, attached and streaming states;
+  native interaction/VoiceOver QA remains open.
+- Saved the approved task-scoped autonomous MCP plan separately. This unit
+  does not enable an agent endpoint, agent page actions or an in-app autonomous loop.
+
 ## Remaining gates and queue
 
 The 2026-10-02 memory attempt stopped at the quiet-machine preflight, before

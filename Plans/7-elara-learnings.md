@@ -1,6 +1,10 @@
 # Plan 7 — What to copy from Elara, and what else makes this the best browser
 
-Status: **plan, not shipped.** Written 2026-10-03. Executor: read this whole
+Status: **plan, not shipped.** D1/W5 are superseded by the owner-approved
+`7-polished-autonomous-workspace.md` (2026-10-03): autonomous external MCP tasks
+within a bounded grant, not approval for every click. The UI redesign is verified
+development source, not a published release; built-in agent chat remains deferred.
+Written 2026-10-03. Executor: read this whole
 file, then `MEGAPLAN.md`, `PRODUCT.md`, `AGENTS.md`, `QUALITY_PASS.md` before
 touching code. Nothing here authorizes accounts, sync, telemetry, CEF work, or
 a cloud service.

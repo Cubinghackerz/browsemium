@@ -82,6 +82,7 @@ if isHeadless {
             path: "Tests",
             exclude: [
                 "BrowsemiumAITests",
+                "BrowsemiumAIDockRenderingTests",
                 "BrowsemiumCoreTests",
                 "BrowsemiumDataTests",
                 "BrowsemiumEngineTests",
@@ -156,6 +157,11 @@ if isHeadless {
         .testTarget(
             name: "BrowsemiumUISnapshotTests",
             dependencies: ["BrowsemiumUI"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        .testTarget(
+            name: "BrowsemiumAIDockRenderingTests",
+            dependencies: ["BrowsemiumCore", "BrowsemiumEngineKit", "BrowsemiumUI"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         )
     ]
