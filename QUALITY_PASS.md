@@ -2,6 +2,29 @@
 
 Changes here are committed source, not a published 2.1.1 release.
 
+## AI reply recovery — 2026-10-03
+
+- Reproduced completed-but-empty assistant records and completion waiting for
+  network EOF. The UI inferred loading from empty content, so old empty rows
+  also kept showing spinners. Empty completions now fail visibly; only the
+  active request owns loading, and terminal events stop consumption immediately.
+- Gemini previously ignored finish frames without parts and deferred final
+  text completion until EOF. Fixtures cover contentless rejection, terminal
+  text, thought/answer separation and supportedGenerationMethods filtering,
+  checked against Google's API documentation. No actual API key was read.
+- Added a two-minute request deadline, cancellation/Stop recovery, stale-review
+  refusal, busy quick-action guards, and non-destructive filtering of old empty
+  replies on restore/send. Clearing a conversation clears its retry payload.
+- Seventeen new tests cover these paths, normal text, stopped/late responses
+  and old stored records. The initial regressions failed, passed after fixes,
+  and failed with the completion, timeout, Gemini and history guards reverted.
+  Guards restored; no failing assertion or test deadline was weakened.
+- The full Swift package suite, headless runner, generated-project check,
+  whitespace check and Xcode Debug build/test passed. Xcode recorded 449
+  distinct passing tests (494 parameterized runs), zero failures/skips and no
+  runtime warnings in the result bundle. Native light/dark, live Gemini/keychain
+  and VoiceOver checks remain open. Automation resumes after this bug unit.
+
 ## Website design scope — 2026-10-03
 
 - Reviewed all six hook findings against the native-only scope in `DESIGN.md`

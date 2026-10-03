@@ -61,7 +61,9 @@ public enum AIRequestBuilder {
     ) throws -> CanonicalRequest {
         var messages: [CanonicalRequest.Message] = []
 
-        let history = request.messages.filter { $0.role != .system }
+        let history = request.messages.filter {
+            $0.role != .system && ($0.role != .assistant || !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
         let attachmentParts = try parts(
             for: request.attachments,
             policy: policy,

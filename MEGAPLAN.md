@@ -469,6 +469,13 @@ ordinary user-list rules do not broaden into main-frame blocking.
 
 ### Phase 6 — Switch & Shine — IN PROGRESS
 
+- AI reply recovery (development source): empty/provider-rejected replies
+  show retryable errors; loading belongs only to the active reply. Terminal
+  events end consumption without waiting for EOF, with a two-minute request
+  ceiling. Gemini finish/thought frames and supported-model filtering have
+  fixtures. Old empty records are filtered non-destructively from restored
+  transcripts and outgoing history. No live provider or release claim.
+
 - AI dock workspace (development source): a 40-point secure key field,
   page-aware starting actions, one multiline composer with attachment/skill
   menus and explicit Review/Stop, and more readable conversation spacing.

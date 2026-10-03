@@ -661,7 +661,7 @@ private struct AIChatTranscript: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 20) {
                     ForEach(ai.messages) { message in
-                        MessageBubble(message: message)
+                        MessageBubble(message: message, isGenerating: ai.isGeneratingReply(message.id))
                             .id(message.id)
                     }
                 }
@@ -709,6 +709,7 @@ private struct AIChatTranscript: View {
 @MainActor
 private struct MessageBubble: View {
     let message: AIMessage
+    let isGenerating: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -728,8 +729,18 @@ private struct MessageBubble: View {
             let document = SafeMarkdownDocument(source: message.content)
             VStack(alignment: .leading, spacing: 8) {
                 if message.content.isEmpty {
-                    ProgressView()
-                        .controlSize(.small)
+                    if isGenerating {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Waiting for an answer…")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color.browsemiumSecondary)
+                        }
+                    } else {
+                        Text("No answer was returned.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.browsemiumSecondary)
+                    }
                 }
                 ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in
                     blockView(block)

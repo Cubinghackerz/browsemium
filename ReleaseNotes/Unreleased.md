@@ -70,6 +70,20 @@ claim follows from this work.
 - Saved the approved task-scoped autonomous MCP plan separately. This unit
   does not enable an agent endpoint, agent page actions or an in-app autonomous loop.
 
+## AI reply recovery
+
+- Empty replies become a visible, retryable error instead of a permanent
+  spinner. Only the current reply displays a loading indicator; completed
+  replies end immediately, and stalled requests stop after two minutes.
+- Gemini handles finish frames without content, reports rejected answers,
+  separates thought parts from answer text, and lists only models that
+  advertise content generation. A terminal frame can carry its final text.
+- Old empty assistant records are filtered when loading a conversation and
+  building a request, without deleting stored records. Busy/stale review
+  actions cannot submit another request, and cleared conversations discard
+  their retry payloads. Stop preserves earlier replies and removes the pending
+  empty reply. These behaviors use fixture tests; live credential QA is open.
+
 ## Remaining gates and queue
 
 The 2026-10-02 memory attempt stopped at the quiet-machine preflight, before

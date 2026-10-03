@@ -58,6 +58,9 @@ public final class AIDockViewModel {
     public private(set) var currentConversationID: ConversationID?
 
     private var streamTask: Task<Void, Never>?
+    private var streamDeadlineTask: Task<Void, Never>?
+    private let adapterFactory: @MainActor (AIProviderID, String) -> any AIProviderAdapter
+    private let requestTimeout: Duration
     private var streamGeneration: UInt64 = 0
     private var activeStreamAttachments: [AIContextAttachment] = []
     private var activeStreamAssistantID: UUID?
@@ -96,8 +99,14 @@ public final class AIDockViewModel {
         refreshConversations()
     }
 
-    public init(environment: BrowserEnvironment) {
+    public init(environment: BrowserEnvironment,
+                requestTimeout: Duration = .seconds(120),
+                adapterFactory: @escaping @MainActor (AIProviderID, String) -> any AIProviderAdapter = {
+                    AIAdapterFactory.make(for: $0, credential: $1)
+                }) {
         self.environment = environment
+        self.adapterFactory = adapterFactory
+        self.requestTimeout = requestTimeout
         attachmentDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("Browsemium-AI-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(
@@ -166,7 +175,11 @@ public final class AIDockViewModel {
     }
 
     public var canSend: Bool {
-        (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty) && !isStreaming
+        (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty) && !isStreaming && !isWorking
+    }
+
+    public func isGeneratingReply(_ messageID: UUID) -> Bool {
+        isStreaming && activeStreamAssistantID == messageID
     }
 
     private var credentialAccount: String {
@@ -187,6 +200,7 @@ public final class AIDockViewModel {
     /// successful while sending the next prompt to the wrong model.
     public func providerDidChange() {
         stop()
+        lastFailedSend = nil
         contextGeneration &+= 1
         invalidateWebProviderPreparation()
         if provider.isLocal {
@@ -374,6 +388,7 @@ public final class AIDockViewModel {
     /// open the review sheet. The sheet still gates the send — a quick action
     /// is a shortcut to a review, never a silent transmit.
     public func runQuickAction(_ action: AIQuickAction, tabID: TabID?) async {
+        guard !isStreaming, !isWorking, !isReviewPresented else { return }
         guard let tabID else {
             errorMessage = "Open a page before using assistant actions."
             return
@@ -804,6 +819,7 @@ public final class AIDockViewModel {
 
     public func clearConversation() {
         stop()
+        lastFailedSend = nil
         messages.removeAll()
         errorMessage = nil
         currentConversationID = nil
@@ -837,7 +853,7 @@ public final class AIDockViewModel {
         guard browser?.session.isPrivate == false else { return }
         guard let restored = try? environment.conversationRepository.messages(conversationID: id) else { return }
         stop()
-        messages = restored
+        messages = restored.filter { $0.role != .assistant || !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         currentConversationID = id
         errorMessage = nil
     }
@@ -887,6 +903,7 @@ public final class AIDockViewModel {
     }
 
     public func beginReview(tabID: TabID? = nil) {
+        guard canSend, !isReviewPresented else { return }
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !attachments.isEmpty else { return }
         // API mode can opt into automatic page context. The capture must land
@@ -933,6 +950,7 @@ public final class AIDockViewModel {
     }
 
     public func confirmSend(tabID: TabID?) async {
+        guard isReviewPresented, !isStreaming, !isWorking else { return }
         let prompt = reviewPrompt
         isReviewPresented = false
 
@@ -1076,18 +1094,23 @@ public final class AIDockViewModel {
             var didComplete = false
             var didFail = false
             do {
-                for try await event in adapter.stream(request) {
+                eventLoop: for try await event in adapter.stream(request) {
                     guard let self else { return }
                     guard self.streamGeneration == generation else { return }
                     switch event {
                     case .textDelta(let text):
                         self.appendToAssistant(at: assistantIndex, text: text)
                     case .completed(let message):
+                        guard !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                            throw AIHTTPClient.HTTPError.emptyResponse
+                        }
                         didComplete = true
                         self.finalizeAssistant(at: assistantIndex, content: message.content)
                         self.persistAssistantMessage(message.content)
+                        break eventLoop
                     }
                 }
+                if !didComplete { throw AIHTTPClient.HTTPError.emptyResponse }
             } catch {
                 guard let self else { return }
                 guard self.streamGeneration == generation else { return }
@@ -1118,6 +1141,16 @@ public final class AIDockViewModel {
             self.clearActiveStream()
             self.isStreaming = false
             self.streamTask = nil
+        }
+        streamDeadlineTask = Task { [weak self, requestTimeout] in
+            do { try await Task.sleep(for: requestTimeout) } catch { return }
+            guard let self, self.streamGeneration == generation, self.isStreaming else { return }
+            if let reply = self.messages.first(where: { $0.id == assistant.id }), !reply.content.isEmpty {
+                self.persistAssistantMessage(reply.content)
+            }
+            self.stop()
+            self.errorMessage = "The answer took too long. Try again or choose another model."
+            self.lastFailedSend = (prompt: prompt, attachments: sentAttachments)
         }
     }
 
@@ -1163,6 +1196,8 @@ public final class AIDockViewModel {
     }
 
     private func clearActiveStream() {
+        streamDeadlineTask?.cancel()
+        streamDeadlineTask = nil
         activeStreamAttachments.removeAll()
         activeStreamAssistantID = nil
         activeStreamRestoreAllowed = true
@@ -1191,7 +1226,7 @@ public final class AIDockViewModel {
     }
 
     private func makeAdapter(for provider: AIProviderID, credential: String) -> any AIProviderAdapter {
-        AIAdapterFactory.make(for: provider, credential: credential)
+        adapterFactory(provider, credential)
     }
 
     public let providerPanel = ProviderPanelController()

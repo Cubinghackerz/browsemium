@@ -4,6 +4,7 @@ import Foundation
 public struct AIHTTPClient: Sendable {
     public enum HTTPError: Error, LocalizedError, Equatable {
         case invalidResponse
+        case emptyResponse
         case hostNotAllowed(String)
         case status(Int, String)
         case transport(String)
@@ -12,6 +13,8 @@ public struct AIHTTPClient: Sendable {
             switch self {
             case .invalidResponse:
                 "The provider returned an unreadable response."
+            case .emptyResponse:
+                "The provider returned no answer. Try again or choose another model."
             case .hostNotAllowed(let host):
                 "Requests to \(host) are not allowed."
             case .status(let code, let message):

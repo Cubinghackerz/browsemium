@@ -93,6 +93,7 @@
 		E444C2B1200F10050D8C2CC8 /* UserFilterListControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDE86FD7F29A930D4C9821D3 /* UserFilterListControllerTests.swift */; };
 		E697BAE65A58B25D1E26647D /* IdentifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCE2972DAB23FD93D253FE06 /* IdentifierTests.swift */; };
 		E81DFC30360847B365F6672F /* LockedSpaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31A3A7EACAB67CE69BCBD2E0 /* LockedSpaceTests.swift */; };
+		EF6201856A9B5A92D9CF4150 /* AIDockStreamRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FF125FAD1F6D5CE7831682D /* AIDockStreamRecoveryTests.swift */; };
 		F0EE90C0E45041FBA73D3C95 /* BrowsemiumEngineKit in Frameworks */ = {isa = PBXBuildFile; productRef = 204C1587E74D7E2EE8ECBE0A /* BrowsemiumEngineKit */; };
 		F23A0FABB3DB1F24DA84E53B /* FuzzyMatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D3CA786932D9D1791B4D595 /* FuzzyMatcherTests.swift */; };
 		F3E7E8E48C315C1D24941CBE /* CEFRuntime.mm in Sources */ = {isa = PBXBuildFile; fileRef = 42C68B047D56B839525FFE77 /* CEFRuntime.mm */; };
@@ -160,6 +161,7 @@
 		31A3A7EACAB67CE69BCBD2E0 /* LockedSpaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockedSpaceTests.swift; sourceTree = "<group>"; };
 		344EF904BD3840F6F0B4DE84 /* ElementPickerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElementPickerTests.swift; sourceTree = "<group>"; };
 		3D7A712EA197F46E70513927 /* PersistenceFailureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceFailureTests.swift; sourceTree = "<group>"; };
+		3FF125FAD1F6D5CE7831682D /* AIDockStreamRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIDockStreamRecoveryTests.swift; sourceTree = "<group>"; };
 		41034F5EB2BB3844FCF19562 /* WebNavigationDelegateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebNavigationDelegateTests.swift; sourceTree = "<group>"; };
 		42C68B047D56B839525FFE77 /* CEFRuntime.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = CEFRuntime.mm; sourceTree = "<group>"; };
 		441C8A07FC001691F9AA1BD2 /* ChromiumDownloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromiumDownloads.swift; sourceTree = "<group>"; };
@@ -380,6 +382,7 @@
 			isa = PBXGroup;
 			children = (
 				828160E6BAC3DCE38F0BC816 /* AIDockDesignTests.swift */,
+				3FF125FAD1F6D5CE7831682D /* AIDockStreamRecoveryTests.swift */,
 				BDF00CF17E59A77022CF3539 /* AIDockViewModelTests.swift */,
 				1A2B626E203A8527E84F9F3A /* AssistantDepthTests.swift */,
 				05990E6DE636712E493F4753 /* BrowserImportKeychainTests.swift */,
@@ -828,6 +831,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D8E7CDD5F7B1CF3CBA906FD0 /* AIDockDesignTests.swift in Sources */,
+				EF6201856A9B5A92D9CF4150 /* AIDockStreamRecoveryTests.swift in Sources */,
 				7E646D0C7D789EDD072EC025 /* AIDockViewModelTests.swift in Sources */,
 				7A719A7F4359C8596AABF6AA /* AssistantDepthTests.swift in Sources */,
 				465CB1C7AC1E277795165191 /* BrowserImportKeychainTests.swift in Sources */,

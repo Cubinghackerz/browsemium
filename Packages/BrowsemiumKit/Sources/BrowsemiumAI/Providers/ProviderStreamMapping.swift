@@ -4,6 +4,7 @@ import Foundation
 public enum ProviderStreamSignal: Sendable {
     case ignore
     case delta(String)
+    case deltaAndDone(String)
     case done
     case failed(String)
 }
@@ -18,8 +19,7 @@ public func mapProviderStream(
             do {
                 for try await event in upstream {
                     if event.data == "[DONE]" {
-                        continuation.yield(.completed(AIMessage(role: .assistant, content: accumulated)))
-                        continuation.finish()
+                        completeProviderStream(accumulated, continuation: continuation)
                         return
                     }
                     switch transform(event, &accumulated) {
@@ -29,16 +29,19 @@ public func mapProviderStream(
                         accumulated += text
                         continuation.yield(.textDelta(text))
                     case .done:
-                        continuation.yield(.completed(AIMessage(role: .assistant, content: accumulated)))
-                        continuation.finish()
+                        completeProviderStream(accumulated, continuation: continuation)
+                        return
+                    case .deltaAndDone(let text):
+                        accumulated += text
+                        if !text.isEmpty { continuation.yield(.textDelta(text)) }
+                        completeProviderStream(accumulated, continuation: continuation)
                         return
                     case .failed(let message):
                         continuation.finish(throwing: AIHTTPClient.HTTPError.status(502, message))
                         return
                     }
                 }
-                continuation.yield(.completed(AIMessage(role: .assistant, content: accumulated)))
-                continuation.finish()
+                completeProviderStream(accumulated, continuation: continuation)
             } catch {
                 continuation.finish(throwing: error)
             }
@@ -47,6 +50,15 @@ public func mapProviderStream(
             task.cancel()
         }
     }
+}
+
+private func completeProviderStream(_ content: String, continuation: AsyncThrowingStream<AIEvent, Error>.Continuation) {
+    guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        continuation.finish(throwing: AIHTTPClient.HTTPError.emptyResponse)
+        return
+    }
+    continuation.yield(.completed(AIMessage(role: .assistant, content: content)))
+    continuation.finish()
 }
 
 enum ProviderJSON {

@@ -39,8 +39,14 @@ public struct GeminiAdapter: AIProviderAdapter {
               let entries = root["models"] as? [[String: Any]] else {
             throw AIHTTPClient.HTTPError.invalidResponse
         }
-        return entries.compactMap { entry in
-            guard let rawName = entry["name"] as? String else { return nil }
+        return Self.models(from: entries)
+    }
+
+    static func models(from entries: [[String: Any]]) -> [AIModel] {
+        entries.compactMap { entry in
+            guard let methods = entry["supportedGenerationMethods"] as? [String],
+                  methods.contains("generateContent"),
+                  let rawName = entry["name"] as? String else { return nil }
             let modelID = Self.normalizedModelID(rawName)
             let display = entry["displayName"] as? String ?? modelID
             return AIModel(id: modelID, name: display, providerID: .gemini)
@@ -54,7 +60,11 @@ public struct GeminiAdapter: AIProviderAdapter {
         } catch {
             return AsyncThrowingStream { $0.finish(throwing: error) }
         }
-        return mapProviderStream(client.streamSSE(urlRequest, allowedHost: Self.host)) { event, _ in
+        return Self.mapStream(client.streamSSE(urlRequest, allowedHost: Self.host))
+    }
+
+    static func mapStream(_ upstream: AsyncThrowingStream<SSEParser.Event, Error>) -> AsyncThrowingStream<AIEvent, Error> {
+        mapProviderStream(upstream) { event, _ in
             guard let object = ProviderJSON.object(from: event.data) else {
                 return .ignore
             }
@@ -66,17 +76,18 @@ public struct GeminiAdapter: AIProviderAdapter {
                 return .failed("The provider blocked this request (\(reason)).")
             }
             guard let candidates = ProviderJSON.array(object, "candidates"),
-                  let candidate = candidates.first,
-                  let content = ProviderJSON.dictionary(candidate, "content"),
-                  let parts = ProviderJSON.array(content, "parts") else {
+                  let candidate = candidates.first else {
                 return .ignore
             }
-            let text = parts.compactMap { ProviderJSON.string($0, "text") }.joined()
+            let content = ProviderJSON.dictionary(candidate, "content") ?? [:]
+            let parts = ProviderJSON.array(content, "parts") ?? []
+            let text = parts.filter { ($0["thought"] as? Bool) != true }
+                .compactMap { ProviderJSON.string($0, "text") }.joined()
             if let finishReason = ProviderJSON.string(candidate, "finishReason"), !finishReason.isEmpty, finishReason != "FINISH_REASON_UNSPECIFIED" {
-                if !text.isEmpty {
-                    return .delta(text)
+                guard finishReason == "STOP" || finishReason == "MAX_TOKENS" else {
+                    return .failed("Gemini could not finish this answer (\(finishReason)). Try another prompt or model.")
                 }
-                return .done
+                return .deltaAndDone(text)
             }
             return text.isEmpty ? .ignore : .delta(text)
         }
