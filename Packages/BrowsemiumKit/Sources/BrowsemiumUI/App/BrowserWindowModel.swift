@@ -1872,17 +1872,9 @@ public final class BrowserWindowModel: PermissionPrompting {
     }
 
     public var siteShieldStatus: String {
-        let level = currentSettings().protectionLevel
-        if session.isPrivate {
-            return "\(level.title). A private window does not remember this."
-        }
-        if !level.blocksContentRules {
-            return "\(level.title). Bundled rules are off."
-        }
-        if isBlockingPaused(for: activePageURL) {
-            return "\(level.title). Blocking is paused on this site."
-        }
-        return "\(level.title). Bundled rules are on for this site."
+        SiteShieldRuleSummary.text(level: currentSettings().protectionLevel,
+            state: environment.engine.blocking, counts: environment.engine.blockingHostCounts,
+            paused: isBlockingPaused(for: activePageURL), isPrivate: session.isPrivate)
     }
 
     public func setBlockingPaused(_ paused: Bool) {

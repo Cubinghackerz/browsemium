@@ -33,8 +33,9 @@ that require an account.
   a separate native review sheet; that context is enabled by default.
   Screenshots, selections, and files require an explicit attachment choice.
 - **Ad and tracker blocking through WebKit content rules**, reported as rule
-  state only — WebKit does not expose blocked-request counts, so Browsemium
-  never shows a number it cannot verify.
+  state and distinct named-host list sizes, including exception rules. These
+  describe installed lists, not requests — WebKit does not expose blocked-request
+  counts, so Browsemium never shows a number it cannot verify.
 
 ## Features that exist today
 

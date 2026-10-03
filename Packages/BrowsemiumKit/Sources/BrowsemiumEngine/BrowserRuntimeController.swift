@@ -161,7 +161,7 @@ public final class BrowserRuntimeController: BrowserRuntime, BrowserEngine {
     }
 
     /// Blocking as the window sees it. WebKit reports rule state but not how
-    /// many requests it stopped, so no count is offered here.
+    /// many requests it stopped. The count here is compiled rules only.
     public var blocking: BlockingState {
         switch contentRules.state {
         case .inactive: .inactive
@@ -170,6 +170,8 @@ public final class BrowserRuntimeController: BrowserRuntime, BrowserEngine {
         case .failed(let message): .failed(message)
         }
     }
+
+    public var blockingHostCounts: RuleListHostCounts? { contentRules.hostCounts }
 
     public var onBlockingActivated: (() -> Void)? {
         get { contentRules.onActivated }

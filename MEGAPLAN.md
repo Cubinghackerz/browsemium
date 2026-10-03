@@ -348,8 +348,13 @@ unshipped.
 
 ### Phase 4.7 — Site shield and on-device translation — SHIPPED (WebKit)
 
-- A toolbar shield shows the current site, the protection level, and whether
-  bundled rules are on. No blocked-count.
+- A toolbar shield shows the current site, protection level, and actual rule
+  state. Plan 7 W4 adds distinct named-host list sizes in development: 71 in
+  the current starter list (87 rules), plus enabled user-list hosts not already
+  named there, deduplicated across lists. Exceptions can name hosts too; these
+  are list sizes, never blocked-request counts. Unknown counts are unavailable;
+  off, paused, compiling, and failed states show no host number. Observation
+  updates the shield when installed lists change. Native interaction QA remains open.
 - **Pause blocking on this site** is a site preference. It removes the
   compiled rule list from that tab and reloads. Another host is unaffected.
   Navigating away restores the rules. A private window does not remember it.

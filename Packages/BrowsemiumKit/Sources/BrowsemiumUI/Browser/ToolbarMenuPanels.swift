@@ -325,6 +325,7 @@ struct SiteShieldPanel: View {
                 .font(.system(size: 11))
                 .foregroundStyle(Color.browsemiumSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+                .help("List sizes name distinct target hosts, including exceptions, not requests. Hosts already in the starter list are counted once.")
 
             if let pick = model.pendingElementPick {
                 Divider()
@@ -448,13 +449,8 @@ struct SiteShieldPanel: View {
     }
 
     private var pauseNote: String {
-        if model.session.isPrivate {
-            return "A private window does not remember site exceptions."
-        }
-        if !model.currentSettings().protectionLevel.blocksContentRules {
-            return "Blocking is already off."
-        }
-        return "Pausing removes the bundled rules for this site only. The page reloads."
+        SiteShieldRuleSummary.pauseNote(level: model.currentSettings().protectionLevel,
+                                        isPrivate: model.session.isPrivate)
     }
 
     private var pauseBinding: Binding<Bool> {

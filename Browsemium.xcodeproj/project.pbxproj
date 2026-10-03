@@ -34,8 +34,10 @@
 		4793A6660735CAC9B6B68AAF /* BrowsemiumApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C3F425E3D016D89BAE9E398 /* BrowsemiumApp.swift */; };
 		49D5315F497BC71C8F8A6D90 /* BrowsemiumCore in Frameworks */ = {isa = PBXBuildFile; productRef = 09ADB7EBA008AAE2B56D065D /* BrowsemiumCore */; };
 		4C25968473C01701B0B5E250 /* ExtensionActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85035AA204931AF841488A3A /* ExtensionActionTests.swift */; };
+		4C8AA6B419FDA86970AB83BC /* SiteShieldListSizeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C57CD563B5B886C47703C2 /* SiteShieldListSizeTests.swift */; };
 		505907702ABAEAD38C019F17 /* UserFilterListRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D44FB65BBFC5B47C80EBB92D /* UserFilterListRepositoryTests.swift */; };
 		54A6DC0B6FBA8C85B14B077E /* PalettePageCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDD9A63742E92756169BF06F /* PalettePageCommandTests.swift */; };
+		5773621BD4ED6BD02785E656 /* RuleListHostCountTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C0AB4E995039AB0C88A0DBC /* RuleListHostCountTests.swift */; };
 		57EE621B44A8BB14D820D48C /* ChromiumDownloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = 441C8A07FC001691F9AA1BD2 /* ChromiumDownloads.swift */; };
 		58931CE2915011A6D1F03154 /* BrowsemiumCEF.h in CopyFiles */ = {isa = PBXBuildFile; fileRef = 577D96312FA41F7C34A1BA12 /* BrowsemiumCEF.h */; };
 		58E7D0F34BCF556BD7DB76B6 /* TabFolderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1675C0CE68E40A9B9729A608 /* TabFolderTests.swift */; };
@@ -179,6 +181,7 @@
 		848606A184222F0907904A13 /* PermissionAndSleepWiringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionAndSleepWiringTests.swift; sourceTree = "<group>"; };
 		85035AA204931AF841488A3A /* ExtensionActionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionActionTests.swift; sourceTree = "<group>"; };
 		87FF9C65B6C9681BA0AE440E /* BrowserWindowModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowModelTests.swift; sourceTree = "<group>"; };
+		8C0AB4E995039AB0C88A0DBC /* RuleListHostCountTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuleListHostCountTests.swift; sourceTree = "<group>"; };
 		8CB4430BDEC74768F3A13669 /* UserFilterListSettingsActionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserFilterListSettingsActionsTests.swift; sourceTree = "<group>"; };
 		8CC1D8E1FF0CF30ED055560B /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
 		8E52B9BEF09ADA2B804E690E /* AuthChallengePolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthChallengePolicyTests.swift; sourceTree = "<group>"; };
@@ -207,6 +210,7 @@
 		E478DBB06EF4B704DBC746E1 /* PrivateBrowsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivateBrowsingTests.swift; sourceTree = "<group>"; };
 		E9CB8E8D507D111B13DDDFA3 /* CosmeticRuleRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CosmeticRuleRepositoryTests.swift; sourceTree = "<group>"; };
 		F08B8B1A92C60E9FA0044EC7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		F0C57CD563B5B886C47703C2 /* SiteShieldListSizeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiteShieldListSizeTests.swift; sourceTree = "<group>"; };
 		F2637D77BAD284CF0902651C /* ProfileStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileStoreTests.swift; sourceTree = "<group>"; };
 		FADC3A384F0A0F68E7D60C20 /* NavigationCompatibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationCompatibilityTests.swift; sourceTree = "<group>"; };
 		FBA4925D7E1AF469F92F7410 /* ElementHidingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElementHidingTests.swift; sourceTree = "<group>"; };
@@ -372,6 +376,7 @@
 				3D7A712EA197F46E70513927 /* PersistenceFailureTests.swift */,
 				D551469D0BFDE7A8E86F940E /* ProfileDeletionTests.swift */,
 				78F12BF67B7BD7598E4D9672 /* ProviderPanelPrivacyTests.swift */,
+				F0C57CD563B5B886C47703C2 /* SiteShieldListSizeTests.swift */,
 				CCA119EBCA91CAEFA1D8FDBB /* SplitViewTests.swift */,
 				6E70C515A23A70E8442D0B51 /* StubEngine.swift */,
 				1675C0CE68E40A9B9729A608 /* TabFolderTests.swift */,
@@ -396,6 +401,7 @@
 				FADC3A384F0A0F68E7D60C20 /* NavigationCompatibilityTests.swift */,
 				092AFEBFCCE5140FAC9EFF7C /* NavigationResolverTests.swift */,
 				E478DBB06EF4B704DBC746E1 /* PrivateBrowsingTests.swift */,
+				8C0AB4E995039AB0C88A0DBC /* RuleListHostCountTests.swift */,
 				459EF24F1D3ECBCFA13AC28D /* TabRuntimeTests.swift */,
 				73255D90F3B5349E2CA3BE5D /* UserContentRuleManagerTests.swift */,
 				80A7DDF930F8A06F1E5A5DA4 /* WaitFor.swift */,
@@ -784,6 +790,7 @@
 				DE5C96D58285CD45A668E630 /* PersistenceFailureTests.swift in Sources */,
 				C0C824156CEA5BA5B65A23AF /* ProfileDeletionTests.swift in Sources */,
 				1767191F3B846B6452827979 /* ProviderPanelPrivacyTests.swift in Sources */,
+				4C8AA6B419FDA86970AB83BC /* SiteShieldListSizeTests.swift in Sources */,
 				D2430EA35051EEEC8D4E7133 /* SplitViewTests.swift in Sources */,
 				33893BDB24AD92E6658D3FC8 /* StubEngine.swift in Sources */,
 				58E7D0F34BCF556BD7DB76B6 /* TabFolderTests.swift in Sources */,
@@ -851,6 +858,7 @@
 				3911284D883AB6D29F2A4AE6 /* NavigationCompatibilityTests.swift in Sources */,
 				2BB3726FC425007492319E3A /* NavigationResolverTests.swift in Sources */,
 				09793980FBD27A8B11A683E3 /* PrivateBrowsingTests.swift in Sources */,
+				5773621BD4ED6BD02785E656 /* RuleListHostCountTests.swift in Sources */,
 				A99A9EFC28B3F27836595697 /* TabRuntimeTests.swift in Sources */,
 				3D78B761A43FC86EC8C24D67 /* UserContentRuleManagerTests.swift in Sources */,
 				5A9BAFF8F96D9A5DEE445ABF /* WaitFor.swift in Sources */,

@@ -148,6 +148,44 @@ Changes here are committed source, not a published 2.1.1 release.
   `/Applications/.browsemium-install.pQ1Cik/Previous Browsemium.app`.
   Version/build remain 2.1.0/210; this is not a published release.
 
+## Site shield list sizes — 2026-10-03
+
+- Audit corrected the plan's 87-host assumption: the starter list has 87 rules
+  naming 71 distinct target hosts. Path/script rules name no host. User-list
+  receipts retain parsed host sets; installed sizes deduplicate across enabled
+  lists and exclude overlap with starter hosts. Exceptions can name hosts too.
+  Unknown formats report unavailable, never an invented count.
+- Fixed inactive/failed state copy, paused-state numbers, and the stale pause
+  explanation that mentioned bundled rules only. The manager is observable so
+  installed-list changes invalidate the shield. No request metric, network
+  call, credential read, dependency, or bundled third-party list was added.
+- Twelve fixture tests cover parsing, actual WebKit compilation, deduplication,
+  profile changes, disabling, failed-compile retention, observation invalidation,
+  private/off/paused/unknown states, sanitized copy, model wiring, and light/dark
+  rendering. The original pause copy failed its regression. After implementation
+  passed, reverting host totals, observation, pause handling, inactive copy, and
+  pause explanation made six tests fail again. Fixes restored unchanged tests.
+- Initial focused compilation caught an incorrect enum case and a Swift Testing
+  macro/key-path spelling issue in the new tests. Corrected both without weakening
+  assertions. Headless build/runner, focused tests, full Swift package suite,
+  Xcode Debug build/test, project verification, and whitespace review passed.
+  Saved Xcode results show 433 distinct passing tests (478 parameterized runs),
+  zero failures/skips, and no runtime warnings. Xcode itself emitted diagnostic
+  launch-session warnings; these did not fail a gate or require a code change.
+- Eight light/dark active/paused fixture renders were inspected in two rounds.
+  The first caught the stale pause explanation, corrected before the second.
+  Existing native layout, Theme tokens, controls, and brand were preserved.
+  This native SwiftUI change has no HTML/CSS detector target; no design ignore
+  was added. No native keyboard, VoiceOver, or whole-app interaction QA is claimed.
+- Installed and launched the tested ad-hoc Debug product in Applications.
+  File hashes and symlink targets match; code-signature verification passed.
+  The previous app is recoverable at
+  `/Applications/.browsemium-install.T3hkh3/Previous Browsemium.app`.
+  Version/build remain 2.1.0/210, not a published release. User checklist:
+  open the shield in light/dark; confirm the starter size and enabled user-list
+  delta; pause/unpause; toggle a list in Settings and reopen the shield. Keyboard,
+  VoiceOver, private/off states, and whole-app QA remain user-run checks.
+
 ## Initial baseline checks
 
 - No stale SwiftPM test processes were found.

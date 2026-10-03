@@ -86,6 +86,9 @@ public protocol BrowserEngine: AnyObject {
     // MARK: - Blocking
 
     var blocking: BlockingState { get }
+    /// Distinct explicit target hosts in the installed lists, when derivable.
+    /// Unknown or unavailable counts stay nil; this is not a request metric.
+    var blockingHostCounts: RuleListHostCounts? { get }
     /// Fired when blocking rules become usable, so open tabs can pick them up.
     var onBlockingActivated: (() -> Void)? { get set }
     /// Removes or restores the compiled rule list for one tab. Engines that
@@ -129,6 +132,7 @@ public protocol BrowserEngine: AnyObject {
 }
 
 public extension BrowserEngine {
+    var blockingHostCounts: RuleListHostCounts? { nil }
     /// Engines that cannot isolate storage keep their previous behaviour;
     /// the WebKit engine overrides this with an ephemeral data store.
     func setPrivateBrowsing(_ isPrivate: Bool) {}

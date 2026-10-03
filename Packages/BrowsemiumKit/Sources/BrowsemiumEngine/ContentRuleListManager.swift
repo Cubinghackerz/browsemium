@@ -1,6 +1,7 @@
 import BrowsemiumCore
 import BrowsemiumEngineKit
 import Foundation
+import Observation
 import WebKit
 
 /// Compiles and caches the WebKit content rule list used to block ads and
@@ -9,7 +10,7 @@ import WebKit
 /// WebKit is the only thing that can enforce these rules, and it does not
 /// report how many requests it stopped — so Browsemium reports whether rules
 /// are active, never a blocked-request count it cannot verify.
-@MainActor
+@Observable @MainActor
 public final class ContentRuleListManager {
     public enum State: Sendable, Equatable {
         case inactive
@@ -23,9 +24,20 @@ public final class ContentRuleListManager {
         isEnabled ? starterRuleCount + userRules.reduce(0) { $0 + $1.ruleCount } : 0
     }
 
+    public var hostCounts: RuleListHostCounts? {
+        guard isEnabled, ruleList != nil, let starterHosts else { return nil }
+        var userHosts: Set<String> = []
+        for rule in userRules {
+            guard let hosts = rule.namedHosts else { return nil }
+            userHosts.formUnion(hosts)
+        }
+        return RuleListHostCounts(bundledHostCount: starterHosts.count,
+            additionalUserHostCount: userHosts.subtracting(starterHosts).count, userListCount: userRules.count)
+    }
+
     /// Fired once the rules become usable, so pages that are already open can
     /// pick them up without waiting for the next tab.
-    public var onActivated: (() -> Void)?
+    @ObservationIgnored public var onActivated: (() -> Void)?
 
     /// The compiled list, once available.
     public var compiledRuleList: WKContentRuleList? { isEnabled ? ruleList : nil }
@@ -56,6 +68,7 @@ public final class ContentRuleListManager {
     private var profileID: UUID?
     private var userRules: [CompiledUserContentRules] = []
     private var starterRuleCount = 0
+    private var starterHosts: Set<String>?
     private var isEnabled = false
     private var activation = UUID()
 
@@ -76,8 +89,10 @@ public final class ContentRuleListManager {
         try Task.checkCancellation()
         guard rulesJSON.utf8.count <= 16 * 1024 * 1024 else { throw UserRuleError.invalidRuleSet }
         let generation = userGeneration
-        let validation = Task.detached(priority: .utility) { Self.countRules(in: rulesJSON) }
-        let count = await withTaskCancellationHandler { await validation.value } onCancel: { validation.cancel() }
+        let validation = Task.detached(priority: .utility) {
+            (Self.countRules(in: rulesJSON), ContentRuleListHostnames.namedHosts(in: rulesJSON))
+        }
+        let (count, hosts) = await withTaskCancellationHandler { await validation.value } onCancel: { validation.cancel() }
         try Task.checkCancellation()
         guard generation == userGeneration else { throw UserRuleError.staleCompilation }
         guard count > 0, count <= 50_000 else {
@@ -93,7 +108,7 @@ public final class ContentRuleListManager {
         guard generation == userGeneration else { throw UserRuleError.staleCompilation }
         guard compiled.identifier == identifier else { throw UserRuleError.compilationFailed }
         return CompiledUserContentRules(owner: owner, generation: generation, list: compiled,
-                                        ruleCount: count, byteCount: rulesJSON.utf8.count)
+                                        ruleCount: count, byteCount: rulesJSON.utf8.count, namedHosts: hosts)
     }
 
     /// Swap the whole enabled set atomically, after the caller commits metadata.
@@ -152,6 +167,7 @@ public final class ContentRuleListManager {
                 guard !Task.isCancelled, self?.activation == token, self?.isEnabled == true else { return }
                 self?.ruleList = list
                 self?.starterRuleCount = Self.countRules(in: source)
+                self?.starterHosts = ContentRuleListHostnames.namedHosts(in: source)
                 self?.state = .active
                 self?.onActivated?()
             } catch {
@@ -168,6 +184,7 @@ public final class ContentRuleListManager {
         compileTask = nil
         ruleList = nil
         starterRuleCount = 0
+        starterHosts = nil
         state = .inactive
         onActivated?()
     }

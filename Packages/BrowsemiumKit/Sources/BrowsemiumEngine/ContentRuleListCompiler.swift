@@ -32,12 +32,14 @@ import WebKit
     let list: WKContentRuleList
     let ruleCount: Int
     let byteCount: Int
+    let namedHosts: Set<String>?
 
-    init(owner: UUID, generation: UUID, list: WKContentRuleList, ruleCount: Int, byteCount: Int) {
+    init(owner: UUID, generation: UUID, list: WKContentRuleList, ruleCount: Int, byteCount: Int, namedHosts: Set<String>?) {
         self.owner = owner
         self.generation = generation
         self.list = list
         self.ruleCount = ruleCount
         self.byteCount = byteCount
+        self.namedHosts = namedHosts
     }
 }

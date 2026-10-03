@@ -99,7 +99,8 @@ final class StubEngine: BrowserEngine {
     func setMuted(tabID: TabID, muted: Bool) {}
     func audioState(tabID: TabID) -> TabAudioState? { nil }
 
-    var blocking: BlockingState { .inactive }
+    var blocking: BlockingState = .inactive
+    var blockingHostCounts: RuleListHostCounts?
     var onBlockingActivated: (() -> Void)?
     var pausedTabs: [TabID: Bool] = [:]
     var pausedHosts: Set<String> = []

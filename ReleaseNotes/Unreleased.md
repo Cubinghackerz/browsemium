@@ -44,6 +44,18 @@ claim follows from this work.
 - Fixed draft import cancellation ownership and stale toggle/removal edits.
   Cancelling one import cannot cancel the wrong task or unlock a newer one.
 
+## Site shield list sizes
+
+- The shield reports distinct named hosts in the installed starter list and
+  additional hosts from enabled user lists, deduplicated across lists. The
+  current starter list has 71 named hosts across 87 rules; path/script rules
+  do not name a host, and exceptions can name hosts too. These are list sizes,
+  never blocked-request counts.
+- Off and paused states show no host number. Compiling, failed, and unavailable
+  counts are stated plainly; changing installed lists updates the open shield.
+- The pause explanation now includes user lists as well as the starter list.
+  Light/dark fixture rendering is not a native interaction QA pass.
+
 ## Remaining gates and queue
 
 The 2026-10-02 memory attempt stopped at the quiet-machine preflight, before
