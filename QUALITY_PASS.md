@@ -2,6 +2,15 @@
 
 Changes here are committed source, not a published 2.1.1 release.
 
+## Website design scope — 2026-10-03
+
+- Reviewed all six hook findings against the native-only scope in `DESIGN.md`
+  and the existing site CSS. Recorded exact-value, Site/index.html-only
+  exceptions for the owner-specified Geist font, 2px controls/focus corners,
+  and the 99px scrollbar thumb through hook-admin. No rule/file-wide ignore
+  or site visual change. The follow-up regex scan reported no findings;
+  missing parser modules prevent computed contrast/layout verification.
+
 ## AI dock workspace — 2026-10-03
 
 - Split connection/empty-state and composer presentation into small files;

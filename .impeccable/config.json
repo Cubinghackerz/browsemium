@@ -8,6 +8,33 @@
         "value": "geist",
         "createdAt": "2026-09-29T11:02:24.473Z",
         "reason": "user confirmed: the Browsemium brief explicitly specifies Geist for the wordmark and site"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "geist",
+        "files": [
+          "Site/index.html"
+        ],
+        "createdAt": "2026-10-03T07:04:12.420Z",
+        "reason": "user confirmed: the Switch & Shine brief specifies Geist for the site; DESIGN.md explicitly covers native macOS controls."
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "99px",
+        "files": [
+          "Site/index.html"
+        ],
+        "createdAt": "2026-10-03T07:04:12.491Z",
+        "reason": "Agent: the existing site uses a pill-shaped scrollbar thumb; DESIGN.md native control radii do not govern this separate surface."
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "2px",
+        "files": [
+          "Site/index.html"
+        ],
+        "createdAt": "2026-10-03T07:04:12.562Z",
+        "reason": "Agent: the existing site intentionally uses near-square controls, focus outlines and installer box; DESIGN.md explicitly scopes its radius tokens to native macOS."
       }
     ]
   }
