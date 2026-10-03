@@ -270,6 +270,23 @@ targets:
         product: BrowsemiumCore
       - package: BrowsemiumKit
         product: BrowsemiumEngine
+  BrowsemiumAgentTests:
+    type: bundle.unit-test
+    platform: macOS
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_NAME: BrowsemiumAgentTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.browsemium.browser.tests.agent
+    sources:
+      - Packages/BrowsemiumKit/Tests/BrowsemiumAgentTests
+    dependencies:
+      - package: BrowsemiumKit
+        product: BrowsemiumCore
+      - package: BrowsemiumKit
+        product: BrowsemiumEngineKit
+      - package: BrowsemiumKit
+        product: BrowsemiumAgent
   BrowsemiumDataTests:
     type: bundle.unit-test
     platform: macOS
@@ -326,6 +343,7 @@ schemes:
         BrowsemiumApp: all
         BrowsemiumCoreTests: [test]
         BrowsemiumEngineTests: [test]
+        BrowsemiumAgentTests: [test]
         BrowsemiumDataTests: [test]
         BrowsemiumUITests: [test]
         BrowsemiumAIDockRenderingTests: [test]
@@ -337,6 +355,7 @@ schemes:
       targets:
         - BrowsemiumCoreTests
         - BrowsemiumEngineTests
+        - BrowsemiumAgentTests
         - BrowsemiumDataTests
         - BrowsemiumUITests
         - BrowsemiumAIDockRenderingTests

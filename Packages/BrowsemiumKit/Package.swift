@@ -11,10 +11,12 @@ var products: [Product] = [
     .library(name: "BrowsemiumEngineKit", targets: ["BrowsemiumEngineKit"]),
     .library(name: "BrowsemiumEngine", targets: ["BrowsemiumEngine"]),
     .library(name: "BrowsemiumExtensions", targets: ["BrowsemiumExtensions"]),
-    .library(name: "BrowsemiumAI", targets: ["BrowsemiumAI"])
+    .library(name: "BrowsemiumAI", targets: ["BrowsemiumAI"]),
+    .library(name: "BrowsemiumAgent", targets: ["BrowsemiumAgent"])
 ]
 
 var targets: [Target] = [
+    .target(name: "BrowsemiumAgent", dependencies: ["BrowsemiumCore", "BrowsemiumEngineKit"], swiftSettings: [.swiftLanguageMode(.v6)]),
     .target(
         name: "BrowsemiumCore",
         swiftSettings: [.swiftLanguageMode(.v6)]
@@ -81,6 +83,7 @@ if isHeadless {
             ],
             path: "Tests",
             exclude: [
+                "BrowsemiumAgentTests",
                 "BrowsemiumAITests",
                 "BrowsemiumAIDockRenderingTests",
                 "BrowsemiumCoreTests",
@@ -100,6 +103,7 @@ if isHeadless {
         .executable(name: "BrowsemiumPreview", targets: ["BrowsemiumPreview"])
     ]
     targets += [
+        .testTarget(name: "BrowsemiumAgentTests", dependencies: ["BrowsemiumAgent", "BrowsemiumCore", "BrowsemiumEngineKit"], swiftSettings: [.swiftLanguageMode(.v6)]),
         .target(
             name: "BrowsemiumUI",
             dependencies: [
@@ -108,7 +112,8 @@ if isHeadless {
                 "BrowsemiumEngine",
                 "BrowsemiumEngineKit",
                 "BrowsemiumExtensions",
-                "BrowsemiumAI"
+                "BrowsemiumAI",
+                "BrowsemiumAgent"
             ],
             resources: [
                 .process("Resources")
