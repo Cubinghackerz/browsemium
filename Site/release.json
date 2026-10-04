@@ -1,8 +1,8 @@
 {
-  "version": "2.1.0",
-  "tag": "v2.1.0",
-  "file": "Browsemium-2.1.0.dmg",
-  "sha256": "01dec61a71943366a561e32fd3199484b986d25df7ac00d6d84f588d40938afa",
+  "version": "2.1.1",
+  "tag": "v2.1.1",
+  "file": "Browsemium-2.1.1.dmg",
+  "sha256": "dde9ff5c435d5b59e64aa4015da2e823f8abe0156b6cdf6e1cb9b89ed527e06d",
   "signing": "adhoc",
   "bundleId": "com.browsemium.browser",
   "teamId": "",
