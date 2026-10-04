@@ -1,9 +1,23 @@
 # Polished workspace and autonomous MCP tasks
 
-Status: approved plan, not shipped. Owner confirmed task-scoped autonomy and
+Status: approved plan; v1 opt-in preview implemented 2026-10-04 (see below).
+Owner confirmed task-scoped autonomy and
 asked for full autonomous execution within a grant on 2026-10-03. This replaces
 D1 and W5's per-click contract in `7-elara-learnings.md`; W1–W4 and the existing
 switching queue retain their order. No built-in agent loop is authorized.
+
+Implementation note (v1). Built: grant model and gate, WebKit actuator,
+loopback MCP transport, grant card, task panel with Stop, Settings card, and
+revocation on profile switch, space lock, disconnect and quit. Deliberate
+deviations from this plan, chosen to fail closed until a safe-action heuristic
+exists: (1) every click and type needs a native confirmation instead of
+running prompt-free within the grant; (2) task pages open in a dedicated
+non-activating panel, not a sidebar space; (3) no SSE stream, GET is 405. The
+`network.server` entitlement spike passed in two minimal sandboxed ad-hoc
+bundles, so the Unix-socket fallback was not needed. Still open: the packaged
+app's launch-to-endpoint path and a live client session were not exercised
+(the owner asked that the app not be launched), human takeover/pause and native
+keyboard/VoiceOver QA.
 
 ## Delivery order
 

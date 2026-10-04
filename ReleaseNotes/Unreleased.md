@@ -67,8 +67,26 @@ claim follows from this work.
   Conversation labels and spacing are clearer in both appearances. Fixture
   renders cover narrow, wide, short, error, attached and streaming states;
   native interaction/VoiceOver QA remains open.
-- Saved the approved task-scoped autonomous MCP plan separately. This unit
-  does not enable an agent endpoint, agent page actions or an in-app autonomous loop.
+- The AI dock itself does not gain page actions or an autonomous loop; the
+  separate opt-in external agent preview is described below.
+
+## External agent preview (opt-in, off by default)
+
+- Settings → Agent turns on a loopback-only (127.0.0.1) MCP endpoint, with a
+  bearer token stored in Keychain that you can copy and reset. Nothing listens
+  until you enable it. It works with MCP clients that support Streamable HTTP
+  and custom headers; the card shows a ready-to-paste Claude Code command.
+- A client must request a task; you approve a card naming the origins and limits.
+  Work happens in separate task tabs with a Stop button. Every click and every
+  typed value needs your confirmation; password, payment and one-time-code
+  fields are refused, and navigation outside the granted origin is refused.
+- Stop, switching profile, locking a space and quitting end the task and close
+  its pages. Task pages share your profile's browsing data and open in a panel,
+  not a sidebar space. The client's self-reported name is not verified.
+- Added the sandbox `network.server` entitlement to the WebKit app (loopback
+  only, used only when you enable the endpoint). Covered by tests that do not
+  launch the app; a live client session and keyboard/VoiceOver QA are open.
+  This preview is not notarized.
 
 ## AI reply recovery
 

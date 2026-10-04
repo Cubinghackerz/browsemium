@@ -74,15 +74,18 @@ that require an account.
   prompt can appear during development. Signed, notarized builds do not show
   it for end users
 
-## Approved future work, not shipped
+## External agent automation (opt-in preview)
 
-Task-scoped external MCP automation is approved in
-`Plans/7-polished-autonomous-workspace.md`. A connected client would work in
-task-owned tabs under a temporary, explicit grant, with Stop/takeover and
-separate confirmation for consequential or unknown actions. This does not
-authorize a built-in autonomous assistant, accounts or a cloud service.
-No endpoint or page actuator is implemented by the AI dock redesign; the
-current review-before-send and no-page-operation claims above still apply.
+Task-scoped external MCP automation, per
+`Plans/7-polished-autonomous-workspace.md`, is implemented as an opt-in preview
+that is off by default. A connected client that supports Streamable HTTP MCP
+with custom headers works in task-owned tabs under a temporary, explicit grant.
+You can Stop it at any time, and each click and each typed value needs your
+separate confirmation. Task pages share your profile's browsing data and open
+in a separate panel, not a sidebar space. It does not add a built-in autonomous
+assistant, accounts or a cloud service, and the AI dock still never operates
+pages. Not yet verified: use from the packaged app with a live client, and
+native keyboard/VoiceOver checks.
 
 ## Voice
 

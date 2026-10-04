@@ -559,8 +559,8 @@ ordinary user-list rules do not broaden into main-frame blocking.
 - Markdown import/export for saved AI skills.
 - Opt-in `browsemium-ctl` CLI and token-authenticated localhost MCP, scoped to
   reads and explicit user commands. The separately approved task-grant
-  automation extension is planned in `Plans/7-polished-autonomous-workspace.md`,
-  not implemented; it supersedes the earlier per-click Plan 7 proposal.
+  automation extension (`Plans/7-polished-autonomous-workspace.md`) is now
+  implemented as an opt-in v1 preview; see the cycle section below.
 - Research spikes for passkeys and per-space WebKit data isolation before
   either is promised publicly.
 - The corrected memory benchmark stays a release gate: no comparative claim
@@ -574,10 +574,13 @@ or research-only; no new feature in this cycle may require them. No accounts,
 sync, telemetry, built-in autonomous AI, or CEF feature work is authorized.
 The owner approved task-scoped external MCP automation on 2026-10-03;
 `Plans/7-polished-autonomous-workspace.md` supersedes Plan 7's D1/per-click
-proposal. It remains a plan, not a running endpoint or shipped page actuator.
-The existing assistant still does not operate pages. Grants, task-owned spaces,
-Stop/takeover, origin boundaries and consequential-action confirmation must be
-implemented and tested before that product contract changes.
+proposal. A v1 preview is implemented: an off-by-default loopback MCP endpoint,
+task grants, a WebKit actuator, a task panel with Stop, and confirmation of
+every click and type. Documented v1 limits: task pages live in a separate panel
+rather than a sidebar space, they share the profile's WebKit store (no per-space
+cookie isolation), and the packaged app's launch-to-endpoint path and a live
+client session are not yet verified. The existing assistant still does not
+operate pages; no built-in autonomous loop exists.
 
 Groundwork: command-palette row construction now lives in small catalog/tab/
 intent/library providers rather than the window model. The extraction preserves

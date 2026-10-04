@@ -177,6 +177,20 @@ Opening Settings must never trigger a macOS keychain prompt. Check for stored
 secrets with `KeychainStore.hasSecret(account:)`, which queries attributes only;
 reading `secret(account:)` decrypts the item and macOS asks for permission.
 
+## External agent endpoint
+
+The WebKit app carries `com.apple.security.network.server` so an opt-in MCP
+endpoint can listen. It is needed only for that: the listener binds `127.0.0.1`
+(port 47831) by requiring the loopback interface and local endpoint, and is off
+by default. The Chromium app does not get the entitlement. A sandboxed ad-hoc
+spike confirmed it is necessary (bind fails with EPERM without it) and
+sufficient. Do not widen it, open other listeners, or
+relax the Host/Origin/token checks; each has a reverted-red test. Agent tests
+and gates never launch the app, so the packaged launch hook is verified by
+hand: enable the endpoint in Settings, then
+`curl -i -X POST http://127.0.0.1:47831/mcp` should return 401 with a
+`WWW-Authenticate` header.
+
 ## The "… WebCrypto Master Key" prompt
 
 WebKit creates a keychain item named `<App> WebCrypto Master Key` (account

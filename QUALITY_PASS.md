@@ -23,7 +23,32 @@ Changes here are committed source, not a published 2.1.1 release.
   whitespace check and Xcode Debug build/test passed. Xcode recorded 449
   distinct passing tests (494 parameterized runs), zero failures/skips and no
   runtime warnings in the result bundle. Native light/dark, live Gemini/keychain
-  and VoiceOver checks remain open. Automation resumes after this bug unit.
+  and VoiceOver checks remain open. Automation resumed after this bug unit
+  (see "External agent automation" below).
+
+## External agent automation — 2026-10-04
+
+- Added an opt-in, off-by-default loopback MCP endpoint (127.0.0.1:47831,
+  Streamable HTTP, POST only, bearer token in Keychain), a gated task model,
+  a WebKit actuator, a native grant card, a non-activating task panel with
+  Stop, and a Settings card. Stop, profile switch, space lock and quit end the
+  task and close its pages. Every click and type needs a native confirmation;
+  password, payment and one-time-code fields are refused; redirects outside the
+  granted origin are refused; page text is labelled untrusted.
+- Reverted-red checks (guard removed → matching test red → guard restored,
+  files verified identical): non-loopback bind, Origin, Host, token compare,
+  own-endpoint refusal, rate limiter, session-required, the grant approve
+  window, profile-switch revocation, lock revocation and shutdown.
+- Bugs found by the new tests and fixed: a CRLF `Character` strip bug in the
+  HTTP parser, and `rotateToken()` clearing its own "update your client" notice.
+- The `com.apple.security.network.server` entitlement was added to the WebKit
+  app only. A scratch spike with two minimal ad-hoc sandboxed bundles showed it
+  is necessary (without it: bind fails with EPERM) and sufficient (with it: a
+  loopback listener answered an external curl).
+- Open: the packaged app's launch hook → endpoint path was **not** exercised
+  end to end, because the owner asked that the app not be launched. Coordinator
+  and socket behaviour are covered by tests that do not launch it. Native
+  keyboard/VoiceOver QA and a live client session are also open.
 
 ## Website design scope — 2026-10-03
 
@@ -76,8 +101,9 @@ Changes here are committed source, not a published 2.1.1 release.
   controls, not a new identity or runtime web UI. Local render artifacts are
   ignored. The user's untracked `HANDOFF.md` remains unchanged.
 - The approved task-scoped autonomous MCP direction is saved separately in
-  `Plans/7-polished-autonomous-workspace.md`. No endpoint, actuator or agent
-  control is enabled here. Existing API review-before-send remains intact.
+  `Plans/7-polished-autonomous-workspace.md`. (At this unit no endpoint,
+  actuator or agent control was enabled; the later section above records it.)
+  Existing API review-before-send remains intact.
 - Installed and launched the tested development app at
   `/Applications/Browsemium.app` (still 2.1.0/210, ad-hoc). Its signature verifies;
   file hashes and symlink targets match the Debug product. The previous app is
