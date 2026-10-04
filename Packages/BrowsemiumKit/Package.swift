@@ -151,7 +151,7 @@ if isHeadless {
         ),
         .testTarget(
             name: "BrowsemiumUITests",
-            dependencies: ["BrowsemiumCore", "BrowsemiumEngine", "BrowsemiumEngineKit", "BrowsemiumExtensions", "BrowsemiumUI"],
+            dependencies: ["BrowsemiumAgent", "BrowsemiumCore", "BrowsemiumEngine", "BrowsemiumEngineKit", "BrowsemiumExtensions", "BrowsemiumUI"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(

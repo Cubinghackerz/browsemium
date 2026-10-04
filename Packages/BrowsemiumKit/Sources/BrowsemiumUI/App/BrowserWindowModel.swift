@@ -1088,6 +1088,7 @@ public final class BrowserWindowModel: PermissionPrompting {
     public func lockSpaceNow(_ spaceID: SpaceID) {
         guard isSpaceLocked(spaceID) else { return }
         unlockedSpaceIDs.remove(spaceID)
+        environment.agentIfCreated?.contextBecameUnavailable()
         guard session.activeSpaceID == spaceID else {
             statusMessage = "Space locked"
             return

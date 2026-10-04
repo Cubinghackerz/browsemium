@@ -223,6 +223,7 @@ targets:
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
+        com.apple.security.network.server: true
         com.apple.security.files.user-selected.read-write: true
         com.apple.security.files.downloads.read-write: true
         com.apple.security.device.camera: true
@@ -319,6 +320,8 @@ targets:
         product: BrowsemiumEngine
       - package: BrowsemiumKit
         product: BrowsemiumUI
+      - package: BrowsemiumKit
+        product: BrowsemiumAgent
   BrowsemiumAIDockRenderingTests:
     type: bundle.unit-test
     platform: macOS

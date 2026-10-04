@@ -45,6 +45,20 @@ public final class BrowserEnvironment {
     public let keychain: KeychainStore
     public let userDefaults: UserDefaults
     private var temporaryPreferences: TemporaryPreferences?
+    private var agentStorage: AgentCoordinator?
+
+    /// The external-agent coordinator. Created on first use; nothing listens
+    /// until the person turns the endpoint on in Settings.
+    public var agent: AgentCoordinator {
+        if let agentStorage { return agentStorage }
+        let coordinator = AgentCoordinator(environment: self)
+        agentStorage = coordinator
+        return coordinator
+    }
+
+    /// The coordinator only if something already created it, for lifecycle
+    /// hooks that must not create one.
+    public var agentIfCreated: AgentCoordinator? { agentStorage }
 
     /// The active profile's WebKit extension host. Nil on macOS < 15.4,
     /// where WebKit has no public extension API.
@@ -201,6 +215,8 @@ public final class BrowserEnvironment {
     /// data store to new web views. Callers must tear the runtime down and
     /// rebuild the window's session around this.
     public func activate(_ profile: BrowserProfile) throws {
+        // Anything an agent was shown from the old profile ends first.
+        agentStorage?.contextBecameUnavailable()
         database = try profileStore.database(for: profile)
         activeProfile = profile
         settingsRepository = SettingsRepository(database: database)
@@ -332,6 +348,7 @@ public final class BrowserEnvironment {
     /// when Browsemium quits" was stored and shown in Settings and onboarding
     /// but nothing ever read it, so the promise went unkept.
     public func runTerminationTasks() {
+        agentStorage?.shutdown()
         guard loadSettings().clearOnQuit else { return }
         try? privacyDataManager.clear([.history, .closedTabs])
     }

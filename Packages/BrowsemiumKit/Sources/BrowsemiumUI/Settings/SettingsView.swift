@@ -109,6 +109,7 @@ struct SettingsView: View {
                         sitePermissionsSection
                         passwordsSection
                         assistantSection
+                        AgentSettingsCard(environment: model.environment)
                         aboutSection
                     }
                 }

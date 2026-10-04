@@ -26,6 +26,9 @@ struct BrowsemiumApp: App {
             )
             .onAppear {
                 appDelegate.environment = environment
+                if environment?.userDefaults.bool(forKey: AgentCoordinator.enabledDefaultsKey) == true {
+                    environment?.agent.startIfEnabled()
+                }
             }
         }
         .windowStyle(.hiddenTitleBar)
