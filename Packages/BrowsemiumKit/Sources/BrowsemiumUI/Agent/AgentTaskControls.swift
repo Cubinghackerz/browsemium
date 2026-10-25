@@ -42,7 +42,9 @@ enum AgentTaskControls {
     static let stop = AgentTaskControl(
         kind: .stop, title: "Stop",
         hint: "Ends the task now. The pages stay open for you.",
-        isPrimary: false, isDestructive: true, shortcutKey: ".", shortcutOption: false
+        // Option-Command-period, not Command-period: the Navigate menu's Stop owns
+        // Command-period, and menu key equivalents take precedence over the panel.
+        isPrimary: false, isDestructive: true, shortcutKey: ".", shortcutOption: true
     )
     static let close = AgentTaskControl(
         kind: .close, title: "Close",

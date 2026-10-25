@@ -39,7 +39,8 @@ struct AgentTaskControlsTests {
         let paused = AgentTaskControls.controls(for: .paused)
         #expect(paused.first { $0.kind == .handBack }?.isPrimary == true)
         #expect(paused.first { $0.kind == .stop }?.isDestructive == true)
-        #expect(AgentTaskControls.stop.shortcutDescription == "⌘.")
+        #expect(AgentTaskControls.stop.shortcutDescription == "⌥⌘.")
+        #expect(AgentTaskControls.stop.shortcutDescription != "⌘.", "Command-period is the Navigate menu's Stop")
         #expect(AgentTaskControls.takeOver.shortcutDescription == "⌥⌘P")
     }
 

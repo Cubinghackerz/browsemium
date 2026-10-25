@@ -19,7 +19,7 @@ bundles, so the Unix-socket fallback was not needed.
 Update (2026-10-05). Added: Take over / Hand back / Stop controls that work in
 every live state (Stop is reachable while paused, so ending a task never needs
 the window closed), key equivalents (Option-Command-P for Take over and Hand
-back, Command-period for Stop), a label and a spoken hint on every control, a
+back, Option-Command-period for Stop; Command-period is the page Stop in the Navigate menu), a label and a spoken hint on every control, a
 VoiceOver announcement when a task is paused, handed back, waiting for an
 answer, finished or stopped, and a label on the task page. Gate tests cover a
 takeover while a call is in flight, Stop during a takeover, expiry and profile
@@ -42,7 +42,7 @@ MCP client session, and keyboard and VoiceOver QA. Owner checks, in order:
    client's next call fails, and the pages stay. Press Hand back: the clock kept
    running. Press Stop while paused: the task ends and the pages stay.
 5. With VoiceOver on, tab through the panel: each button reads its name and
-   hint, and pausing is announced. Try Option-Command-P and Command-period.
+   hint, and pausing is announced. Try Option-Command-P and Option-Command-period.
 6. Switch profile and lock a space during a task: the window closes and the
    client loses access.
 

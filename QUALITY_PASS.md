@@ -587,7 +587,7 @@ Owner checks, in order. Record the date, macOS build and result for each.
 1. **VoiceOver** (⌘F5). Walk the window: toolbar buttons read their names; the address field reads "Search or enter address"; tab rows read their titles and selected state; the rotor offers "Close tab" on a tab row; the collapsed sidebar rail reads "Show sidebar".
 2. **Keyboard reach.** Tab through the toolbar, the page, the assistant dock and the task panel. Known gap: tab rows are not keyboard-focusable. Tabs are reached with Control-Tab, Command-1 to Command-9, and the View menu. Confirm that is acceptable or report it.
 3. **Sidebar.** Collapse the sidebar, then use Control-Command-S to show and hide it. The hover reveal must have a keyboard equivalent.
-4. **Task panel.** Take over with Option-Command-P, then Stop with Command-period while paused. Hand back restores authority. VoiceOver announces "You are in control", "Control handed back" and "The task was stopped".
+4. **Task panel.** Take over with Option-Command-P, then Stop with Option-Command-period while paused. Hand back restores authority. VoiceOver announces "You are in control", "Control handed back" and "The task was stopped".
 5. **Grant and confirmation cards.** Focus lands on Decline. Allow is disabled for about a second. Return does not approve.
 6. **Increase Contrast** (System Settings → Accessibility → Display). In light and dark, check that the sidebar selection, field edges, separators and secondary labels stay readable. The palette's high-contrast values are an addition of this pass; judge whether they are too strong.
 7. **Reduce Transparency.** Menus, the palette, suggestions and banners become solid surfaces.
