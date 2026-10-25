@@ -88,6 +88,12 @@ claim follows from this work.
   launch the app; a live client session and keyboard/VoiceOver QA are open.
   This preview is not notarized.
 
+- The task window's Take over, Hand back and Stop controls now have keyboard
+  shortcuts (Option-Command-P and Command-period), spoken hints, and VoiceOver
+  announcements. You can Stop a task while it is paused. Verified by automated
+  tests and offscreen renders only; a live client session and VoiceOver QA are
+  still open.
+
 ## AI reply recovery
 
 - Empty replies become a visible, retryable error instead of a permanent
@@ -111,3 +117,154 @@ light/dark QA and logged-in site compatibility checks remain user-run gates.
 Per-site extension controls, smart space routing, and the remaining import
 units precede the next switchability
 and agent-ready features. Native light/dark QA and release gates remain open.
+
+## Plan 8: landscape upgrade
+
+Development source, verified by automated tests only. No native QA, signing,
+performance or comparative claim follows.
+
+- Site routing with a reversible notice. Private windows, previews, background
+  tabs, pinned tabs and split view are never moved; a locked destination asks first.
+- Separate groups (containers): their own cookies, logins and site data. Moving a
+  tab between stores rebuilds it in the new one; deleting the group wipes and
+  removes its store. No extensions run in a separate group.
+- Fixed: renaming a locked space removed its lock.
+- Developer tools (off by default): Web Inspector (⌥⌘I) and Safari's Develop menu.
+  The inspector uses undocumented WebKit internals and may stop working after an update.
+- Tracking-parameter removal at Balanced and Strict; never on sign-in URLs.
+- Apple Intelligence as a local provider (macOS 26+, no key, nothing leaves the Mac).
+- Tab-group suggestions and "Close Duplicate Tabs".
+- Page watch and Settings card; `UNUserNotificationCenter` permission requested on first use.
+- Per-site CSS tweaks with validation against network loads, plus "Write CSS" from a description using Apple Intelligence on this Mac (page structure only, never text; previewed before saving).
+- Address-bar quick answers (arithmetic, percentages, length/mass/volume/temperature).
+- Auto-archive stale tabs into a Library Archive (off by default).
+- `browsemium://open|search|space`, five Shortcuts actions, and `browsemium-ctl`.
+- Save-password offer after a plain sign-in, via an isolated-world script.
+- `read_text` from the MCP endpoint now arrives inside an untrusted-content
+  envelope; fourteen injection vectors are covered by tests (`Plans/8-injection-controls.md`).
+- Database migrations v12–v16 (routes, tweaks, space data store, archive, watches).
+- Address-bar history suggestions are ranked by relevance, visit count and recency, one row per page.
+
+## Per-site extension controls
+
+- Settings → Extensions lists each extension's site choices as Allow / Ask /
+  Deny pickers, and the site shield offers the same choice for the site on
+  screen. Choices are per profile; private windows neither offer nor remember
+  them, and locked or separate-data tabs stay hidden from extensions regardless.
+- Deny blocks content scripts from the next page load; anything already running
+  needs a reload, and both surfaces say so. Denial wins over broader grants,
+  activeTab gestures, and permission prompts — including prompts answered after
+  the tab navigated away. Removing an extension clears its site choices.
+- Verified by automated tests and offscreen renders only; keyboard/VoiceOver QA
+  is open (tracked with the accessibility pass).
+
+## Import completion: sessions and Firefox passwords
+
+- Firefox and Safari open tabs preview with a checkbox and reopen in the
+  destination profile — pinned tabs reopen pinned, already-open pages are
+  skipped so re-importing is idempotent, and private windows open nothing.
+  Firefox reads `recovery.jsonlz4`/`sessionstore.jsonlz4` (size-capped LZ4 via
+  the system framework); Safari reads the `URLString`/`Title` subset of
+  `LastSession.plist`. Malformed or oversized sessions fail before any write.
+  Chromium sessions remain explicitly unsupported.
+- Firefox passwords import without a Primary Password: `logins.json`
+  hostnames preview without decrypting, and a confirmed import unwraps
+  `key4.db` with CommonCrypto only (3DES-CBC and PBES2/AES-256-CBC). A set
+  Primary Password, legacy `key3.db` profiles, and unknown algorithms are
+  reported honestly as unsupported — never guessed at — and one bad login
+  never aborts the rest. Saved logins go straight to Keychain; reports carry
+  ordinals only, never hosts, usernames, or secrets.
+- Verified by automated tests on generated fixtures only (no real user
+  profile was read); real-Firefox byte compatibility, native report QA, and
+  keyboard/VoiceOver QA remain open.
+
+## Local page index and Resume topics
+
+- Settings → Privacy → Page text index (off by default) stores up to 4 KB of
+  readable text per page in an on-Mac full-text index, unencrypted in the
+  profile database — the card says so. Private windows, locked spaces,
+  separate-data spaces, and credentialed pages are never indexed; sites can
+  be excluded from the shield (which purges their pages) or re-included from
+  Settings, which also shows the size and clears the index. The index follows
+  history retention and clear-browsing-data instead of outliving them.
+- Matching pages appear as "Page text" rows in address suggestions and the
+  command palette, below history, and never in private windows.
+- New-tab "Resume topics" groups recently indexed pages with on-device
+  embeddings (term-overlap fallback, derived n-gram labels, at most three);
+  one click reopens a topic's pages.
+- Verified by automated tests and offscreen renders only; keyboard/VoiceOver
+  QA is open (tracked with the accessibility pass).
+
+## Developer tooling
+
+- `Benchmarks/benchmark-launch.sh` measures launch-to-first-frame from the app's
+  own milestones. Nothing has been measured yet; no launch-speed claim is made.
+
+## Spotlight and Handoff (both off by default)
+
+Development source, verified by automated tests only. Neither the real Spotlight
+index nor Handoff to another device has been tried.
+
+- Settings → General → Spotlight & Handoff. "Show bookmarks in Spotlight" adds
+  each bookmark's title and address, nothing else. Bookmarks saved from a
+  private window, a locked space or a separate-data space are never added,
+  even if the setting is on. Turning it off removes everything Browsemium added.
+- "Offer the open page to my other devices" offers the address of the page in
+  the active tab (https only) through Handoff. Private windows, locked spaces
+  and separate-data spaces never offer anything.
+- No AppleScript yet: a safety check of Apple events on a sandboxed app was
+  inconclusive, so nothing is shipped until it is finished.
+
+## Experimental: WebMCP page tools
+
+Development source, off by default, verified by automated tests (real WebKit
+and an obedient-client injection suite) and an offscreen render only. No live
+MCP client or WebMCP site has been tried.
+
+- Settings → External agents → Page tools (WebMCP, experimental). WebMCP is
+  an unfinished W3C Community Group draft and WebKit has formally opposed it,
+  so the switch is off and the feature never touches your own tabs.
+- When on, a task you approved with the new page-tools grant may list and call
+  the tools a site registers in the task's own window. Every call asks you,
+  names the page as the source of the tool, and shows the exact arguments. A
+  site's "read-only" label never skips the question.
+- Results and tool descriptions are passed to the agent as untrusted page text.
+
+## Accessibility pass (Plan 9, U9)
+
+Verified by automated tests and source scans. Not checked with VoiceOver,
+keyboard-only use or Increase Contrast by hand; see `QUALITY_PASS.md`.
+
+- Every animation in the chrome honours Reduce Motion, including the toolbar
+  loading line, the first-run steps, the assistant's page bar and the task
+  panel's border pulse. A source scan keeps it that way.
+- With Increase Contrast on, text tones, the border and the strong border use
+  stronger values, measured against their backgrounds.
+- The close button that appears when you hover a tab is also available to
+  VoiceOver as a "Close tab" action.
+- Settings fields whose placeholder was an example (API key, website, username,
+  custom search engine address) now have names.
+
+## Website
+
+- Landing page: a capture of the app window in the hero, labelled as test-fixture
+  data; the fallback font is matched to Geist so loading does not shift the page;
+  phone targets are 44 px; no horizontal scroll from 375 to 1280 px; motion is
+  shorter and is removed entirely with Reduce Motion.
+- The AI section and FAQ now mention Apple Intelligence on supported Macs.
+
+## Plan 9: interface
+
+Development source, verified by automated tests and offscreen renders only.
+
+- Text and quiet tones now meet 4.5:1 contrast in light and dark, measured by tests; the dark canvas is darker so panels stand out.
+- One type scale replaces seven near-identical text sizes; nothing in the chrome sets text below 11 pt.
+- Menus, the command palette, suggestions, the find bar, banners and toasts use Liquid Glass on macOS 26 and later, and a solid surface otherwise or with Reduce Transparency on.
+- Compact toolbar size (Settings → General) and a hover-reveal sidebar rail.
+- The status toast no longer cuts messages mid-sentence and stays longer for longer messages.
+- Command palette: group labels, site icons, kind badges.
+- Settings has a section list and a search field.
+- Motion goes through one helper that turns every animation off with Reduce Motion.
+- New-tab page: a search field that submits through the address bar's own resolver, the current space with a separate-data glyph, larger site tiles with favicons, and a "Pick up where you left off" row from recently closed and archived pages. Pages from locked spaces, or from other spaces' separate data, are never offered. Private windows keep the existing page.
+- Sidebar and tab strip: 16 pt site icons, a clearer selected row, pinned tabs in a three-column grid, an insertion line and folder highlight while dragging, a space-switcher row at the sidebar foot (shown only with two or more spaces, never in private windows), a sliding selection pill and insert/remove transitions in the tab strip, and the strip is asked to scroll the active tab into view (not yet seen live). All motion respects Reduce Motion.
+- Command palette: a preview pane for the highlighted open tab when the window is wide enough (a tab that is merely loaded is never called asleep), the same result rows as the address bar suggestions, a calculation or unit conversion as the first row (Return copies it), and visible key hints: Return opens, Command-Return opens in a new tab, Shift-Return opens in split view.

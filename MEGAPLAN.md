@@ -99,8 +99,8 @@ extension support; demo video, release "next month", possibly open source.
   history, logged-in sites), a skills gallery of shareable prompts, inline
   editing, natural-language address bar. The AI-native bar users now compare
   against — and its full-context model is exactly the privacy trade we reject.
-- **ChatGPT Atlas** (OpenAI) — agent mode + browser memories. **Deprecated:
-  stops working August 2026**, agentic browsing moves into the ChatGPT app.
+- **ChatGPT Atlas** (OpenAI) — agent mode + browser memories. **Retired in
+  July/August 2026 (sources differ on the date)**, agentic browsing moves into the ChatGPT app.
   Proof that an AI browser can strand its users; a durable, local-first
   browser is the counter-position.
 - **Arc Search 2.0** — Browse For Me (multi-hop research synthesis),
@@ -200,6 +200,25 @@ extension reinstalls, autofill, and session formats), the toolbar extension
 host and per-site controls, user filter lists, passkeys, CLI/MCP, visual QA,
 and the release-time memory gate. Treat those as open even when adjacent code
 exists; no performance or login-continuity claim follows from a partial import.
+
+### October 2026 landscape update
+
+`Plans/8-landscape-2026.md` studies 50 browsers and sets the current work order.
+Findings that changed priorities: Safari 27 ships a local MCP server and
+Automatic Tab Groups; Apple's Foundation Models framework exposes the on-device
+model with no key; Orion (June) and Brave (July) shipped containers; Dia added
+sync; Atlas is retired; every AI browser tested at Black Hat 2026 was open to
+prompt injection. Sync stays off by owner decision.
+
+### Plan 8 progress (2026-10-04)
+
+Shipped as development source, not yet released: smart space routing, Inspect,
+tracking-parameter stripping, the `browsemium://` scheme with Shortcuts actions
+and `browsemium-ctl`, the Apple Intelligence provider, tab-group suggestions and
+duplicate closing, page watch, per-site CSS tweaks, separate-data groups
+(containers), address-bar quick answers, auto-archive, a save-password offer,
+and a prompt-injection containment suite. Status per unit, including what was
+tried and dropped, is in `Plans/8-landscape-2026.md`.
 
 ## Roadmap
 

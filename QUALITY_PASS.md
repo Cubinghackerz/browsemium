@@ -487,3 +487,116 @@ trusted operation label plus error domain/code, not descriptions or SQL bindings
 - No release was cut; release notes and the installer manifest are unchanged.
 - Developer ID/notarization and the quiet-machine memory gate remain open.
 - No OpenUI scaffold, JavaScript toolchain, sync, telemetry, or Chromium work.
+
+
+## Plan 8 pass (2026-10-04)
+
+Automated evidence: package suite 911 tests passing; headless runner passing;
+`xcodebuild` build and test passing; `Scripts/verify-project.sh` clean;
+`git diff --check` clean. The Apple Intelligence tests ran against the real
+on-device model on this Mac. Still user QA: Shortcuts actions, Web Inspector
+window, notification permission, light/dark and VoiceOver for every new surface
+(route notice, password banner, grouping sheet, tweak editor, Settings cards,
+Archive). The memory gate was not run. Passkeys cannot ship ad-hoc signed
+(restricted entitlement is killed at launch).
+
+## 20% memory gate — owner run (verdict blank)
+
+Not run by any automated pass. The result below is filled in by the person who
+ran it on a quiet machine; nobody else records a verdict here, and no
+comparative claim ships until it is a recorded PASS.
+
+**Before you start**
+1. Quit every other WebKit app: Safari, Mail, Notes, Messages, anything that
+   shows web content, and any second copy of Browsemium. The harness refuses
+   to run (exit 3) if any `com.apple.WebKit.*` process exists, so a refusal
+   means the machine was not quiet. Do not work around it.
+2. Plug in power, set Low Power Mode off, and leave the Mac idle. Close
+   everything else you can.
+3. Use the build you intend to release (for example the universal DMG from
+   `Scripts/release/build-local-dmg.sh <version> --universal`), not a Debug build.
+
+**Commands**
+```sh
+python3 Benchmarks/generate-fixtures.py
+python3 Benchmarks/serve-fixtures.py --port 8791        # leave running in another terminal
+Benchmarks/benchmark-memory.sh --browsemium /Applications/Browsemium.app \
+    --chrome "/Applications/Google Chrome.app" --trials 5 --settle 60
+```
+If the run reports `INVALID`, raise `--settle` (for example 90) until every
+trial reports page processes, and rerun. Do not change the method. Cross-check
+one trial against Activity Monitor or Instruments.
+
+**Results template** (copy this block per run; leave blank until measured)
+
+| Field | Value |
+|---|---|
+| Date | |
+| Mac model / chip | |
+| RAM | |
+| macOS build | |
+| Browsemium version and signing | |
+| Chrome version | |
+| Power state / Low Power Mode | |
+| Trials / settle seconds | |
+| Browsemium median total (KB) | |
+| Browsemium app-only (KB) | |
+| Chrome median total (KB) | |
+| Reduction (%) | |
+| Harness status (PASS / FAIL / INVALID / refused) | |
+| Activity Monitor cross-check | |
+
+**Verdict:** ______ (PASS only if the harness printed `Gate: PASS` on a valid
+run and the cross-check agrees.)
+
+**Rule:** if the verdict is FAIL or INVALID, no lower-memory claim is published
+and the measurement method is not changed to make it pass.
+
+## Launch timing — owner run (no verdict, no claim)
+
+`Benchmarks/benchmark-launch.sh` reports median and p90 launch-to-first-frame
+and launch-to-idle from the app's own milestones. It is a regression number for
+this app on one Mac, not a comparison and not a marketing figure. Times start
+at the app's first mark, so kernel and dyld time is excluded, and the file cache
+is warm. Run it only with every other WebKit app quit:
+
+```sh
+Benchmarks/benchmark-launch.sh --app /Applications/Browsemium.app --trials 10 \
+    --output launch.json --keep-logs launch-logs
+```
+
+| Field | Value |
+|---|---|
+| Date / Mac model / macOS build | |
+| Browsemium version and signing | |
+| Trials / valid trials | |
+| first-frame median / p90 (ms) | |
+| idle median / p90 (ms) | |
+
+## Accessibility pass (Plan 9 U9) — automated scope and owner checklist
+
+**Automated (run by the suite, not by a person):**
+- `AccessibilitySourceScanTests`: every icon-only `Button` in `Sources/BrowsemiumUI` carries an `.accessibilityLabel`; every `.animation(` or `withAnimation` call consults Reduce Motion (`BrowserMotion` or `accessibilityReduceMotion`); every view that shows a button only while hovered also has an `.accessibilityAction(named:)`. Each scanner has a self-check on a known-bad and a known-good snippet.
+- `ContrastTests`: text tones meet 4.5:1 under Increase Contrast on every background, are never weaker than the standard tones, and the strong border reaches 3:1. These read the high-contrast tone values directly, because AppKit cannot construct the Increase Contrast appearances by name in a test.
+- `AgentTaskControlsTests`, `AgentGateRevocationTests`: task panel controls, hints, key equivalents and announcements; takeover, stop and expiry during a call.
+
+**Not tested by automation. Nobody has run these by hand, and no result is claimed here.**
+
+Owner checks, in order. Record the date, macOS build and result for each.
+
+1. **VoiceOver** (⌘F5). Walk the window: toolbar buttons read their names; the address field reads "Search or enter address"; tab rows read their titles and selected state; the rotor offers "Close tab" on a tab row; the collapsed sidebar rail reads "Show sidebar".
+2. **Keyboard reach.** Tab through the toolbar, the page, the assistant dock and the task panel. Known gap: tab rows are not keyboard-focusable. Tabs are reached with Control-Tab, Command-1 to Command-9, and the View menu. Confirm that is acceptable or report it.
+3. **Sidebar.** Collapse the sidebar, then use Control-Command-S to show and hide it. The hover reveal must have a keyboard equivalent.
+4. **Task panel.** Take over with Option-Command-P, then Stop with Command-period while paused. Hand back restores authority. VoiceOver announces "You are in control", "Control handed back" and "The task was stopped".
+5. **Grant and confirmation cards.** Focus lands on Decline. Allow is disabled for about a second. Return does not approve.
+6. **Increase Contrast** (System Settings → Accessibility → Display). In light and dark, check that the sidebar selection, field edges, separators and secondary labels stay readable. The palette's high-contrast values are an addition of this pass; judge whether they are too strong.
+7. **Reduce Transparency.** Menus, the palette, suggestions and banners become solid surfaces.
+8. **Reduce Motion.** Check the tab selection pill, the toolbar loading line, the first-run step change, the assistant's current-page bar and the task panel border. None should animate.
+9. **Settings.** VoiceOver reads each toggle with its name, including Spotlight & Handoff, Page tools (WebMCP), the page text index, and the API key and website fields.
+10. **Command palette.** Arrow keys move through rows; the highlighted row is announced; Return runs it; the preview pane does not steal focus.
+
+**Known limits, stated here so they are not forgotten:**
+- Tabs are not keyboard-focusable (see 2).
+- Focus order has not been reviewed in source or walked by hand; it is part of owner check 2.
+- The Increase Contrast switch is one `bestMatch` call in `BrowserPalette.adaptive(_:)`. The mapping is tested; the live switch is owner QA (item 6).
+- Hover-only controls keep their hover appearance; the new accessibility action gives the same command to VoiceOver, not to keyboard users.

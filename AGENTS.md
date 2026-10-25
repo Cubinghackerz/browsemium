@@ -136,6 +136,35 @@ measured an empty browser. Raise `--settle` until every trial reports page
 processes (cold start plus WebKit warm-up can take longer than a short settle),
 then rerun.
 
+### Launch timing
+
+```sh
+Benchmarks/benchmark-launch.sh --app /Applications/Browsemium.app --trials 10 \
+    --output launch.json --keep-logs launch-logs
+Benchmarks/benchmark-launch.sh --from-logs launch-logs   # re-parse saved logs; launches nothing
+```
+
+Runbook for a quiet machine:
+
+1. Quit every other WebKit app and Browsemium itself. The script refuses (exit 3)
+   while any `com.apple.WebKit.*` process or a Browsemium process exists, as the
+   memory harness does. Plug in power and leave the Mac idle.
+2. Run it against the build you care about. Each trial launches the app on a
+   fresh profile inside its container, waits for the `idle` milestone (default
+   30 s), quits it, and keeps that process's `com.browsemium.launch` log lines.
+3. The result is median and p90 per milestone. A trial that never reaches
+   `first-frame` and `idle` makes the run `INVALID` (exit 4) and no numbers are
+   reported; raise `--timeout` and rerun.
+
+What it measures: milliseconds since the app's first `LaunchMetrics` mark, so
+kernel and dyld time is excluded, and nothing runs `purge`, so the file cache is
+warm. Call it launch-to-first-frame, not "cold launch", unless you say so. It is
+a regression number for this app on one Mac. It is not compared with another
+browser and is never a marketing claim. Agents and CI never launch the app to
+produce numbers; `Scripts/tests/launch-benchmark/run.sh` checks the parsing
+against canned logs. Record results in `QUALITY_PASS.md` (templates for both this
+and the 20% memory gate are there, with the verdicts left blank for the owner).
+
 ## Content rules
 
 ```sh

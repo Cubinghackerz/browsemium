@@ -1,0 +1,8 @@
+Timestamp               Ty Process[PID:TID]
+2026-10-05 10:00:02.001 Df Browsemium[4102:1a2b3] [com.browsemium.launch:Points of Interest] launch process-start t+0ms
+2026-10-05 10:00:02.050 Df Browsemium[4102:1a2b3] [com.browsemium.launch:Points of Interest] launch environment-ready t+85ms
+2026-10-05 10:00:02.100 Df Browsemium[4102:1a2b3] [com.browsemium.launch:Points of Interest] launch model-ready t+170ms
+2026-10-05 10:00:02.200 Df Browsemium[4102:1a2b3] [com.browsemium.launch:Points of Interest] launch first-frame t+340ms
+2026-10-05 10:00:02.201 Df Browsemium[4102:1a2b3] [com.browsemium.launch:Points of Interest] launch first-frame t+9999ms
+2026-10-05 10:00:02.300 Df Browsemium[4102:1a2b3] [com.browsemium.launch:Points of Interest] launch idle t+900ms
+2026-10-05 10:00:02.300 Df OtherApp[777:9] [com.example.other:x] launch first-frame t+1ms

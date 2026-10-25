@@ -32,20 +32,39 @@
     font-weight: 100 900;
     font-display: swap;
   }
+  /* Fallback shown while Geist loads. Measured in Chromium: Geist's line box is
+     1.30 em, its width is 102.2% of Arial's. The vertical overrides are divided
+     by the size adjustment because the browser scales them with it. Result:
+     width within 0.1% and line box within 0.1% of Geist (Plans/9-ui-findings.md). */
+  @font-face {
+    font-family: "Geist Fallback";
+    src: local("Arial"), local("ArialMT"), local("Helvetica");
+    size-adjust: 102.2%;
+    ascent-override: 98.8%;
+    descent-override: 28.4%;
+    line-gap-override: 0%;
+  }
 
+  /* Tokens. Calm and precise: short UI durations, ease-out on entry, no overshoot.
+     The palette is the project's monochrome (DESIGN.md): no accent hue. */
   :root {
     color-scheme: light dark;
     --paper: #ffffff;
     --ink: #101010;
     --ink-2: #525252;
     --ink-3: #6f6f6f;
-    --rule: #e8e8e8;
-    --rule-2: #d6d6d6;
+    --rule: rgba(16, 16, 16, .10);
+    --rule-2: rgba(16, 16, 16, .22);
     --accent: #101010;
     --shell: 1120px;
-    --sans: "Geist", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    --header: 64px;
+    --section-y: clamp(72px, 11vw, 128px);
+    --sans: "Geist", "Geist Fallback", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
     --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
-    --ease: cubic-bezier(.19, 1, .22, 1);
+    --ease-out: cubic-bezier(.19, 1, .22, 1);
+    --dur-micro: 120ms;
+    --dur-ui: 200ms;
+    --dur-overlay: 260ms;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -53,14 +72,13 @@
       --ink: #f7f7f7;
       --ink-2: #b5b5b5;
       --ink-3: #929292;
-      --rule: #303030;
-      --rule-2: #555555;
+      --rule: rgba(247, 247, 247, .12);
+      --rule-2: rgba(247, 247, 247, .26);
       --accent: #f7f7f7;
     }
   }
 
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
   body {
     margin: 0;
     background: var(--paper);
@@ -83,14 +101,20 @@
     outline-offset: 3px;
     border-radius: 2px;
   }
+  /* Anchored sections clear the sticky header. */
+  section[id] { scroll-margin-top: var(--header); }
   .shell { width: min(var(--shell), calc(100% - 48px)); margin-inline: auto; }
   @media (max-width: 640px) { .shell { width: calc(100% - 40px); } }
   .skip {
     position: absolute; left: 16px; top: -64px; z-index: 40;
     padding: 10px 14px; background: var(--ink); color: var(--paper); font-size: 13px;
-    transition: top .2s var(--ease);
+    transition: top var(--dur-ui) var(--ease-out);
   }
   .skip:focus { top: 16px; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
 
   /* Nav */
   .nav {
@@ -102,27 +126,25 @@
   }
   .nav::after {
     content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
-    background: var(--rule); transform-origin: left;
+    background: var(--rule);
   }
-  .js .nav::after { transform: scaleX(0); animation: draw .9s .1s var(--ease) forwards; }
-  .nav .shell { min-height: 64px; display: flex; align-items: center; gap: 28px; }
+  .nav .shell { min-height: var(--header); display: flex; align-items: center; gap: 28px; }
   .wordmark { display: inline-flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 600; letter-spacing: -.02em; }
   .wordmark img { flex: none; display: block; }
   .nav-links { margin-left: auto; display: flex; align-items: center; gap: 26px; }
   .nav-links a { font-size: 14px; color: var(--ink-2); }
-  .nav-links a:not(.nav-cta) {
-    background-image: linear-gradient(currentColor, currentColor);
-    background-size: 0% 1px; background-repeat: no-repeat; background-position: 0 100%;
-    padding-bottom: 2px;
-    transition: background-size .35s var(--ease), color .2s ease;
+  .nav-links a:not(.nav-cta) { position: relative; padding-bottom: 2px; transition: color var(--dur-ui) ease; }
+  .nav-links a:not(.nav-cta)::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+    background: currentColor; transform: scaleX(0); transform-origin: left;
+    transition: transform var(--dur-ui) var(--ease-out);
   }
-  .nav-links a:not(.nav-cta):hover { color: var(--ink); background-size: 100% 1px; }
+  .nav-links a:not(.nav-cta):focus-visible::after { transform: scaleX(1); }
   .nav-cta {
     padding: 8px 15px; background: var(--ink); color: var(--paper) !important;
     font-weight: 550; border-radius: 2px;
-    transition: background .18s ease;
+    transition: background var(--dur-micro) ease, transform var(--dur-micro) var(--ease-out);
   }
-  .nav-cta:hover { background: var(--accent); }
   @media (max-width: 760px) {
     .nav-links { gap: 18px; }
     .nav-links a:not(.nav-cta):not(.nav-github) { display: none; }
@@ -144,23 +166,19 @@
   }
   .hero .line { display: block; }
   .hero .line > span { display: block; }
-  .js .hero .line { overflow: hidden; }
-  .js .hero .line > span { transform: translateY(112%); animation: heroRise 1s var(--ease) forwards; }
-  .js .hero .line:nth-child(2) > span { animation-delay: .09s; }
   .lede {
     max-width: 46ch; margin: 0 0 44px;
     color: var(--ink-2); font-size: clamp(1.125rem, 1.9vw, 1.3125rem); line-height: 1.5;
     text-wrap: pretty;
   }
-  .js .lede { opacity: 0; animation: rise .9s .34s var(--ease) forwards; }
 
   .command {
     display: flex; align-items: center; gap: 14px;
     max-width: 640px; padding: 15px 16px;
     border: 1px solid var(--rule-2); border-radius: 2px;
-    transition: border-color .25s ease;
+    transition: border-color var(--dur-ui) ease;
   }
-  .command:hover, .command:focus-within { border-color: var(--ink); }
+  .command:focus-within { border-color: var(--ink); }
   .command .prompt { flex: none; color: var(--ink-3); font-family: var(--mono); font-size: 13px; }
   .command code {
     flex: 1; min-width: 0; overflow-x: auto; padding: 1px 0;
@@ -169,53 +187,49 @@
   }
   .command code::-webkit-scrollbar { display: none; }
   .copy {
-    flex: none; padding: 8px 13px; border: 1px solid var(--rule-2); border-radius: 2px;
+    flex: none; min-width: 68px; padding: 8px 13px;
+    border: 1px solid var(--rule-2); border-radius: 2px;
     background: transparent; color: var(--ink); font: inherit; font-size: 13px; font-weight: 550;
-    cursor: pointer; min-width: 68px;
-    transition: background .18s ease, border-color .18s ease, color .18s ease;
+    cursor: pointer;
+    transition: background var(--dur-micro) ease, border-color var(--dur-micro) ease, color var(--dur-micro) ease, transform var(--dur-micro) var(--ease-out);
   }
-  .copy:hover:not(:disabled) { background: var(--ink); border-color: var(--ink); color: var(--paper); }
   .copy:disabled { cursor: default; }
   .copy.copied { border-color: var(--accent); color: var(--accent); background: transparent; }
-  .js .hero .command { opacity: 0; animation: rise .9s .46s var(--ease) forwards; }
 
   .hero-notes { max-width: 62ch; margin-top: 26px; display: grid; gap: 8px; }
   .hero-notes p { margin: 0; font-size: .8125rem; line-height: 1.55; color: var(--ink-3); }
   .hero-notes b { color: var(--ink-2); font-weight: 550; }
-  .js .hero-notes { opacity: 0; animation: rise .9s .58s var(--ease) forwards; }
+
+  /* Product visual: a real capture from the app's test fixtures. */
+  .shot { margin: clamp(48px, 7vw, 80px) 0 0; }
+  .shot img {
+    display: block; width: 100%; height: auto;
+    border: 1px solid var(--rule); border-radius: 10px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .05), 0 24px 48px -24px rgba(0, 0, 0, .3);
+  }
+  .shot figcaption { margin-top: 12px; font-size: .8125rem; color: var(--ink-3); }
 
   /* Spec table */
-  .spec { padding: 0 0 clamp(72px, 11vw, 128px); }
-  .spec-table { display: grid; }
+  .spec { padding: 0 0 var(--section-y); }
+  .spec-table { display: grid; margin: 0; }
   .spec-row {
     position: relative; display: grid; grid-template-columns: minmax(150px, 230px) 1fr;
     gap: 6px 40px; padding: 19px 0; align-items: baseline;
   }
   .spec-row::before {
     content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px;
-    background: var(--rule); transform-origin: left;
+    background: var(--rule);
   }
-  .js .spec-row::before { transform: scaleX(0); }
-  .js .spec-table.in .spec-row::before { animation: draw .65s var(--ease) forwards; }
-  .js .spec-table.in .spec-row:nth-child(2)::before { animation-delay: .05s; }
-  .js .spec-table.in .spec-row:nth-child(3)::before { animation-delay: .1s; }
-  .js .spec-table.in .spec-row:nth-child(4)::before { animation-delay: .15s; }
-  .js .spec-table.in .spec-row:nth-child(5)::before { animation-delay: .2s; }
-  .js .spec-table.in .spec-row:nth-child(6)::before { animation-delay: .25s; }
-  .js .spec-table.in .spec-row:nth-child(7)::before { animation-delay: .3s; }
-  .js .spec-table.in .spec-row:nth-child(8)::before { animation-delay: .35s; }
-  .js .spec-table.in .spec-row:nth-child(9)::before { animation-delay: .4s; }
-  .spec-table::after {
-    content: ""; display: block; height: 1px; background: var(--rule);
-    transform-origin: left;
-  }
-  .js .spec-table::after { transform: scaleX(0); }
-  .js .spec-table.in::after { animation: draw .65s .45s var(--ease) forwards; }
+  .spec-table::after { content: ""; display: block; height: 1px; background: var(--rule); }
   .spec-row dt { color: var(--ink-3); font-size: .8125rem; }
   .spec-row dd { margin: 0; color: var(--ink); font-size: .9375rem; line-height: 1.55; text-wrap: pretty; }
+  /* On narrow screens the label sits above its value; a side column would leave the value a few words wide. */
+  @media (max-width: 640px) {
+    .spec-row { grid-template-columns: 1fr; gap: 4px; }
+  }
 
   /* Sections */
-  .section { padding: clamp(72px, 11vw, 128px) 0; border-top: 1px solid var(--rule); }
+  .section { padding: var(--section-y) 0; border-top: 1px solid var(--rule); }
   .story { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr); gap: clamp(36px, 6vw, 88px); align-items: start; }
   h2 {
     margin: 0; max-width: 19ch;
@@ -261,12 +275,9 @@
   .tab-row.sleeping .tab-name { opacity: .35; }
   .tab-row.sleeping .s-live { opacity: 0; }
   .tab-row.sleeping .s-sleep { opacity: 1; }
-  .tabs.running .tab-row.sleeping .tab-name { animation: tabDim 9s ease-in-out infinite; }
-  .tabs.running .tab-row.sleeping .s-live { animation: tabLive 9s ease-in-out infinite; }
-  .tabs.running .tab-row.sleeping .s-sleep { animation: tabSleep 9s ease-in-out infinite; }
-  .tabs.running .tab-row.sleeping .tab-name,
-  .tabs.running .tab-row.sleeping .s-live,
-  .tabs.running .tab-row.sleeping .s-sleep { animation-play-state: paused; }
+  .tabs.running .tab-row.sleeping .tab-name { animation: tabDim 9s ease-in-out infinite; animation-play-state: paused; }
+  .tabs.running .tab-row.sleeping .s-live { animation: tabLive 9s ease-in-out infinite; animation-play-state: paused; }
+  .tabs.running .tab-row.sleeping .s-sleep { animation: tabSleep 9s ease-in-out infinite; animation-play-state: paused; }
   .tabs.running.in-view .tab-row.sleeping .tab-name,
   .tabs.running.in-view .tab-row.sleeping .s-live,
   .tabs.running.in-view .tab-row.sleeping .s-sleep { animation-play-state: running; }
@@ -296,41 +307,85 @@
   }
   .faq summary::-webkit-details-marker { display: none; }
   .plus { position: relative; width: 14px; height: 14px; flex: none; }
-  .plus::before, .plus::after { content: ""; position: absolute; background: var(--ink-3); transition: transform .4s var(--ease), background .2s ease; }
+  .plus::before, .plus::after { content: ""; position: absolute; background: var(--ink-3); }
   .plus::before { top: 6.5px; left: 0; width: 14px; height: 1px; }
   .plus::after { top: 0; left: 6.5px; width: 1px; height: 14px; transform-origin: center; }
   .faq details[open] .plus::before { background: var(--ink); }
   .faq details[open] .plus::after { transform: scaleY(0); }
-  .answer { max-width: 72ch; padding: 0 0 24px; color: var(--ink-2); font-size: .9375rem; }
+  .answer { max-width: 66ch; padding: 0 0 24px; color: var(--ink-2); font-size: .9375rem; }
   .answer p { margin: 0; }
   .answer p + p { margin-top: 10px; }
-  .js .faq details[open] .answer { animation: rise .45s var(--ease); }
 
   /* Footer */
   footer { border-top: 1px solid var(--rule); padding: 30px 0 54px; font-size: .8125rem; color: var(--ink-3); }
   footer .shell { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; }
+  [data-release-version] { font-variant-numeric: tabular-nums; }
   .footer-lockup { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); font-weight: 550; letter-spacing: -.02em; }
   .footer-lockup img { width: 20px; height: 20px; }
   footer .links { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-left: auto; }
   footer a { color: var(--ink-2); }
-  footer a:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 
-  /* Motion */
+  /* Hover affordances only where a pointer can hover. */
+  @media (hover: hover) {
+    .nav-links a:not(.nav-cta):hover { color: var(--ink); }
+    .nav-links a:not(.nav-cta):hover::after { transform: scaleX(1); }
+    .nav-cta:hover { background: var(--accent); }
+    .command:hover { border-color: var(--ink); }
+    .copy:hover:not(:disabled) { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+    footer a:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+  }
+
+  /* Touch targets are at least 44 px where a finger is the pointer. */
+  @media (pointer: coarse) {
+    .wordmark, .nav-links a, .nav-cta, .copy, footer .links a { min-height: 44px; display: inline-flex; align-items: center; }
+    footer .links a { padding: 0 2px; }
+  }
+
+  /* Long commands wrap on narrow screens instead of scrolling out of sight. */
+  @media (max-width: 560px) {
+    .command code { white-space: normal; }
+  }
+
+  /* Motion. Entering elements use ease-out; the hero is the only load sequence
+     and finishes within about 1.5 s. Nothing here blocks input. */
   @keyframes heroRise { from { transform: translateY(112%); } to { transform: translateY(0); } }
   @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes draw { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-  @keyframes drawStroke { to { stroke-dashoffset: 0; } }
   @keyframes tabDim { 0%, 16% { opacity: 1; } 30%, 72% { opacity: .35; } 86%, 100% { opacity: 1; } }
   @keyframes tabLive { 0%, 16% { opacity: 1; } 30%, 72% { opacity: 0; } 86%, 100% { opacity: 1; } }
   @keyframes tabSleep { 0%, 16% { opacity: 0; } 30%, 72% { opacity: 1; } 86%, 100% { opacity: 0; } }
 
+  @media (prefers-reduced-motion: no-preference) {
+    html { scroll-behavior: smooth; }
+    .nav::after { transform-origin: left; }
+    .js .nav::after { transform: scaleX(0); animation: draw .9s .1s var(--ease-out) forwards; }
+    .js .hero .line { overflow: hidden; }
+    .js .hero .line > span { transform: translateY(112%); animation: heroRise 1s var(--ease-out) forwards; }
+    .js .hero .line:nth-child(2) > span { animation-delay: .09s; }
+    .js .lede { opacity: 0; animation: rise .9s .34s var(--ease-out) forwards; }
+    .js .hero .command { opacity: 0; animation: rise .9s .46s var(--ease-out) forwards; }
+    .js .hero-notes { opacity: 0; animation: rise .9s .58s var(--ease-out) forwards; }
+    .js .shot { opacity: 0; animation: rise .8s .7s var(--ease-out) forwards; }
+    .js .spec-row::before { transform: scaleX(0); transform-origin: left; }
+    .js .spec-table::after { transform: scaleX(0); transform-origin: left; }
+    .js .spec-table.in .spec-row::before { animation: draw .65s var(--ease-out) forwards; }
+    .js .spec-table.in .spec-row:nth-child(2)::before { animation-delay: .05s; }
+    .js .spec-table.in .spec-row:nth-child(3)::before { animation-delay: .1s; }
+    .js .spec-table.in .spec-row:nth-child(4)::before { animation-delay: .15s; }
+    .js .spec-table.in .spec-row:nth-child(5)::before { animation-delay: .2s; }
+    .js .spec-table.in .spec-row:nth-child(6)::before { animation-delay: .25s; }
+    .js .spec-table.in .spec-row:nth-child(7)::before { animation-delay: .3s; }
+    .js .spec-table.in .spec-row:nth-child(8)::before { animation-delay: .35s; }
+    .js .spec-table.in .spec-row:nth-child(9)::before { animation-delay: .4s; }
+    .js .spec-table.in::after { animation: draw .65s .45s var(--ease-out) forwards; }
+    .js .faq details[open] .answer { animation: rise var(--dur-overlay) var(--ease-out); }
+    .plus::after { transition: transform var(--dur-ui) var(--ease-out), background var(--dur-ui) ease; }
+    .copy:active:not(:disabled), .nav-cta:active { transform: scale(.97); }
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    html { scroll-behavior: auto; }
     *, *::before, *::after { animation: none !important; transition: none !important; }
-    .js .hero .line > span { transform: none; }
-    .js .hero .line, .js .hero .lede, .js .hero .command, .js .hero-notes { opacity: 1; }
-    .js .spec-row::before, .js .spec-table::after { transform: none; }
-    .js .nav::after { transform: none; }
+    html { scroll-behavior: auto; }
   }
 </style>
 </head>
@@ -344,19 +399,26 @@
 </header>
 
 <main id="main">
-  <section class="hero">
+  <section class="hero" aria-labelledby="hero-title">
     <div class="shell">
-      <h1><span class="line"><span>Keep the web.</span></span><span class="line"><span>Lose the weight.</span></span></h1>
+      <h1 id="hero-title"><span class="line"><span>Keep the web.</span></span><span class="line"><span>Lose the weight.</span></span></h1>
       <p class="lede">A native Mac browser that unloads the tabs you are not using, keeps profiles separate, and puts the AI you already use beside the page. No Browsemium account, no product telemetry. Websites, extensions, and your chosen AI provider make their own network requests.</p>
       <div class="command">
         <span class="prompt" aria-hidden="true">$</span>
-        <code id="install-command">curl -fsSL https://browsemium.vercel.app/install.sh | bash</code>
-        <button class="copy" type="button" data-copy="#install-command" aria-live="polite">Copy</button>
+        <code id="install-command">curl -fsSL https://<wbr>browsemium.vercel.app/<wbr>install.sh | bash</code>
+        <button class="copy" type="button" data-copy="#install-command" data-copy-label="Install command" aria-label="Copy the install command">Copy</button>
       </div>
       <div class="hero-notes">
         <p>Verified before it is copied: release manifest, SHA-256 checksum, DMG integrity, signature, sandbox, and both architectures.</p>
         <p><b>Preview build:</b> ad-hoc signed, not notarized by Apple yet. If macOS blocks the first launch, allow it once in System Settings → Privacy &amp; Security → Open Anyway.</p>
       </div>
+      <figure class="shot">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="/images/browsemium-window-dark.png">
+          <img src="/images/browsemium-window-light.png" width="1600" height="1000" alt="The Browsemium window. A sidebar lists open tabs in the Personal space, the current page fills the middle, and the ChatGPT assistant panel is open on the right.">
+        </picture>
+        <figcaption>A capture from the app's test fixtures. The pages are placeholders, not a live session.</figcaption>
+      </figure>
     </div>
   </section>
 
@@ -366,7 +428,7 @@
         <div class="spec-row"><dt>Engine</dt><dd>WebKit, through Apple's frameworks</dd></div>
         <div class="spec-row"><dt>Platform</dt><dd>macOS 14 or newer; Apple silicon and Intel</dd></div>
         <div class="spec-row"><dt>Memory</dt><dd>Background tabs unload on a schedule you set, and reload when you return</dd></div>
-        <div class="spec-row"><dt>AI</dt><dd>Your provider, or a local Ollama model; keys stay in the macOS keychain</dd></div>
+        <div class="spec-row"><dt>AI</dt><dd>Your web subscription, an API key, Apple Intelligence on supported Macs, or Ollama; keys stay in the macOS keychain</dd></div>
         <div class="spec-row"><dt>Blocking</dt><dd>WebKit content rules. Rule state only, never an invented count</dd></div>
         <div class="spec-row"><dt>Profiles</dt><dd>Cookies, logins, history, and site data stay in separate lanes</dd></div>
         <div class="spec-row"><dt>Extensions</dt><dd>Chrome and Firefox style, through WebKit's extension APIs (beta, macOS 15.4+)</dd></div>
@@ -376,9 +438,9 @@
     </div>
   </section>
 
-  <section class="section" id="why">
+  <section class="section" id="why" aria-labelledby="why-title">
     <div class="shell story">
-      <h2>Good browser design is mostly knowing what not to keep alive.</h2>
+      <h2 id="why-title">Good browser design is mostly knowing what not to keep alive.</h2>
       <div class="story-body">
         <p>Most browsers keep every tab ready whether you looked at it five seconds ago or five days ago. Browsemium lets you set how long background tabs stay live and how many stay loaded.</p>
         <div class="tabs" id="tab-sleep" aria-hidden="true">
@@ -392,11 +454,11 @@
     </div>
   </section>
 
-  <section class="section" id="ai">
+  <section class="section" id="ai" aria-labelledby="ai-title">
     <div class="shell story">
-      <h2>The assistant works beside the page. You stay in control.</h2>
+      <h2 id="ai-title">The assistant works beside the page. You stay in control.</h2>
       <div class="story-body">
-        <p>Use ChatGPT, Claude, Gemini, Grok, or a local Ollama model beside the page you are reading, with the web subscription you already have or an optional API key. Web-provider sends include page metadata and bounded readable text by default; you can turn this off in Settings:</p>
+        <p>Use ChatGPT, Claude, Gemini, Grok, or a local Ollama model beside the page you are reading, with the web subscription you already have or an optional API key. On Macs that support Apple Intelligence, its on-device model needs no key. Web-provider sends include page metadata and bounded readable text by default; you can turn this off in Settings:</p>
         <dl class="ruled">
           <div class="ruled-row"><dt>Page title and a sanitized URL</dt><dd>when enabled</dd></div>
           <div class="ruled-row"><dt>Readable page text</dt><dd>prepared at send, bounded</dd></div>
@@ -408,9 +470,9 @@
     </div>
   </section>
 
-  <section class="section" id="move">
+  <section class="section" id="move" aria-labelledby="move-title">
     <div class="shell story">
-      <h2>Bring your browser setup with you, not your browser baggage.</h2>
+      <h2 id="move-title">Bring your browser setup with you, not your browser baggage.</h2>
       <div class="story-body">
         <p>The import guide finds compatible browsers and profiles, then previews what is ready before anything is written.</p>
         <dl class="ruled">
@@ -426,15 +488,15 @@
     </div>
   </section>
 
-  <section class="section install" id="install">
+  <section class="section install" id="install" aria-labelledby="install-title">
     <div class="shell story">
-      <h2>Install Browsemium.</h2>
+      <h2 id="install-title">Install Browsemium.</h2>
       <div class="story-body">
         <p>One command in Terminal. The installer checks the release manifest, SHA-256 checksum, DMG integrity, the app's signature, sandbox, and architectures before copying anything. Updates leave your profiles and tabs in place.</p>
         <div class="command">
           <span class="prompt" aria-hidden="true">$</span>
-          <code id="install-command-bottom">curl -fsSL https://browsemium.vercel.app/install.sh | bash</code>
-          <button class="copy" type="button" data-copy="#install-command-bottom" aria-live="polite">Copy</button>
+          <code id="install-command-bottom">curl -fsSL https://<wbr>browsemium.vercel.app/<wbr>install.sh | bash</code>
+          <button class="copy" type="button" data-copy="#install-command-bottom" data-copy-label="Install command" aria-label="Copy the install command">Copy</button>
         </div>
         <p class="install-detail"><span>Universal Mac app, Apple silicon and Intel</span><span>macOS 14+</span><span>Ad-hoc signed, not notarized yet</span><span>SHA-256 <code data-release-checksum>dde9ff5c435d5b59e64aa4015da2e823f8abe0156b6cdf6e1cb9b89ed527e06d</code></span></p>
         <p class="install-warning"><b>Preview build.</b> macOS may block the first launch; allow it once in System Settings → Privacy &amp; Security → Open Anyway. The installer never removes quarantine attributes, and the choice to open stays yours.</p>
@@ -442,14 +504,14 @@
     </div>
   </section>
 
-  <section class="section faq" id="faq">
+  <section class="section faq" id="faq" aria-labelledby="faq-title">
     <div class="shell">
-      <h2>Questions, answered plainly.</h2>
+      <h2 id="faq-title">Questions, answered plainly.</h2>
       <details><summary>Is Browsemium faster than Chrome?<span class="plus" aria-hidden="true"></span></summary><div class="answer"><p>Browsemium does not claim to render pages faster. It brings your browsing and AI workflows into one place, and lets you unload idle background tabs on a schedule you choose.</p></div></details>
       <details><summary>How does memory saver work?<span class="plus" aria-hidden="true"></span></summary><div class="answer"><p>Choose how long background tabs stay live and the maximum number to keep loaded. A sleeping tab reloads when you return. Browsemium reports the app memory it can measure; WebKit does not expose memory per tab.</p></div></details>
       <details><summary>What can the AI receive?<span class="plus" aria-hidden="true"></span></summary><div class="answer"><p>When enabled, a message can include the page title, a sanitized URL, and bounded readable page text. Screenshots, selections, and files are never attached automatically: you choose them for a message and review them before sending.</p></div></details>
       <details><summary>What comes over when I switch browsers?<span class="plus" aria-hidden="true"></span></summary><div class="answer"><p>The guide previews compatible profiles, bookmarks, history, Chromium-family passwords, search settings, and cookies before writing. Cookie transfer is off by default because cookies can grant account access. Password-manager CSV files can be mapped into Keychain. Extensions and engine-specific site data are not copied.</p></div></details>
-      <details><summary>Do I need an API key?<span class="plus" aria-hidden="true"></span></summary><div class="answer"><p>No. Use ChatGPT, Claude, Gemini, or Grok with the web subscriptions you already have. API keys are optional and stored in the macOS keychain. Ollama can run locally on this Mac.</p></div></details>
+      <details><summary>Do I need an API key?<span class="plus" aria-hidden="true"></span></summary><div class="answer"><p>No. Use ChatGPT, Claude, Gemini, or Grok with the web subscriptions you already have. API keys are optional and stored in the macOS keychain. Ollama can run locally on this Mac, and Apple Intelligence runs on this Mac with no key where your Mac supports it.</p></div></details>
       <details><summary>macOS says Browsemium can't be opened. Now what?<span class="plus" aria-hidden="true"></span></summary><div class="answer"><p>Preview builds are ad-hoc signed and not notarized by Apple yet, so Gatekeeper may block the first launch. Open System Settings → Privacy &amp; Security and choose <b>Open Anyway</b> next to Browsemium. The installer verifies the checksum, signature, sandbox, and architectures before anything is copied, and it never removes quarantine attributes. Developer ID signing and notarization return with the stable release.</p></div></details>
     </div>
   </section>
@@ -457,27 +519,42 @@
 
 <footer><div class="shell"><span class="footer-lockup"><img src="/favicon.svg" alt="">Browsemium</span><span><span data-release-version>2.1.1</span> · WebKit · macOS 14+</span><span>No account and no telemetry.</span><span class="links"><a href="https://github.com/Cubinghackerz/browsemium">Source</a><a href="https://github.com/Cubinghackerz/browsemium/releases">Releases</a><a href="https://github.com/Cubinghackerz/browsemium/issues">Issues</a></span></div></footer>
 
+<p class="sr-only" id="copy-status" role="status" aria-live="polite"></p>
+
 <script>
   document.documentElement.classList.add("js");
 
   // Progressive enhancement only. The page remains usable without JavaScript.
+  var copyStatus = document.getElementById("copy-status");
+  var copyBusy = false;
+  function announce(message) {
+    if (!copyStatus) return;
+    copyStatus.textContent = "";
+    window.setTimeout(function () { copyStatus.textContent = message; }, 40);
+  }
+
   document.addEventListener("click", function (event) {
     var button = event.target.closest("[data-copy]");
-    if (!button) return;
+    if (!button || copyBusy) return;
     var source = document.querySelector(button.getAttribute("data-copy"));
     if (!source) return;
     var original = button.textContent;
-    function showFeedback(message) {
-      button.textContent = message;
+    var what = button.getAttribute("data-copy-label") || "Command";
+
+    function showFeedback(label, message) {
+      copyBusy = true;
+      button.textContent = label;
       button.classList.add("copied");
-      button.disabled = true;
-      setTimeout(function () {
+      announce(message);
+      window.setTimeout(function () {
         button.textContent = original;
         button.classList.remove("copied");
-        button.disabled = false;
+        copyBusy = false;
       }, 1800);
     }
-    if (!navigator.clipboard || !window.isSecureContext) {
+
+    // Without a clipboard, the command is selected so Command-C still works.
+    function selectSource() {
       var range = document.createRange();
       range.selectNodeContents(source);
       var selection = window.getSelection();
@@ -485,13 +562,18 @@
         selection.removeAllRanges();
         selection.addRange(range);
       }
-      showFeedback("Selected");
+    }
+
+    if (!navigator.clipboard || !window.isSecureContext) {
+      selectSource();
+      showFeedback("Selected", what + " selected. Press Command-C to copy it.");
       return;
     }
     navigator.clipboard.writeText(source.textContent.trim()).then(function () {
-      showFeedback("Copied");
+      showFeedback("Copied", what + " copied.");
     }).catch(function () {
-      showFeedback("Copy failed");
+      selectSource();
+      showFeedback("Copy failed", "Copying failed. The command is selected; press Command-C to copy it.");
     });
   });
 

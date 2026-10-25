@@ -42,10 +42,14 @@ jobs:
           set -euo pipefail
           python3 Benchmarks/generate-fixtures.py
           bash -n Benchmarks/benchmark-memory.sh
+          bash -n Benchmarks/benchmark-launch.sh
           python3 -c "import ast; [ast.parse(open(p).read()) for p in ['Benchmarks/generate-fixtures.py','Benchmarks/serve-fixtures.py','Scripts/generate-content-rules.py']]"
 
       - name: Installer fixture tests
         run: Scripts/tests/installer/run.sh
+
+      - name: Launch benchmark parsing tests
+        run: Scripts/tests/launch-benchmark/run.sh
 
   app:
     name: Xcode app build and tests

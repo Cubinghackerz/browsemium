@@ -58,6 +58,24 @@ that require an account.
   Direct Firefox password decryption is not yet supported. Site storage does
   not transfer; detected Chromium extensions require a separate, confirmed
   reinstall and start disabled.
+- Site routing: send a site to a space; the tab moves with a notice and Undo,
+  and a locked space asks before anything moves into it
+- Separate groups: a group can keep its own cookies and logins, so one site can
+  hold two accounts. History, bookmarks and saved passwords stay shared, and
+  extensions do not run in these groups
+- Page tweaks: your own CSS per site, with a live preview; CSS that could load
+  anything from the network is refused
+- Tracking-parameter removal from links you open (not on sign-in addresses)
+- On-device assistant: Apple Intelligence runs on this Mac with no key; long pages
+  are read in sections
+- Tab-group suggestions and duplicate closing, previewed before anything changes
+- Page watch: told when a public page changes, only while Browsemium is open; it
+  loads pages without your cookies and keeps a fingerprint, not the text
+- Auto-archive for tabs you have not used (off by default)
+- Address-bar calculations and unit conversions, answered locally
+- `browsemium://` links, Shortcuts actions and `browsemium-ctl` can open a page,
+  search or switch space and nothing else
+- Offer to save a password after a sign-in (explicit Save; filled only when you choose)
 - Quick search-engine switching from the address bar, plus `!g` / `!d` / `!b` /
   `!br` one-off prefixes
 - Address-bar suggestions from local history and bookmarks only

@@ -3,21 +3,21 @@ name: Browsemium native macOS
 description: Restrained monochrome browser chrome with native task clarity.
 colors:
   browsemium-canvas-light: "rgb(90.2% 90.2% 90.2%)"
-  browsemium-canvas-dark: "rgb(10.6% 10.6% 10.6%)"
+  browsemium-canvas-dark: "rgb(7.5% 7.5% 7.5%)"
   browsemium-surface-light: "rgb(94.9% 94.9% 94.9%)"
-  browsemium-surface-dark: "rgb(11% 11% 11%)"
+  browsemium-surface-dark: "rgb(12.5% 12.5% 12.5%)"
   browsemium-raised-light: "rgb(97.6% 97.6% 97.6%)"
-  browsemium-raised-dark: "rgb(13.7% 13.7% 13.7%)"
+  browsemium-raised-dark: "rgb(15.5% 15.5% 15.5%)"
   browsemium-border-light: "rgb(0 0 0 / 0.10)"
   browsemium-border-dark: "rgb(255 255 255 / 0.09)"
   browsemium-border-strong-light: "rgb(0 0 0 / 0.18)"
   browsemium-border-strong-dark: "rgb(255 255 255 / 0.16)"
   browsemium-primary-light: "rgb(0 0 0 / 0.88)"
   browsemium-primary-dark: "rgb(255 255 255 / 0.90)"
-  browsemium-secondary-light: "rgb(0 0 0 / 0.56)"
-  browsemium-secondary-dark: "rgb(255 255 255 / 0.56)"
-  browsemium-tertiary-light: "rgb(0 0 0 / 0.38)"
-  browsemium-tertiary-dark: "rgb(255 255 255 / 0.36)"
+  browsemium-secondary-light: "rgb(0 0 0 / 0.70)"
+  browsemium-secondary-dark: "rgb(255 255 255 / 0.70)"
+  browsemium-tertiary-light: "rgb(0 0 0 / 0.58)"
+  browsemium-tertiary-dark: "rgb(255 255 255 / 0.58)"
   browsemium-accent-light: "rgb(0 0 0 / 0.92)"
   browsemium-accent-dark: "rgb(255 255 255 / 0.95)"
   browsemium-accent-fill-light: "rgb(11% 11% 11%)"
@@ -32,7 +32,7 @@ colors:
   browsemium-field-dark: "rgb(255 255 255 / 0.055)"
   browsemium-destructive-light: "rgb(76% 16% 16%)"
   browsemium-destructive-dark: "rgb(94% 42% 42%)"
-  browsemium-warning-light: "rgb(60% 40% 2%)"
+  browsemium-warning-light: "rgb(50% 32% 0%)"
   browsemium-warning-dark: "rgb(88% 68% 30%)"
   browsemium-success-light: "rgb(13% 45% 25%)"
   browsemium-success-dark: "rgb(44% 76% 55%)"
@@ -325,3 +325,34 @@ Symbols, or proof of native focus behavior.
 - Don't add ornamental glow, invented activity or unverifiable counts.
 - Don't promote the AI dock's local composition into a rule for every surface.
 - Don't describe approved future automation or fixture inspection as shipped capability or completed native QA.
+
+## Plan 9 additions (2026-10-04)
+
+- **Contrast is measured.** `ContrastTests` computes WCAG ratios on the real
+  dynamic colors in both appearances. Primary, secondary, tertiary and accent
+  text meet 4.5:1 on canvas, surface, raised and under hover, selection and
+  field tints; status colors meet 4.5:1 on the three base surfaces. Tertiary
+  is the quietest tone, not an unreadable one. The dark canvas is darker than
+  the panels so floating panels separate from it.
+- **Increase Contrast.** The primary, secondary, tertiary, border and strong
+  border tones each have a second pair of values, used when macOS reports the
+  high-contrast appearances (`BrowserPalette.Tone`). The tones are tested by
+  value; the switch itself is one `bestMatch` call and is owner QA.
+- **Type scale.** `BrowserType` has four steps: caption 11, small 12, body 13,
+  title 15. Text between 10 and 16 pt is set only through it
+  (`TypeScaleTests` scans the sources). Icon glyph sizes below 10 and display
+  sizes above 16 stay local.
+- **Motion.** `BrowserMotion` supplies the three chrome animations (standard,
+  overlay, quick); with Reduce Motion every one is nil. Glyph swaps use
+  `symbolEffect(.replace)`; the audio indicator animates only while sound plays.
+- **Floating surfaces.** `browsemiumOverlaySurface` is Liquid Glass on macOS 26
+  and later, and the solid raised surface with a hairline and shadow on older
+  systems, with Reduce Transparency on, or when `browsemiumFlatOverlays` is set
+  (offscreen renders cannot draw glass). Glass is for overlays only: menus,
+  palette, suggestions, find bar, banners, toasts. Never page content or the canvas.
+- **Compact chrome.** `ChromeStyle.compact` trims the toolbar to 36 pt and the
+  tab strip to 32 pt, drops the divider between them, and shows the bookmarks
+  bar only on the start page. A collapsed sidebar slides out over the page while
+  the pointer rests on its rail.
+- **Settings** are sections with a search field; narrow windows show the
+  sections as a row above the cards.

@@ -14,10 +14,37 @@ exists: (1) every click and type needs a native confirmation instead of
 running prompt-free within the grant; (2) task pages open in a dedicated
 non-activating panel, not a sidebar space; (3) no SSE stream, GET is 405. The
 `network.server` entitlement spike passed in two minimal sandboxed ad-hoc
-bundles, so the Unix-socket fallback was not needed. Still open: the packaged
-app's launch-to-endpoint path and a live client session were not exercised
-(the owner asked that the app not be launched), human takeover/pause and native
-keyboard/VoiceOver QA.
+bundles, so the Unix-socket fallback was not needed.
+
+Update (2026-10-05). Added: Take over / Hand back / Stop controls that work in
+every live state (Stop is reachable while paused, so ending a task never needs
+the window closed), key equivalents (Option-Command-P for Take over and Hand
+back, Command-period for Stop), a label and a spoken hint on every control, a
+VoiceOver announcement when a task is paused, handed back, waiting for an
+answer, finished or stopped, and a label on the task page. Gate tests cover a
+takeover while a call is in flight, Stop during a takeover, expiry and profile
+loss during a takeover. A real `URLSession` client now drives initialize,
+tools/list and a declined task against the real loopback listener, and a test
+pins the entitlements (no apple-events exception; `network.server` only in the
+WebKit app). Every click and type still needs a native confirmation.
+
+Still open, and not claimed: the packaged app's launch-to-endpoint path, a live
+MCP client session, and keyboard and VoiceOver QA. Owner checks, in order:
+1. Settings → External agents: turn it on, copy the Claude Code command, run it.
+   `curl -i -X POST http://127.0.0.1:47831/mcp` should return 401.
+2. From the client, request a task for one site. Confirm the card names the
+   client as unverified, shows the profile and origins, and the Allow button
+   stays disabled for about a second. Decline once; confirm the client sees a
+   declined error and no window opens.
+3. Request again and allow it. Read a page, then ask for a click: confirm the
+   confirmation card appears and nothing happens until you answer.
+4. During a pending confirmation, press Take over: the card disappears, the
+   client's next call fails, and the pages stay. Press Hand back: the clock kept
+   running. Press Stop while paused: the task ends and the pages stay.
+5. With VoiceOver on, tab through the panel: each button reads its name and
+   hint, and pausing is announced. Try Option-Command-P and Command-period.
+6. Switch profile and lock a space during a task: the window closes and the
+   client loses access.
 
 ## Delivery order
 

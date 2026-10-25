@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<dictionary xmlns:xi="http://www.w3.org/2003/XInclude" title="Throwaway Terminology">
+  <!-- The Cocoa standard suite supplies get/set/count. The first spike run
+       omitted it and a property read timed out; this version has not been run. -->
+  <xi:include href="file:///System/Library/ScriptingDefinitions/CocoaStandard.sdef" xpointer="xpointer(/dictionary/suite)"/>
+  <suite name="Throwaway Suite" code="THRW" description="Spike suite.">
+    <command name="open location" code="GURLGURL" description="Open a URL.">
+      <cocoa class="SpikeOpenLocation"/>
+      <direct-parameter type="text" description="The URL."/>
+      <result type="text" description="Echo."/>
+    </command>
+    <class-extension extends="application" description="The application.">
+      <property name="tab titles" code="tbTT" access="r" description="Titles.">
+        <type type="text" list="yes"/>
+        <cocoa key="tabTitles"/>
+      </property>
+    </class-extension>
+  </suite>
+</dictionary>
