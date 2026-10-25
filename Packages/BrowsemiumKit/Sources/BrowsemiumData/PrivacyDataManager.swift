@@ -13,6 +13,9 @@ public final class PrivacyDataManager: @unchecked Sendable {
         var statements: [String] = []
         if scope.contains(.history) {
             statements.append("DELETE FROM history_visits")
+            // Page text is history content: clearing history clears the
+            // index with it, so the copy never outlives the visits.
+            statements.append("DELETE FROM page_texts")
         }
         if scope.contains(.downloads) {
             statements.append("DELETE FROM downloads")

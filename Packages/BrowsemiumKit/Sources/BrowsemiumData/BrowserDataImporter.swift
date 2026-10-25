@@ -109,6 +109,9 @@ public struct BrowserImportResult: Sendable {
     public let extensionIDs: [String]
     /// The source browser's default search engine, when it could be converted.
     public let searchEngine: BrowserImportPreview.SearchEngine?
+    /// Open tabs to reopen in the destination profile. Opened by the caller
+    /// after a confirmed import, never by this importer itself.
+    public let sessionTabs: [BrowserImportPreview.SessionTab]
 
     public init(
         bookmarks: Int,
@@ -117,6 +120,7 @@ public struct BrowserImportResult: Sendable {
         cookies: [BrowserImportCookie] = [],
         extensionIDs: [String] = [],
         searchEngine: BrowserImportPreview.SearchEngine? = nil,
+        sessionTabs: [BrowserImportPreview.SessionTab] = [],
         report: BrowserImportReport = BrowserImportReport()
     ) {
         self.bookmarks = bookmarks
@@ -125,11 +129,12 @@ public struct BrowserImportResult: Sendable {
         self.cookies = cookies
         self.extensionIDs = extensionIDs
         self.searchEngine = searchEngine
+        self.sessionTabs = sessionTabs
         self.report = report
     }
 
     public var isEmpty: Bool {
-        bookmarks == 0 && historyVisits == 0 && credentials.isEmpty && cookies.isEmpty && extensionIDs.isEmpty && searchEngine == nil
+        bookmarks == 0 && historyVisits == 0 && credentials.isEmpty && cookies.isEmpty && extensionIDs.isEmpty && searchEngine == nil && sessionTabs.isEmpty
     }
 }
 
@@ -163,6 +168,15 @@ public struct BrowserImportPreview: Sendable {
         public let template: String
     }
 
+    /// An open tab from the source browser's saved session, listed without
+    ///   any page content. Pinned tabs reopen pinned.
+    public struct SessionTab: Sendable, Hashable {
+        let ordinal: Int
+        public let url: URL
+        public let title: String
+        public let isPinned: Bool
+    }
+
     public let source: BrowserImportSource
     public let bookmarks: [Bookmark]
     public let visits: [Visit]
@@ -174,22 +188,24 @@ public struct BrowserImportPreview: Sendable {
     public let searchEngine: SearchEngine?
     /// What this browser keeps encrypted and Browsemium will not touch.
     public let notImportable: [String]
+    public internal(set) var sessionTabs: [SessionTab] = []
 
     public var bookmarkCount: Int { bookmarks.count }
     public var historyCount: Int { visits.count }
     public var credentialCount: Int { credentials.count }
+    public var sessionTabCount: Int { sessionTabs.count }
 
     public var earliestVisit: Date? { visits.map(\.visitedAt).min() }
     public var latestVisit: Date? { visits.map(\.visitedAt).max() }
 
     public var isEmpty: Bool {
-        bookmarks.isEmpty && visits.isEmpty && credentials.isEmpty && cookieCount == 0 && extensionIDs.isEmpty && searchEngine == nil
+        bookmarks.isEmpty && visits.isEmpty && credentials.isEmpty && cookieCount == 0 && extensionIDs.isEmpty && searchEngine == nil && sessionTabs.isEmpty
     }
 }
 
 extension BrowserImportPreview: Identifiable {
     public var id: String {
-        "\(source.rawValue)-\(bookmarkCount)-\(historyCount)-\(credentialCount)-\(cookieCount)"
+        "\(source.rawValue)-\(bookmarkCount)-\(historyCount)-\(credentialCount)-\(cookieCount)-\(sessionTabCount)"
     }
 }
 
@@ -203,6 +219,9 @@ public struct BrowserImportOptions: Sendable {
     public var includesCookies: Bool
     public var includesExtensions: Bool
     public var includesSearchEngine: Bool
+    /// Reopens the source session's tabs in the destination profile. Pinned
+    /// tabs reopen pinned. Never opens into a private window.
+    public var includesSessionTabs: Bool
     /// Only history at or after this date is imported.
     public var historySince: Date?
     public var historyLimit: Int
@@ -214,6 +233,7 @@ public struct BrowserImportOptions: Sendable {
         includesCookies: Bool = false,
         includesExtensions: Bool = false,
         includesSearchEngine: Bool = false,
+        includesSessionTabs: Bool = true,
         historySince: Date? = nil,
         historyLimit: Int = 50_000
     ) {
@@ -223,6 +243,7 @@ public struct BrowserImportOptions: Sendable {
         self.includesCookies = includesCookies
         self.includesExtensions = includesExtensions
         self.includesSearchEngine = includesSearchEngine
+        self.includesSessionTabs = includesSessionTabs
         self.historySince = historySince
         self.historyLimit = historyLimit
     }
@@ -723,6 +744,7 @@ public final class BrowserDataImporter: @unchecked Sendable {
         let cookies = cookieCount(in: profile, source: source, report: &recorder.report)
         let extensionIDs = Self.extensionIDs(in: profile, source: source)
         let engine = searchEngine(in: profile, source: source)
+        let sessionTabs = Self.dedupeSessionTabs(Self.readSessionTabs(in: profile, source: source, recorder: &recorder))
         for index in 0..<(source.family == .safari ? 0 : cookies) {
             recorder.report.record(.cookie, ordinal: index + 1, outcome: .accepted, reason: .parsed)
         }
@@ -746,8 +768,93 @@ public final class BrowserDataImporter: @unchecked Sendable {
             cookieCount: cookies,
             extensionIDs: extensionIDs,
             searchEngine: engine,
-            notImportable: Self.notImportable(for: source)
+            notImportable: Self.notImportable(for: source),
+            sessionTabs: sessionTabs.map {
+                BrowserImportPreview.SessionTab(ordinal: $0.ordinal, url: $0.url, title: $0.title, isPinned: $0.isPinned)
+            }
         )
+    }
+
+    private struct ImportedSessionTab {
+        let ordinal: Int
+        let url: URL
+        let title: String
+        let isPinned: Bool
+    }
+
+    /// Reads the saved session for Firefox and Safari. Chromium-family
+    /// sessions (SNSS) are explicitly out of scope and yield nothing.
+    /// A missing session file is not a failure — it only means there is
+    /// nothing to reopen.
+    private static func readSessionTabs(
+        in profile: URL,
+        source: BrowserImportSource,
+        recorder: inout ImportReportRecorder
+    ) -> [ImportedSessionTab] {
+        switch source.family {
+        case .firefox:
+            do {
+                return try FirefoxSessionReader.readTabs(in: profile).map { tab in
+                    ImportedSessionTab(
+                        ordinal: recorder.parsed(.sessionTab, key: tab.url.absoluteString),
+                        url: tab.url, title: tab.title, isPinned: tab.isPinned)
+                }
+            } catch let error as FirefoxSessionReader.ReadError {
+                switch error {
+                case .missing:
+                    return []
+                case .tooLarge:
+                    recorder.report.record(.sessionTab, ordinal: 0, outcome: .unsupported, reason: .limitExceeded)
+                    return []
+                case .corrupt:
+                    recorder.unreadable(.sessionTab)
+                    return []
+                }
+            } catch {
+                recorder.unreadable(.sessionTab)
+                return []
+            }
+        case .safari:
+            do {
+                return try SafariSessionReader.readTabs(in: profile).map { tab in
+                    ImportedSessionTab(
+                        ordinal: recorder.parsed(.sessionTab, key: tab.url.absoluteString),
+                        url: tab.url, title: tab.title, isPinned: false)
+                }
+            } catch let error as SafariSessionReader.ReadError {
+                switch error {
+                case .missing:
+                    return []
+                case .corrupt:
+                    recorder.unreadable(.sessionTab)
+                    return []
+                }
+            } catch {
+                recorder.unreadable(.sessionTab)
+                return []
+            }
+        case .chromium:
+            return []
+        }
+    }
+
+    /// Keeps the first occurrence of each URL; when the same page is open
+    /// pinned in one window and unpinned in another, the pinned copy wins.
+    private static func dedupeSessionTabs(_ input: [ImportedSessionTab]) -> [ImportedSessionTab] {
+        var byURL: [String: ImportedSessionTab] = [:]
+        var order: [String] = []
+        for tab in input {
+            let key = tab.url.absoluteString
+            if let existing = byURL[key] {
+                if !existing.isPinned && tab.isPinned {
+                    byURL[key] = tab
+                }
+            } else {
+                byURL[key] = tab
+                order.append(key)
+            }
+        }
+        return order.compactMap { byURL[$0] }
     }
 
     /// Counts saved logins without decrypting them.
@@ -756,6 +863,14 @@ public final class BrowserDataImporter: @unchecked Sendable {
         source: BrowserImportSource,
         report: inout BrowserImportReport
     ) -> [BrowserImportPreview.Credential] {
+        // Firefox usernames stay encrypted until a confirmed import decrypts
+        // them; the preview lists hostnames only, with the name filled later.
+        if source.family == .firefox {
+            guard let rows = FirefoxPasswordReader.summarizeProfile(in: profile, report: &report) else {
+                return []
+            }
+            return rows.map { BrowserImportPreview.Credential(url: $0.url, username: $0.username) }
+        }
         guard source.supportsPasswordImport else { return [] }
         let databaseURL = profile.appendingPathComponent("Login Data")
         guard FileManager.default.fileExists(atPath: databaseURL.path) else { return [] }
@@ -861,7 +976,7 @@ public final class BrowserDataImporter: @unchecked Sendable {
             ]
         case .firefox:
             [
-                "Passwords are stored in Firefox's own encrypted key database and are not imported.",
+                "Passwords import only without a Firefox Primary Password; protected logins stay in Firefox — export a CSV from Firefox to move those.",
                 "Site storage does not move; some accounts may still ask you to sign in again."
             ]
         case .safari:
@@ -898,12 +1013,46 @@ public final class BrowserDataImporter: @unchecked Sendable {
             key = nil
         }
         if options.includesPasswords, !preview.credentials.isEmpty {
-            guard let key, let profile else {
+            guard let profile else {
                 throw ImportError.credentialsLocked(preview.source.displayName)
             }
-            let databaseURL = profile.appendingPathComponent("Login Data")
-            credentials = try readSQLite(databaseURL) { db in
-                try ChromeLoginDataReader.decryptLogins(database: db, key: key, report: &report)
+            // Firefox carries its own key inside key4.db — unlocked only by
+            // the empty password, never by a keychain secret or a guess.
+            if preview.source.family == .firefox {
+                let loginsURL = profile.appendingPathComponent("logins.json")
+                let keyURL = profile.appendingPathComponent("key4.db")
+                if !FileManager.default.fileExists(atPath: keyURL.path) {
+                    // A pre-58 `key3.db` profile is a version statement, not
+                    // damage — and a vanishing key4.db mid-flight aborts like
+                    // any other unreadable source database.
+                    if FileManager.default.fileExists(atPath: profile.appendingPathComponent("key3.db").path) {
+                        report.record(.password, ordinal: 0, outcome: .unsupported, reason: .unsupportedFormat)
+                    } else {
+                        throw ImportError.unreadableData("Firefox key database could not be read. Close Firefox and retry.")
+                    }
+                } else {
+                    let jsonSize: Int = {
+                        guard let attributes = try? FileManager.default.attributesOfItem(atPath: loginsURL.path),
+                              let size = attributes[.size] as? Int else { return 0 }
+                        return size
+                    }()
+                    if jsonSize > FirefoxPasswordReader.maxLoginsJSONBytes {
+                        report.record(.password, ordinal: 0, outcome: .unsupported, reason: .limitExceeded)
+                    } else {
+                        let json = (try? Data(contentsOf: loginsURL)) ?? Data()
+                        credentials = try readSQLite(keyURL) { db in
+                            FirefoxPasswordReader.decryptLogins(database: db, loginsJSON: json, report: &report)
+                        }
+                    }
+                }
+            } else {
+                guard let key else {
+                    throw ImportError.credentialsLocked(preview.source.displayName)
+                }
+                let databaseURL = profile.appendingPathComponent("Login Data")
+                credentials = try readSQLite(databaseURL) { db in
+                    try ChromeLoginDataReader.decryptLogins(database: db, key: key, report: &report)
+                }
             }
         }
         if options.includesCookies, preview.cookieCount > 0 {
@@ -923,6 +1072,22 @@ public final class BrowserDataImporter: @unchecked Sendable {
                 } else if category == .extension || category == .searchEngine {
                     report.record(category, ordinal: item.ordinal, stage: .transfer, outcome: .accepted, reason: .preparedForTransfer)
                 }
+            }
+        }
+        // Session tabs transfer like extensions: prepared here, opened by the
+        // caller after a confirmed import. The caller reports persistence.
+        let sessionTabs: [BrowserImportPreview.SessionTab]
+        if options.includesSessionTabs {
+            sessionTabs = preview.sessionTabs
+            for item in preview.sessionTabs {
+                report.record(.sessionTab, ordinal: item.ordinal, stage: .transfer,
+                              outcome: .accepted, reason: .preparedForTransfer)
+            }
+        } else {
+            sessionTabs = []
+            for item in preview.sessionTabs {
+                report.record(.sessionTab, ordinal: item.ordinal, stage: .transfer,
+                              outcome: .skipped, reason: .notSelected)
             }
         }
         var bookmarkCount = 0
@@ -981,6 +1146,7 @@ public final class BrowserDataImporter: @unchecked Sendable {
             cookies: cookies,
             extensionIDs: options.includesExtensions ? preview.extensionIDs : [],
             searchEngine: options.includesSearchEngine ? preview.searchEngine : nil,
+            sessionTabs: sessionTabs,
             report: report
         )
     }

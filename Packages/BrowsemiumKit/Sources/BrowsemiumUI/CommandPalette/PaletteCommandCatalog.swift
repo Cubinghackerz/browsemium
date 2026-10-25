@@ -41,7 +41,11 @@ enum PaletteCommandCatalog {
             BrowserPaletteCommand(id: "ai-summarize-tabs", title: "AI: Summarize Open Tabs", shortcut: "", command: .summarizeOpenTabs),
             BrowserPaletteCommand(id: "ai-rewrite", title: "AI: Rewrite Selection", shortcut: "", command: .aiQuickAction(.rewriteSelection)),
             BrowserPaletteCommand(id: "ai-shorten", title: "AI: Shorten Selection", shortcut: "", command: .aiQuickAction(.shortenSelection)),
-            BrowserPaletteCommand(id: "ai-bullets", title: "AI: Selection to Bullets", shortcut: "", command: .aiQuickAction(.bulletPoints))
+            BrowserPaletteCommand(id: "ai-bullets", title: "AI: Selection to Bullets", shortcut: "", command: .aiQuickAction(.bulletPoints)),
+            BrowserPaletteCommand(id: "group-tabs", title: "Group Tabs by Topic", shortcut: "", command: .suggestTabGroups),
+            BrowserPaletteCommand(id: "close-duplicates", title: "Close Duplicate Tabs", shortcut: "", command: .closeDuplicateTabs),
+            BrowserPaletteCommand(id: "web-inspector", title: "Show Web Inspector", shortcut: "⌥⌘I", command: .showWebInspector),
+            BrowserPaletteCommand(id: "watch-page", title: "Watch Page for Changes", shortcut: "", command: .watchPage)
         ]
     }
 }

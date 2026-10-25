@@ -119,8 +119,10 @@ final class FixtureServer: @unchecked Sendable {
         let resolved = route ?? Route(status: 404, body: "not found")
         let body = resolved.body.replacingOccurrences(of: "{{PORT}}", with: String(port))
         var head = "HTTP/1.1 \(resolved.status) \(resolved.status == 200 ? "OK" : "Status")\r\n"
-        head += "Content-Type: text/html; charset=utf-8\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n"
-        for (name, value) in resolved.headers {
+        // A route may supply its own Content-Type; otherwise pages are HTML.
+        let contentType = resolved.headers.first { $0.key.lowercased() == "content-type" }?.value ?? "text/html; charset=utf-8"
+        head += "Content-Type: \(contentType)\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n"
+        for (name, value) in resolved.headers where name.lowercased() != "content-type" {
             head += "\(name): \(value.replacingOccurrences(of: "{{PORT}}", with: String(port)))\r\n"
         }
         head += "\r\n"

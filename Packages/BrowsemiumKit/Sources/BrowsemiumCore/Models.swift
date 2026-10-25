@@ -64,9 +64,14 @@ public enum AIProviderID: String, CaseIterable, Codable, Sendable {
     /// Vercel's v0 generative-UI API. BYOK: the user's own v0 API key, stored
     /// in the keychain like every other key.
     case vercelV0
+    /// Apple's on-device model through the Foundation Models framework. No
+    /// key, no account, and nothing leaves the Mac. Needs macOS 26 and an
+    /// Apple Intelligence-capable Mac with the feature turned on.
+    case appleIntelligence
 
+    /// Runs on this Mac and needs no credential.
     public var isLocal: Bool {
-        self == .ollama
+        self == .ollama || self == .appleIntelligence
     }
 }
 
@@ -81,31 +86,41 @@ public struct BrowserSpace: Hashable, Codable, Sendable, Identifiable {
     /// unlocked Mac's files are still readable by anything running as the
     /// user, and Browsemium says so rather than implying encryption.
     public let isLocked: Bool
+    /// When set, this space keeps its cookies, logins and site storage in a
+    /// WebKit data store of its own, apart from the profile's and from every
+    /// other space's. History, bookmarks and saved passwords are still the
+    /// profile's. Chosen when the space is created and never changed after:
+    /// moving a space onto another store would silently orphan its logins.
+    public let dataStoreID: UUID?
+
+    public var hasSeparateData: Bool { dataStoreID != nil }
 
     public init(
         id: SpaceID = SpaceID(),
         name: String,
         createdAt: Date = Date(),
         color: String? = nil,
-        isLocked: Bool = false
+        isLocked: Bool = false,
+        dataStoreID: UUID? = nil
     ) {
         self.id = id
         self.name = name
         self.createdAt = createdAt
         self.color = color
         self.isLocked = isLocked
+        self.dataStoreID = dataStoreID
     }
 
     public func renamed(_ name: String) -> BrowserSpace {
-        BrowserSpace(id: id, name: name, createdAt: createdAt, color: color, isLocked: isLocked)
+        BrowserSpace(id: id, name: name, createdAt: createdAt, color: color, isLocked: isLocked, dataStoreID: dataStoreID)
     }
 
     public func withLocked(_ isLocked: Bool) -> BrowserSpace {
-        BrowserSpace(id: id, name: name, createdAt: createdAt, color: color, isLocked: isLocked)
+        BrowserSpace(id: id, name: name, createdAt: createdAt, color: color, isLocked: isLocked, dataStoreID: dataStoreID)
     }
 
-    /// Old rows and older exported sessions have no lock flag; decoding must
-    /// not fail over a field that simply did not exist yet.
+    /// Old rows and older exported sessions have no lock flag or data store;
+    /// decoding must not fail over a field that simply did not exist yet.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(SpaceID.self, forKey: .id)
@@ -113,6 +128,7 @@ public struct BrowserSpace: Hashable, Codable, Sendable, Identifiable {
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         color = try container.decodeIfPresent(String.self, forKey: .color)
         isLocked = try container.decodeIfPresent(Bool.self, forKey: .isLocked) ?? false
+        dataStoreID = try container.decodeIfPresent(UUID.self, forKey: .dataStoreID)
     }
 }
 
@@ -449,6 +465,12 @@ public enum BrowserCommand: Hashable, Sendable {
     case selectAdjacentTab(forward: Bool)
     case closeOtherTabs(TabID)
     case newPrivateWindow
+    case suggestTabGroups
+    case closeDuplicateTabs
+    case showWebInspector
+    case watchPage
+    /// Puts text on the pasteboard; the palette's quick answer uses it.
+    case copyText(String)
 }
 
 /// One-tap assistant workflows. Each bundles a context capture with a canned
@@ -633,6 +655,7 @@ public enum BrowsemiumError: Error, Equatable, Sendable {
     case fileTooLarge(String)
     case fileUnavailable(String)
     case providerUploadFailed(String)
+    case invalidInput(String)
 }
 
 extension BrowsemiumError: LocalizedError {
@@ -669,6 +692,8 @@ extension BrowsemiumError: LocalizedError {
         case .fileUnavailable(let message):
             message
         case .providerUploadFailed(let message):
+            message
+        case .invalidInput(let message):
             message
         }
     }

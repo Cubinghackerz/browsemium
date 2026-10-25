@@ -42,4 +42,23 @@ enum LibraryPaletteCommandProvider {
                 command: .openURLInNewTab(bookmark.url))
         }
     }
+
+    /// Page-text hits from the opt-in on-Mac index. Already FTS-ranked, so
+    /// this only fuzzy-filters and dedupes against open tabs.
+    static func pageTexts(_ entries: [PageTextEntry], query: String, session: BrowserSessionState,
+                          tabURLs: [TabID: URL]) -> [BrowserPaletteCommand] {
+        var seen = Set(session.tabs.compactMap { (tabURLs[$0.id] ?? $0.lastCommittedURL)?.absoluteString })
+        return entries.compactMap { entry -> (BrowserPaletteCommand, Int)? in
+            guard seen.insert(entry.url.absoluteString).inserted else { return nil }
+            let title = entry.title.isEmpty ? (entry.url.host ?? entry.url.absoluteString) : entry.title
+            let best = [title, entry.url.absoluteString, entry.snippet].compactMap {
+                FuzzyMatcher.score(query: query, candidate: $0)
+            }.max()
+            guard let best else { return nil }
+            return (BrowserPaletteCommand(id: "pagetext-\(entry.url.absoluteString)", title: title,
+                shortcut: entry.url.host ?? "", kind: .pageText,
+                subtitle: "Page text — \(entry.url.host ?? entry.url.absoluteString)",
+                command: .openURLInNewTab(entry.url)), best)
+        }.sorted { $0.1 > $1.1 }.prefix(4).map(\.0)
+    }
 }

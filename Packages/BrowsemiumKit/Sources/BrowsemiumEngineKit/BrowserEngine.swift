@@ -108,6 +108,19 @@ public protocol BrowserEngine: AnyObject {
     /// Replaces the per-host cosmetic CSS, keyed by lowercase hostname. The
     /// engine applies it at document start and to the current page.
     func replaceCosmeticRules(_ rulesByHost: [String: String])
+    /// Opens the web inspector for a tab, when developer tools are on and the
+    /// engine has one. Returns whether it opened.
+    func showWebInspector(tabID: TabID) -> Bool
+
+    // MARK: - Separate data stores
+
+    /// Registers a lookup the engine asks when it first builds a tab's web
+    /// view: which separate data store, if any, should the tab use. The first
+    /// non-nil answer wins. A tab already built keeps its store, so callers
+    /// discard a tab before moving it between stores.
+    @discardableResult
+    func addDataStoreResolver(_ resolver: @escaping @MainActor (TabID) -> UUID?) -> UUID
+    func removeDataStoreResolver(_ token: UUID)
 
     // MARK: - Settings, permissions, memory
 
@@ -146,6 +159,15 @@ public extension BrowserEngine {
     func cancelElementPicking(tabID: TabID) {}
 
     func replaceCosmeticRules(_ rulesByHost: [String: String]) {}
+
+    /// Opens the engine's own web inspector for a tab. Returns whether an
+    /// inspector opened. Engines without one keep the default.
+    func showWebInspector(tabID: TabID) -> Bool { false }
+
+    /// Engines that cannot isolate storage per space ignore the lookup, and
+    /// every tab uses the profile's store.
+    func addDataStoreResolver(_ resolver: @escaping @MainActor (TabID) -> UUID?) -> UUID { UUID() }
+    func removeDataStoreResolver(_ token: UUID) {}
 }
 
 /// Download progress, reported to every window.

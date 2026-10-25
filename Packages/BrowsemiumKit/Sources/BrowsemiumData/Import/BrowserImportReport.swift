@@ -4,7 +4,7 @@ import Foundation
 /// URLs, usernames, paths, source contents, or underlying errors in a report.
 public struct BrowserImportReport: Codable, Sendable, Equatable {
     public enum Category: String, Codable, Sendable, CaseIterable {
-        case bookmark, history, password, cookie, searchEngine, `extension`
+        case bookmark, history, password, cookie, searchEngine, `extension`, sessionTab
     }
 
     public enum Outcome: String, Codable, Sendable {
@@ -19,6 +19,7 @@ public struct BrowserImportReport: Codable, Sendable, Equatable {
         case parsed, imported, alreadyPresent, duplicateInSource
         case unsupportedURL, invalidItem, sourceUnreadable, destinationWriteFailed
         case decryptionFailed, notSelected, outsideSelection, preparedForTransfer, limitExceeded
+        case destinationNotOpen, primaryPasswordRequired, unsupportedFormat, privateWindow
     }
 
     public struct Item: Codable, Sendable, Equatable {
@@ -41,8 +42,12 @@ public struct BrowserImportReport: Codable, Sendable, Equatable {
 
     /// Finish only transfers actually offered by this result. A missing
     /// outcome cannot be presented as a successful persistence operation.
+    /// The reason mapping defaults to the plain imported/failed pair; callers
+    /// with richer per-outcome reasons (session-tab duplicates, private
+    /// windows, unopened destinations) pass their own.
     @discardableResult
-    public mutating func completeTransfer(_ category: Category, outcomes: [Outcome]) -> Bool {
+    public mutating func completeTransfer(_ category: Category, outcomes: [Outcome],
+                                          reasonFor: (Outcome) -> Reason = { $0 == .accepted ? .imported : .destinationWriteFailed }) -> Bool {
         let prepared = items.filter {
             $0.category == category && $0.stage == .transfer && $0.outcome == .accepted
         }
@@ -50,12 +55,15 @@ public struct BrowserImportReport: Codable, Sendable, Equatable {
         guard !items.contains(where: { $0.category == category && $0.stage == .persistence }) else { return false }
         for (item, outcome) in zip(prepared, outcomes) {
             record(category, ordinal: item.ordinal, stage: .persistence, outcome: outcome,
-                   reason: outcome == .accepted ? .imported : .destinationWriteFailed)
+                   reason: reasonFor(outcome))
         }
         return true
     }
 
-    mutating func record(_ category: Category, ordinal: Int, stage: Stage = .preview,
+    /// Appended by the import UI when it finishes a transfer the importer only
+    /// prepared (credentials, cookies, session tabs). Categories, ordinals,
+    /// and stages still come from the importer's own records.
+    public mutating func record(_ category: Category, ordinal: Int, stage: Stage = .preview,
                          outcome: Outcome, reason: Reason) {
         items.append(Item(category: category, ordinal: ordinal, stage: stage,
                           outcome: outcome, reason: reason))

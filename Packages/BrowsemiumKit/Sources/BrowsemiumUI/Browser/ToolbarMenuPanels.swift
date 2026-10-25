@@ -15,15 +15,7 @@ struct MenuPanelContainer<Content: View>: View {
         }
         .padding(6)
         .frame(width: 236)
-        .background(
-            RoundedRectangle(cornerRadius: BrowserMetrics.overlayRadius, style: .continuous)
-                .fill(Color.browsemiumRaised)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: BrowserMetrics.overlayRadius, style: .continuous)
-                .stroke(Color.browsemiumBorder, lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.18), radius: 14, y: 5)
+        .browsemiumOverlaySurface()
     }
 }
 
@@ -44,7 +36,7 @@ struct MenuPanelRow<Icon: View>: View {
                 icon()
                     .frame(width: 18, height: 18)
                 Text(title)
-                    .font(.system(size: 12, weight: isSelected ? .medium : .regular))
+                    .font(BrowserType.font(.small, weight: isSelected ? .medium : .regular))
                     .foregroundStyle(Color.browsemiumPrimary)
                     .lineLimit(1)
                 Spacer(minLength: 4)
@@ -82,11 +74,11 @@ struct MenuPanelActionRow: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 10))
+                    .font(BrowserType.font(.caption))
                     .foregroundStyle(Color.browsemiumSecondary)
                     .frame(width: 18, height: 18)
                 Text(title)
-                    .font(.system(size: 12))
+                    .font(BrowserType.font(.small))
                     .foregroundStyle(Color.browsemiumSecondary)
                 Spacer(minLength: 0)
             }
@@ -231,11 +223,11 @@ struct CredentialMenuPanel: View {
             if credentials.isEmpty {
                 HStack(spacing: 8) {
                     Image(systemName: "key.slash")
-                        .font(.system(size: 10))
+                        .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumTertiary)
                         .frame(width: 18, height: 18)
                     Text("No saved passwords for this site")
-                        .font(.system(size: 12))
+                        .font(BrowserType.font(.small))
                         .foregroundStyle(Color.browsemiumSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
@@ -253,7 +245,7 @@ struct CredentialMenuPanel: View {
                         model.fillCredential(credential)
                     } icon: {
                         Image(systemName: "person.crop.circle")
-                            .font(.system(size: 12))
+                            .font(BrowserType.font(.small))
                             .foregroundStyle(Color.browsemiumSecondary)
                     }
                 }
@@ -317,12 +309,12 @@ struct SiteShieldPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(model.activePageHost ?? "No site")
-                .font(.system(size: 12.5, weight: .medium))
+                .font(BrowserType.font(.body, weight: .medium))
                 .foregroundStyle(Color.browsemiumPrimary)
                 .lineLimit(1)
 
             Text(model.siteShieldStatus)
-                .font(.system(size: 11))
+                .font(BrowserType.font(.caption))
                 .foregroundStyle(Color.browsemiumSecondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .help("List sizes name distinct target hosts, including exceptions, not requests. Hosts already in the starter list are counted once.")
@@ -331,16 +323,16 @@ struct SiteShieldPanel: View {
                 Divider()
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Hide this element?")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(BrowserType.font(.small, weight: .semibold))
                         .foregroundStyle(Color.browsemiumPrimary)
                     Text(pick.matchCount > 1
                         ? "\(pick.label), matching \(pick.matchCount) elements"
                         : pick.label)
-                        .font(.system(size: 11))
+                        .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumSecondary)
                         .lineLimit(2)
                     Text(pick.selector)
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(BrowserType.font(.caption, design: .monospaced))
                         .foregroundStyle(Color.browsemiumTertiary)
                         .lineLimit(2)
                         .truncationMode(.middle)
@@ -354,28 +346,36 @@ struct SiteShieldPanel: View {
             Toggle("Pause blocking on this site", isOn: pauseBinding)
                 .toggleStyle(.switch)
                 .controlSize(.small)
-                .font(.system(size: 12))
+                .font(BrowserType.font(.small))
                 .disabled(!canPause)
 
             Text(pauseNote)
-                .font(.system(size: 11))
+                .font(BrowserType.font(.caption))
                 .foregroundStyle(Color.browsemiumTertiary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if model.currentSettings().indexPageTextOnMac {
+                Toggle("Exclude from page index", isOn: pageIndexExcludeBinding)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .font(BrowserType.font(.small))
+                    .disabled(model.activePageHost == nil || model.session.isPrivate)
+            }
 
             Toggle("Always open in Reader", isOn: readerBinding)
                 .toggleStyle(.switch)
                 .controlSize(.small)
-                .font(.system(size: 12))
+                .font(BrowserType.font(.small))
                 .disabled(model.activePageHost == nil || model.session.isPrivate)
 
             HStack(spacing: 8) {
                 Text("Zoom")
-                    .font(.system(size: 12))
+                    .font(BrowserType.font(.small))
                     .foregroundStyle(Color.browsemiumPrimary)
                 Spacer(minLength: 0)
                 BrowsemiumIconButton(systemName: "minus", label: "Zoom out") { model.zoomOut() }
                 Text("\(model.activeZoomPercent)%")
-                    .font(.system(size: 11.5, weight: .medium))
+                    .font(BrowserType.font(.small, weight: .medium))
                     .foregroundStyle(Color.browsemiumSecondary)
                     .frame(width: 40)
                 BrowsemiumIconButton(systemName: "plus", label: "Zoom in") { model.zoomIn() }
@@ -387,18 +387,18 @@ struct SiteShieldPanel: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text("Hidden elements")
-                        .font(.system(size: 12))
+                        .font(BrowserType.font(.small))
                         .foregroundStyle(Color.browsemiumPrimary)
                     Spacer(minLength: 0)
                     Text("⌘⇧H to hide one")
-                        .font(.system(size: 10.5))
+                        .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumTertiary)
                 }
                 if hiddenRules.isEmpty {
                     Text(model.session.isPrivate
                         ? "Elements hidden in this private window are forgotten when it closes."
                         : "Nothing hidden on this site yet.")
-                        .font(.system(size: 11))
+                        .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumTertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
@@ -406,11 +406,11 @@ struct SiteShieldPanel: View {
                         HStack(spacing: 6) {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(rule.label)
-                                    .font(.system(size: 11.5))
+                                    .font(BrowserType.font(.small))
                                     .foregroundStyle(Color.browsemiumSecondary)
                                     .lineLimit(1)
                                 Text(rule.selector)
-                                    .font(.system(size: 10, design: .monospaced))
+                                    .font(BrowserType.font(.caption, design: .monospaced))
                                     .foregroundStyle(Color.browsemiumTertiary)
                                     .lineLimit(1)
                                     .truncationMode(.middle)
@@ -428,18 +428,18 @@ struct SiteShieldPanel: View {
                     }
                 }
             }
+
+            Divider()
+
+            SiteTweaksSection(model: model)
+
+            Divider()
+
+            ExtensionSiteShieldSection(model: model)
         }
         .padding(12)
         .frame(width: 300, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: BrowserMetrics.overlayRadius, style: .continuous)
-                .fill(Color.browsemiumRaised)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: BrowserMetrics.overlayRadius, style: .continuous)
-                .stroke(Color.browsemiumBorder, lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.18), radius: 14, y: 5)
+        .browsemiumOverlaySurface()
     }
 
     private var canPause: Bool {
@@ -467,6 +467,16 @@ struct SiteShieldPanel: View {
         )
     }
 
+    private var pageIndexExcludeBinding: Binding<Bool> {
+        Binding(
+            get: { model.isPageTextExcluded(host: model.activePageHost) },
+            set: {
+                guard let host = model.activePageHost else { return }
+                model.setPageTextExcluded($0, host: host)
+            }
+        )
+    }
+
     private var hiddenRules: [CosmeticRule] {
         guard let host = model.activePageHost else { return [] }
         return model.cosmeticRules(for: host)
@@ -476,6 +486,67 @@ struct SiteShieldPanel: View {
         Binding(
             get: { rule.isEnabled },
             set: { model.setCosmeticRuleEnabled(rule, enabled: $0) }
+        )
+    }
+}
+
+/// Per-extension Allow / Ask / Deny for the site on screen, inside the site
+/// shield. Hidden when there is no host, in private windows, or with no
+/// extensions installed: site choices are never offered there.
+@MainActor
+struct ExtensionSiteShieldSection: View {
+    @Bindable var model: BrowserWindowModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Extensions on this site")
+                    .font(BrowserType.font(.small))
+                    .foregroundStyle(Color.browsemiumPrimary)
+                Spacer(minLength: 0)
+            }
+            if model.session.isPrivate {
+                Text("Extensions do not run in private windows.")
+                    .font(BrowserType.font(.caption))
+                    .foregroundStyle(Color.browsemiumTertiary)
+            } else if model.activePageHost == nil {
+                Text("Open a site to choose extension access.")
+                    .font(BrowserType.font(.caption))
+                    .foregroundStyle(Color.browsemiumTertiary)
+            } else if model.installedExtensions.filter(\.isEnabled).isEmpty {
+                Text("No enabled extensions.")
+                    .font(BrowserType.font(.caption))
+                    .foregroundStyle(Color.browsemiumTertiary)
+            } else {
+                ForEach(model.installedExtensions.filter(\.isEnabled)) { record in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(record.name)
+                            .font(BrowserType.font(.small))
+                            .foregroundStyle(Color.browsemiumSecondary)
+                            .lineLimit(1)
+                        BrowsemiumTabPicker(
+                            values: ExtensionSiteAccessMode.allCases,
+                            selection: modeBinding(for: record.id),
+                            label: \.title
+                        )
+                        .accessibilityLabel("\(record.name) on \(model.activePageHost ?? "this site")")
+                    }
+                }
+                Text("Blocking takes effect on the next load — anything already running here needs a reload.")
+                    .font(BrowserType.font(.caption))
+                    .foregroundStyle(Color.browsemiumTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func modeBinding(for extensionID: String) -> Binding<ExtensionSiteAccessMode> {
+        Binding(
+            get: { model.extensionSiteModeForActivePage(extensionID) ?? .ask },
+            set: {
+                guard let host = model.activePageHost else { return }
+                model.setExtensionSiteMode($0, for: extensionID, host: host)
+            }
         )
     }
 }

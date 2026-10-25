@@ -32,23 +32,23 @@ struct PasswordCSVImportSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Import passwords from CSV")
-                .font(.system(size: 16, weight: .semibold))
+                .font(BrowserType.font(.title, weight: .semibold))
             Text("Choose the columns from a browser or password-manager export. The source browser's encryption key is not read. Nothing is written until you import.")
-                .font(.system(size: 12))
+                .font(BrowserType.font(.small))
                 .foregroundStyle(Color.browsemiumSecondary)
             column("Website", selection: $siteColumn)
             column("Username", selection: $usernameColumn)
             column("Password", selection: $passwordColumn)
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.system(size: 11))
+                    .font(BrowserType.font(.caption))
                     .foregroundStyle(Color.browsemiumWarning)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Text("Import into \(destinationName)")
-                .font(.system(size: 12, weight: .medium))
+                .font(BrowserType.font(.small, weight: .medium))
             Text("\(mapped.count) of \(csv.rowCount) rows have a website, username, and password. Passwords go to macOS Keychain. The exported CSV contains readable passwords; delete it after importing.")
-                .font(.system(size: 11))
+                .font(BrowserType.font(.caption))
                 .foregroundStyle(Color.browsemiumSecondary)
             HStack {
                 BrowsemiumTextButton("Cancel", action: onCancel)
@@ -67,7 +67,7 @@ struct PasswordCSVImportSheet: View {
 
     private func column(_ title: String, selection: Binding<Int>) -> some View {
         HStack {
-            Text(title).font(.system(size: 12))
+            Text(title).font(BrowserType.font(.small))
             Spacer()
             Picker(title, selection: selection) {
                 ForEach(csv.headers.indices, id: \.self) { index in

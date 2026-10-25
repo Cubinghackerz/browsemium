@@ -317,3 +317,19 @@ func unlocksDoNotCarryAcrossProfiles() async throws {
     // from the previous profile must not leak through.
     #expect(model.unlockedSpaceIDs.isEmpty)
 }
+
+@Test @MainActor
+func renamingALockedSpaceKeepsItLocked() {
+    let model = BrowserWindowModel()
+    let personal = model.session.activeSpaceID
+    let secret = model.createGroup(named: "Secret")
+    model.switchGroup(personal)
+    model.setSpaceLocked(secret, locked: true)
+    #expect(model.session.spaces.first { $0.id == secret }?.isLocked == true)
+
+    model.renameGroup(secret, to: "Renamed")
+
+    let renamed = model.session.spaces.first { $0.id == secret }
+    #expect(renamed?.name == "Renamed")
+    #expect(renamed?.isLocked == true, "A rename must not remove the lock")
+}

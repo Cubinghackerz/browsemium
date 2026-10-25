@@ -1,5 +1,6 @@
 import AppKit
 import BrowsemiumCore
+import CoreSpotlight
 import SwiftUI
 import BrowsemiumEngineKit
 
@@ -21,8 +22,15 @@ public struct BrowsemiumAppView: View {
     @State private var ai: AIDockViewModel
     @State private var showFirstRun: Bool
     @State private var dockWidth: CGFloat
+    /// The collapsed sidebar slides out over the page while the pointer rests
+    /// on its rail, and slides back when the pointer leaves. It overlays the
+    /// page instead of resizing it, so nothing reflows.
+    @State private var isPeekingSidebar = false
+    @State private var sidebarPeekTask: Task<Void, Never>?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Whichever window is focused, so automation acts on the one in use.
+    @FocusedValue(\.browserModel) private var focusedModel
 
     private static let onboardingKey = "browsemium.hasCompletedOnboarding"
 
@@ -72,6 +80,17 @@ public struct BrowsemiumAppView: View {
                 .padding(.horizontal, BrowserMetrics.elementSeparation)
                 .padding(.top, BrowserMetrics.windowEdgeInset)
                 .padding(.bottom, BrowserMetrics.windowEdgeInset)
+                .overlay(alignment: .leading) {
+                    if model.tabLayout == .sidebar, model.isSidebarCollapsed, isPeekingSidebar {
+                        TabSidebar(model: model)
+                            .browsemiumOverlaySurface(radius: BrowserMetrics.panelRadius)
+                            .padding(.leading, BrowserMetrics.elementSeparation)
+                            .padding(.vertical, BrowserMetrics.windowEdgeInset)
+                            .onHover { setSidebarPeek($0) }
+                            .transition(sidebarTransition)
+                    }
+                }
+                .onChange(of: model.isSidebarCollapsed) { isPeekingSidebar = false }
                 .onChange(of: geometry.size.width) {
                     // A stored width must never squeeze the page out after the
                     // window shrinks.
@@ -83,8 +102,11 @@ public struct BrowsemiumAppView: View {
                 Color.black.opacity(0.18)
                     .ignoresSafeArea()
                     .onTapGesture { model.dismissCommandPalette() }
-                CommandPaletteView(model: model)
-                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                GeometryReader { geometry in
+                    CommandPaletteView(model: model, availableWidth: geometry.size.width)
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
 
             if let peek = model.peek {
@@ -119,22 +141,30 @@ public struct BrowsemiumAppView: View {
                 .transition(.opacity)
             }
 
-            if let offer = model.webStoreOffer, model.activePanel == .none {
-                VStack {
+            if model.activePanel == .none,
+               model.routing.notice != nil || model.passwordOffer != nil || model.webStoreOffer != nil {
+                VStack(alignment: .leading, spacing: 8) {
                     Spacer()
-                    HStack {
-                        WebStoreInstallBanner(model: model, offer: offer)
-                        Spacer(minLength: 0)
+                    if let notice = model.routing.notice {
+                        SpaceRouteNoticeBanner(model: model, notice: notice)
                     }
-                    .padding(.leading, 16)
-                    .padding(.bottom, 16)
+                    if let passwordOffer = model.passwordOffer {
+                        PasswordSaveBanner(model: model, offer: passwordOffer)
+                    }
+                    if let offer = model.webStoreOffer {
+                        WebStoreInstallBanner(model: model, offer: offer)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 16)
+                .padding(.bottom, 16)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .task(id: model.statusMessage) {
-            guard model.statusMessage != nil else { return }
-            try? await Task.sleep(for: .seconds(4))
+            guard let message = model.statusMessage else { return }
+            // Longer messages stay up longer: four seconds, plus one per forty characters.
+            try? await Task.sleep(for: .seconds(min(10, 4 + Double(message.count) / 40)))
             model.statusMessage = nil
         }
         .frame(
@@ -148,11 +178,25 @@ public struct BrowsemiumAppView: View {
         .tint(Color.browsemiumFocus)
         .preferredColorScheme(preferredScheme)
         .defaultAppStorage(model.environment.userDefaults)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: model.isAIDockVisible)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: model.isCommandPaletteVisible)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: model.peek?.tabID)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: model.tabLayout)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: model.isSidebarCollapsed)
+        .animation(BrowserMotion.standard(reduceMotion: reduceMotion), value: model.isAIDockVisible)
+        .animation(BrowserMotion.overlay(reduceMotion: reduceMotion), value: model.isCommandPaletteVisible)
+        .animation(BrowserMotion.overlay(reduceMotion: reduceMotion), value: model.peek?.tabID)
+        .animation(BrowserMotion.standard(reduceMotion: reduceMotion), value: model.tabLayout)
+        .animation(BrowserMotion.standard(reduceMotion: reduceMotion), value: model.isSidebarCollapsed)
+        .animation(BrowserMotion.overlay(reduceMotion: reduceMotion), value: model.routing.notice)
+        .animation(BrowserMotion.overlay(reduceMotion: reduceMotion), value: model.passwordOffer?.id)
+        .sheet(isPresented: Binding(
+            get: { model.tabGrouping.isPresented },
+            set: { if !$0 { model.tabGrouping.dismiss() } }
+        )) {
+            TabGroupSuggestionSheet(grouping: model.tabGrouping)
+        }
+        .sheet(isPresented: Binding(
+            get: { model.siteTweaks.isEditorPresented },
+            set: { if !$0 { model.siteTweaks.cancelEditor() } }
+        )) {
+            SiteTweakEditorSheet(tweaks: model.siteTweaks)
+        }
         .sheet(isPresented: $showFirstRun) {
             FirstRunView(model: model) {
                 model.environment.userDefaults.set(true, forKey: Self.onboardingKey)
@@ -170,10 +214,34 @@ public struct BrowsemiumAppView: View {
             model.performDeferredStartup()
         }
         .focusedSceneValue(\.browserModel, model)
+        .onChange(of: focusedModel.map(ObjectIdentifier.init)) {
+            if let focusedModel { LiveWindowIndex.shared.markActive(focusedModel) }
+        }
         .onOpenURL { url in
-            // Links from other apps (Mail, Slack, Terminal) when Browsemium is
-            // the default browser.
-            model.newTab(url: url)
+            if url.scheme?.lowercased() == AppURLCommand.scheme {
+                // browsemium:// links can only navigate; see AppURLCommand.
+                model.performURLCommand(url)
+            } else {
+                // Links from other apps (Mail, Slack, Terminal) when
+                // Browsemium is the default browser.
+                model.newTab(url: url)
+            }
+        }
+        .userActivity(NSUserActivityTypeBrowsingWeb, isActive: model.handoffURL != nil) { activity in
+            // Only an https address the policy allowed. Never searchable, never
+            // public, never carrying page content.
+            activity.webpageURL = model.handoffURL
+            activity.title = model.activeTab?.title
+            activity.isEligibleForHandoff = true
+            activity.isEligibleForSearch = false
+            activity.isEligibleForPublicIndexing = false
+        }
+        .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+            model.openHandedOff(activity.webpageURL)
+        }
+        .onContinueUserActivity(CSSearchableItemActionType) { activity in
+            guard let identifier = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String else { return }
+            model.openSpotlightResult(identifier: identifier)
         }
         .onChange(of: model.profileSwitchToken) {
             // Provider panels and conversations belong to the previous
@@ -236,9 +304,21 @@ public struct BrowsemiumAppView: View {
         .frame(width: 30)
         .frame(maxHeight: .infinity)
         .browsemiumPanel()
+        .onHover { setSidebarPeek($0) }
         .transition(sidebarTransition)
         .help("Show sidebar")
         .accessibilityLabel("Show sidebar")
+    }
+
+    /// Opens the sidebar after a short rest on the rail (so passing over it
+    /// does nothing) and closes it a moment after the pointer leaves both.
+    private func setSidebarPeek(_ hovering: Bool) {
+        sidebarPeekTask?.cancel()
+        sidebarPeekTask = Task {
+            try? await Task.sleep(for: .milliseconds(hovering ? 140 : 280))
+            guard !Task.isCancelled else { return }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) { isPeekingSidebar = hovering }
+        }
     }
 
     /// Persists the assistant dock width so it survives relaunches.
@@ -272,9 +352,12 @@ public struct BrowsemiumAppView: View {
             if model.tabLayout == .top {
                 BrowserTabStrip(model: model)
 
-                Rectangle()
-                    .fill(Color.browsemiumBorder)
-                    .frame(height: 1)
+                // Compact chrome lets the strip and toolbar read as one band.
+                if model.chromeStyle == .standard {
+                    Rectangle()
+                        .fill(Color.browsemiumBorder)
+                        .frame(height: 1)
+                }
             }
 
             BrowserToolbar(model: model)
@@ -283,7 +366,8 @@ public struct BrowsemiumAppView: View {
                 .fill(Color.browsemiumBorder)
                 .frame(height: 1)
 
-            if model.isBookmarksBarVisible, !model.bookmarks.isEmpty {
+            if model.isBookmarksBarVisible, !model.bookmarks.isEmpty,
+               model.chromeStyle == .standard || model.isShowingStartPage {
                 BookmarksBar(model: model)
 
                 Rectangle()
@@ -408,7 +492,7 @@ private struct LinkStatusBar: View {
                     .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
             } else {
                 Image(systemName: "link")
-                    .font(.system(size: 10))
+                    .font(BrowserType.font(.caption))
                     .foregroundStyle(Color.browsemiumTertiary)
                     .frame(width: 13, height: 13)
             }
@@ -416,12 +500,12 @@ private struct LinkStatusBar: View {
             VStack(alignment: .leading, spacing: 1) {
                 if let host = url.host {
                     Text(host)
-                        .font(.system(size: 10, weight: .medium))
+                        .font(BrowserType.font(.caption, weight: .medium))
                         .foregroundStyle(Color.browsemiumSecondary)
                         .lineLimit(1)
                 }
                 Text(url.absoluteString)
-                    .font(.system(size: 11))
+                    .font(BrowserType.font(.caption))
                     .foregroundStyle(Color.browsemiumSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -478,15 +562,15 @@ private struct ToastView: View {
 
     var body: some View {
         Text(message)
-            .font(.system(size: 12))
+            .font(BrowserType.font(.small))
             .foregroundStyle(Color.browsemiumPrimary)
-            .lineLimit(2)
+            // Never cut a sentence short: the toast grows to fit its message.
+            .fixedSize(horizontal: false, vertical: true)
             .multilineTextAlignment(.center)
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
-            .frame(maxWidth: 380)
-            .browsemiumPanel(background: .browsemiumRaised, radius: BrowserMetrics.controlRadius)
-            .shadow(color: .black.opacity(0.16), radius: 10, y: 3)
+            .frame(maxWidth: 420)
+            .browsemiumOverlaySurface(radius: BrowserMetrics.controlRadius, shadowOpacity: 0.16, shadowRadius: 10, shadowY: 3)
             .accessibilityAddTraits(.isStaticText)
     }
 }
@@ -502,7 +586,7 @@ private struct WebStoreInstallBanner: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "puzzlepiece.extension.fill")
-                .font(.system(size: 15))
+                .font(BrowserType.font(.title))
                 .foregroundStyle(Color.browsemiumSecondary)
                 .frame(width: 28, height: 28)
                 .background(
@@ -515,13 +599,13 @@ private struct WebStoreInstallBanner: View {
                 Text(offer.isInstalled
                      ? "“\(offer.name)” is already installed"
                      : "“\(offer.name)” is a Chrome extension")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(BrowserType.font(.small, weight: .medium))
                     .foregroundStyle(Color.browsemiumPrimary)
                     .lineLimit(1)
                 Text(offer.isInstalled
                      ? "Manage it in Settings. Chrome-only features may not run."
                      : "Install it in Browsemium (Beta). Chrome-only features may not run.")
-                    .font(.system(size: 11))
+                    .font(BrowserType.font(.caption))
                     .foregroundStyle(Color.browsemiumSecondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -549,8 +633,7 @@ private struct WebStoreInstallBanner: View {
             .padding(.top, 1)
         }
         .padding(12)
-        .browsemiumPanel(background: .browsemiumRaised, radius: BrowserMetrics.controlRadius)
-        .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
+        .browsemiumOverlaySurface(radius: BrowserMetrics.controlRadius, shadowRadius: 12, shadowY: 4)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Chrome extension available: \(offer.name). You can install it in Browsemium beta.")
     }

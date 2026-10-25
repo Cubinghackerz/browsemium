@@ -37,7 +37,7 @@ import SwiftUI
                 VStack(alignment: .leading, spacing: 4) {
                     if controller.isBusy { ProgressView().controlSize(.small) }
                     Text(statusText)
-                        .font(.system(size: 11))
+                        .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                     if case .failed = controller.state {
@@ -100,7 +100,7 @@ import SwiftUI
         SettingsRow(list.name) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("\(list.acceptedCount) supported \(list.acceptedCount == 1 ? "rule" : "rules") · \(list.skippedCount) skipped · \(list.isEnabled ? "Enabled" : "Disabled")")
-                    .font(.system(size: 11))
+                    .font(BrowserType.font(.caption))
                     .foregroundStyle(Color.browsemiumSecondary)
                 HStack(spacing: 12) {
                     Toggle("Enable \(list.name)", isOn: Binding(get: { list.isEnabled }, set: { enabled in

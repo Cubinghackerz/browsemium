@@ -189,6 +189,7 @@ targets:
     platform: macOS
     sources:
       - BrowsemiumApp/App
+      - BrowsemiumApp/Intents
       - Shared/AppShell
       - BrowsemiumApp/Assets.xcassets
     # XcodeGen *generates* this file from the properties below, so they are the
@@ -218,6 +219,16 @@ targets:
             CFBundleURLSchemes:
               - http
               - https
+          # browsemium:// links can open a page, search, or switch space and
+          # nothing else; see AppURLCommand in BrowsemiumCore.
+          - CFBundleURLName: Browsemium command
+            CFBundleURLSchemes:
+              - browsemium
+        # Handoff of the active tab's https address (Settings → Spotlight &
+        # Handoff, off by default). Declared so macOS can deliver a web
+        # activity to this app; nothing is published unless the person opts in.
+        NSUserActivityTypes:
+          - NSUserActivityTypeBrowsingWeb
     entitlements:
       path: BrowsemiumApp/Config/Browsemium.entitlements
       properties:

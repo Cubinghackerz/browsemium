@@ -24,11 +24,11 @@ struct SplitPaneView: View {
                 VStack(spacing: 8) {
                     BrowsemiumWatermark(size: 150)
                     Text("New tab")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(BrowserType.font(.small, weight: .medium))
                         .foregroundStyle(Color.browsemiumSecondary)
                     Button("Search or enter an address") { model.focusAddress() }
                         .buttonStyle(.plain)
-                        .font(.system(size: 11))
+                        .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumTertiary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -58,7 +58,7 @@ struct SplitPaneView: View {
                 .foregroundStyle(isFocused ? Color.browsemiumFocus : Color.browsemiumTertiary)
                 .accessibilityHidden(true)
             Text(tab.title)
-                .font(.system(size: 11))
+                .font(BrowserType.font(.caption))
                 .foregroundStyle(isFocused ? Color.browsemiumPrimary : Color.browsemiumSecondary)
                 .lineLimit(1)
                 .truncationMode(.tail)

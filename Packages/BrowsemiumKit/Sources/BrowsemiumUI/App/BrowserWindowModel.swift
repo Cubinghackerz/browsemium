@@ -74,6 +74,16 @@ public final class BrowserWindowModel: PermissionPrompting {
     public private(set) var downloads: [DownloadProgress] = []
     private var bookmarkedURLs: Set<String> = []
     public var isBookmarksBarVisible: Bool = true
+    /// Standard or compact toolbar and tab strip.
+    public var chromeStyle: ChromeStyle = .standard
+    /// Mirrors the Handoff setting so the window view can observe it.
+    public private(set) var isHandoffEnabled = false
+
+    /// True while the active tab shows the start page (no address yet).
+    public var isShowingStartPage: Bool {
+        guard let tabID = session.activeTabID else { return true }
+        return tabURLs[tabID] == nil && activeTab?.lastCommittedURL == nil
+    }
     /// Collapses the sidebar tab list to a slim rail in sidebar tab-layout
     /// mode. Persisted like the bookmarks bar so it survives relaunches.
     public var isSidebarCollapsed: Bool = false
@@ -89,6 +99,7 @@ public final class BrowserWindowModel: PermissionPrompting {
     /// Registrations handed back by the runtime. Every window registers its
     /// own, so one window closing cannot silence another.
     private var runtimeObserverTokens: [UUID] = []
+    private var dataStoreResolverToken: UUID?
     private var downloadObserverToken: UUID?
     private var permissionQueue: [PermissionRequest] = []
     private var permissionContinuations: [UUID: CheckedContinuation<SitePermissionDecision, Never>] = [:]
@@ -105,6 +116,13 @@ public final class BrowserWindowModel: PermissionPrompting {
     public private(set) var profileSwitchToken = 0
 
     public let paletteCommands: [BrowserPaletteCommand] = PaletteCommandCatalog.commands()
+    /// Site-to-space routing: rules, the reversible notice and its undo. The
+    /// window model only forwards events to it.
+    public let routing = SpaceRouteCoordinator()
+    /// "Group tabs by topic": suggestions, preview and apply.
+    public let tabGrouping = TabGroupingController()
+    /// Per-site CSS tweaks: the list, the editor and the live preview.
+    public let siteTweaks = SiteTweakController()
 
     public init(environment: BrowserEnvironment = BrowserEnvironment.inMemory()) {
         self.environment = environment
@@ -162,6 +180,8 @@ public final class BrowserWindowModel: PermissionPrompting {
         appearance = storedSettings.appearance
         searchEngineTemplate = storedSettings.searchEngineTemplate
         tabLayout = storedSettings.tabLayout
+        chromeStyle = storedSettings.chromeStyle
+        isHandoffEnabled = storedSettings.handoffActiveTab
         tabURLs = Dictionary(uniqueKeysWithValues: initialSession.tabs.compactMap { tab in
             tab.lastCommittedURL.map { (tab.id, $0) }
         })
@@ -191,6 +211,10 @@ public final class BrowserWindowModel: PermissionPrompting {
         paneTabIDs[paneID] = session.activeTabID
         activePaneID = paneID
         applyPrivateBrowsingModeToEngine()
+        routing.attach(model: self)
+        tabGrouping.attach(model: self)
+        siteTweaks.attach(model: self)
+        LiveWindowIndex.shared.register(self)
         LaunchMetrics.mark(.modelReady)
     }
 
@@ -245,6 +269,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         guard !session.isPrivate else { return }
         closePeek()
         closeSplitView()
+        clearPasswordOffer()
         let space = BrowserSpace(name: "Private")
         let tab = BrowserTab(spaceID: space.id, title: "New Tab", position: 0)
         session = BrowserSessionState(
@@ -284,6 +309,9 @@ public final class BrowserWindowModel: PermissionPrompting {
         refreshAISkills()
         reloadExtensions()
         persistSession()
+        retryPendingContainerRemovals()
+        archiveStaleTabs()
+        environment.pageWatches.start()
         LaunchMetrics.mark(.idle)
     }
 
@@ -303,6 +331,10 @@ public final class BrowserWindowModel: PermissionPrompting {
             case history
             case bookmark
             case search
+            /// A calculation or unit conversion, answered locally.
+            case answer
+            /// A match in the opt-in on-Mac page-text index.
+            case pageText
         }
 
         public let id: String
@@ -328,6 +360,21 @@ public final class BrowserWindowModel: PermissionPrompting {
         let query = addressText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty, !isAddressShowingCurrentPage else {
             addressSuggestions = []
+            return
+        }
+        // A sum or a unit conversion is answered on the spot, before the
+        // "looks like a URL" check: "3.5*2" has a dot and no space.
+        if let quick = QuickAnswer.evaluate(query) {
+            addressSuggestions = [
+                AddressSuggestion(
+                    id: "answer-\(query)",
+                    kind: .answer,
+                    title: "= \(quick.text)",
+                    subtitle: "\(quick.kind) — press Return to copy",
+                    value: quick.text
+                )
+            ]
+            highlightedSuggestion = 0
             return
         }
         // A typed URL is not a search.
@@ -362,7 +409,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         // they would surface the profile's past into a session meant to leave
         // no trace, so private windows suggest open tabs and search only.
         if !session.isPrivate {
-            let visits = (try? environment.historyRepository.search(query, limit: 12)) ?? []
+            let visits = (try? environment.historyRepository.suggest(query, limit: 12)) ?? []
             for visit in visits {
                 let key = visit.url.absoluteString
                 guard seen.insert(key).inserted else { continue }
@@ -375,6 +422,26 @@ public final class BrowserWindowModel: PermissionPrompting {
                         value: key
                     )
                 )
+            }
+            // Page-text hits come after history: they match words inside the
+            // page, a weaker signal than a title or address match. Only when
+            // the index is opted in; never in private windows.
+            if environment.loadSettings().indexPageTextOnMac {
+                let excluded = excludedPageTextHosts()
+                let hits = (try? environment.pageTextRepository.search(query, limit: 12, excluding: excluded)) ?? []
+                for hit in hits.prefix(3) {
+                    let key = hit.url.absoluteString
+                    guard seen.insert(key).inserted else { continue }
+                    suggestions.append(
+                        AddressSuggestion(
+                            id: "pagetext-\(key)",
+                            kind: .pageText,
+                            title: hit.title.isEmpty ? (hit.url.host ?? key) : hit.title,
+                            subtitle: "Page text — \(hit.url.host ?? key)",
+                            value: key
+                        )
+                    )
+                }
             }
         }
 
@@ -453,9 +520,14 @@ public final class BrowserWindowModel: PermissionPrompting {
             if let uuid = UUID(uuidString: suggestion.value) {
                 selectTab(TabID(rawValue: uuid))
             }
-        case .history, .bookmark, .search:
+        case .history, .bookmark, .search, .pageText:
             addressText = suggestion.value
             submitAddress()
+        case .answer:
+            // Copy the answer; leave the page and the bar as they were.
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(suggestion.value, forType: .string)
+            statusMessage = "Copied \(suggestion.value)"
         }
     }
 
@@ -575,13 +647,21 @@ public final class BrowserWindowModel: PermissionPrompting {
     }
 
     public func closeTab(_ tabID: TabID? = nil) {
+        closeTab(tabID, recordingInRecentlyClosed: true)
+    }
+
+    /// `recordingInRecentlyClosed` is false only when the tab was put away
+    /// automatically and has been filed in the Archive instead.
+    private func closeTab(_ tabID: TabID?, recordingInRecentlyClosed: Bool) {
         let targetID = tabID ?? session.activeTabID
         guard let targetID, let tab = session.tabs.first(where: { $0.id == targetID }) else { return }
+        routing.tabDidClose(targetID)
+        if passwordOffer?.tabID == targetID { clearPasswordOffer() }
 
         // A tab that never reached a page (a blank "New Tab") has nothing to
         // reopen — recording it would fill Recently Closed with dead rows. The
         // in-flight URL in tabURLs counts: a mid-load close still reopens.
-        if !session.isPrivate, let closedURL = tabURLs[targetID] ?? tab.lastCommittedURL {
+        if recordingInRecentlyClosed, !session.isPrivate, let closedURL = tabURLs[targetID] ?? tab.lastCommittedURL {
             do {
                 try environment.closedTabRepository.record(
                 BrowserTab(
@@ -749,6 +829,87 @@ public final class BrowserWindowModel: PermissionPrompting {
         selectTab(next.id)
     }
 
+    /// Runs a `browsemium://` link. Only navigation is possible (see
+    /// `AppURLCommand`); anything else is reported and ignored.
+    public func performURLCommand(_ url: URL) {
+        switch AppURLCommand.parse(url) {
+        case .failure(let error):
+            statusMessage = error.message
+        case .success(.open(let target)):
+            _ = newTab(url: target)
+        case .success(.search(let query)):
+            searchInNewTab(query)
+        case .success(.switchSpace(let name)):
+            guard !session.isPrivate else {
+                statusMessage = "Spaces are not available in a private window."
+                return
+            }
+            guard let space = session.spaces.first(where: { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) else {
+                statusMessage = "There is no space named “\(name)”."
+                return
+            }
+            // A locked space still asks for Touch ID or the password.
+            switchGroup(space.id)
+        }
+    }
+
+    /// Starts watching the page in the active tab for changes. Never from a
+    /// private window or a locked space, and only for ordinary https pages.
+    public func watchActivePage() {
+        guard !session.isPrivate else {
+            statusMessage = "Pages are not watched from a private window."
+            return
+        }
+        guard let tabID = session.activeTabID, isSpaceUnlocked(session.activeSpaceID),
+              let url = tabURLs[tabID] ?? activeTab?.lastCommittedURL,
+              url.scheme?.lowercased() == "https" else {
+            statusMessage = "Open an https page first, then choose Watch Page for Changes."
+            return
+        }
+        let title = activeTab?.title ?? ""
+        Task { [weak self] in
+            guard let self else { return }
+            self.statusMessage = await self.environment.pageWatches.watch(url: url, title: title)
+        }
+    }
+
+    /// Opens the Web Inspector for the active page. Developer tools are off
+    /// by default, so this explains how to turn them on rather than failing
+    /// silently.
+    public func showWebInspector() {
+        guard environment.loadSettings().developerToolsEnabled else {
+            statusMessage = "Turn on Developer tools in Settings to use the Web Inspector."
+            return
+        }
+        guard let tabID = session.activeTabID, !isReaderModeActive else {
+            statusMessage = "Open a page first. The inspector works on the page, not in Reader."
+            return
+        }
+        if !environment.engine.showWebInspector(tabID: tabID) {
+            statusMessage = "This page can't be inspected. Safari's Develop menu lists it if developer tools are on."
+        }
+    }
+
+    /// Tabs in this space that repeat another tab's page. The active tab is
+    /// always the copy that stays, so closing duplicates never moves you.
+    public var duplicateTabIDs: [TabID] {
+        var tabs = visibleTabs.map { (id: $0.id, url: tabURLs[$0.id] ?? $0.lastCommittedURL, isPinned: $0.isPinned) }
+        if let active = session.activeTabID, let index = tabs.firstIndex(where: { $0.id == active }) {
+            tabs.insert(tabs.remove(at: index), at: 0)
+        }
+        return TabDuplicates.duplicates(in: tabs)
+    }
+
+    public func closeDuplicateTabs() {
+        let doomed = duplicateTabIDs
+        guard !doomed.isEmpty else {
+            statusMessage = "No duplicate tabs"
+            return
+        }
+        for id in doomed { closeTab(id) }
+        statusMessage = "Closed \(doomed.count) duplicate \(doomed.count == 1 ? "tab" : "tabs")"
+    }
+
     /// Opens a copy of a tab directly after it — same address, same folder.
     /// The copy is a fresh navigation; nothing from the source page's state
     /// (scroll, form contents, history stack) carries over.
@@ -904,6 +1065,72 @@ public final class BrowserWindowModel: PermissionPrompting {
         persistSession()
     }
 
+    // MARK: - Imported session tabs
+
+    /// Most tabs reopened from one import. They arrive unloaded and load when
+    /// visited, like restored sessions — never as a storm of web views.
+    public static let maxImportedSessionTabsPerImport = 100
+
+    /// Opens tabs from a confirmed browser import, in source order, with the
+    /// source titles until each page loads. Pinned tabs reopen pinned.
+    /// Already-open URLs are skipped so re-importing is idempotent, and a
+    /// private window opens nothing. Returns per-tab outcomes in input order
+    /// for the import report.
+    @discardableResult
+    public func openImportedSessionTabs(_ tabs: [BrowserImportPreview.SessionTab]) -> [BrowserImportReport.Outcome] {
+        guard !session.isPrivate else {
+            statusMessage = "Imported tabs were not opened in this private window."
+            return tabs.map { _ in .skipped }
+        }
+        var open = Set(session.tabs.compactMap {
+            (tabURLs[$0.id] ?? $0.lastCommittedURL)?.absoluteString
+        })
+        var outcomes: [BrowserImportReport.Outcome] = []
+        var appended: [BrowserTab] = []
+        for tab in tabs {
+            guard !open.contains(tab.url.absoluteString) else {
+                outcomes.append(.duplicate)
+                continue
+            }
+            guard appended.count < Self.maxImportedSessionTabsPerImport else {
+                outcomes.append(.skipped)
+                continue
+            }
+            open.insert(tab.url.absoluteString)
+            outcomes.append(.accepted)
+            appended.append(BrowserTab(
+                spaceID: session.activeSpaceID,
+                title: tab.title,
+                lastCommittedURL: tab.url,
+                position: session.tabs.count + appended.count,
+                isPinned: tab.isPinned,
+                lifecycle: .metadataOnly
+            ))
+        }
+        guard !appended.isEmpty else { return outcomes }
+        let previousActive = session.activeTabID
+        session = BrowserSessionState(
+            spaces: session.spaces,
+            tabs: session.tabs + appended,
+            folders: session.folders,
+            activeSpaceID: session.activeSpaceID,
+            activeTabID: session.activeTabID,
+            isPrivate: session.isPrivate
+        )
+        persistSession()
+        // Show the first reopened tab; it loads on selection like any
+        // restored tab. The rest wait, unloaded, until visited.
+        if let first = appended.first {
+            selectTab(first.id)
+        } else {
+            notifyExtensionsOfStripChange(activated: session.activeTabID, previous: previousActive)
+        }
+        statusMessage = appended.count == 1
+            ? "Reopened 1 tab"
+            : "Reopened \(appended.count) tabs"
+        return outcomes
+    }
+
     // MARK: - Tab groups
 
     /// Tabs in the active group, in strip order.
@@ -915,12 +1142,17 @@ public final class BrowserWindowModel: PermissionPrompting {
         session.spaces.first { $0.id == session.activeSpaceID }
     }
 
+    /// Creates a space and switches to it. `separateData` gives it a website
+    /// data store of its own (a container): its cookies and logins are then
+    /// invisible to every other space. Chosen here, once; there is no way to
+    /// convert an existing space.
     @discardableResult
-    public func createGroup(named name: String, color: String? = nil) -> SpaceID {
+    public func createGroup(named name: String, color: String? = nil, separateData: Bool = false) -> SpaceID {
         let palette = ["#5B8DEF", "#8F6BE8", "#E8734A", "#3FA46A", "#D9A93B", "#C8557F"]
         let space = BrowserSpace(
             name: name,
-            color: color ?? palette[session.spaces.count % palette.count]
+            color: color ?? palette[session.spaces.count % palette.count],
+            dataStoreID: separateData && !session.isPrivate ? UUID() : nil
         )
         closeSplitView()
         let tab = BrowserTab(spaceID: space.id, title: "New Tab", position: session.tabs.count)
@@ -975,6 +1207,78 @@ public final class BrowserWindowModel: PermissionPrompting {
             self.unlockedSpaceIDs.insert(spaceID)
             self.performSwitchGroup(spaceID, thenSelect: requestedTabID)
         }
+    }
+
+    /// The separate data store this tab's space uses, or nil for the
+    /// profile's. Private windows never use one.
+    func dataStoreID(forTab tabID: TabID) -> UUID? {
+        guard !session.isPrivate,
+              let tab = session.tabs.first(where: { $0.id == tabID }) else { return nil }
+        return session.spaces.first { $0.id == tab.spaceID }?.dataStoreID
+    }
+
+    /// Every separate data store this profile's spaces use.
+    public var containerStoreIDs: [UUID] {
+        session.spaces.compactMap(\.dataStoreID)
+    }
+
+    /// Wipes a deleted space's cookies and logins, then removes its store.
+    /// If WebKit still has it open the removal is retried at the next launch;
+    /// the data itself is cleared either way.
+    private func removeContainerStore(_ identifier: UUID) {
+        let key = Self.pendingContainerRemovalsKey(for: environment.activeProfile)
+        let defaults = environment.userDefaults
+        let engine = environment.engine
+        Task {
+            await engine.removeAllData(dataStoreIdentifier: identifier)
+            do {
+                try await engine.removeProfileDataStore(dataStoreIdentifier: identifier)
+            } catch {
+                var pending = Set(defaults.stringArray(forKey: key) ?? [])
+                pending.insert(identifier.uuidString)
+                defaults.set(Array(pending), forKey: key)
+            }
+        }
+    }
+
+    private static func pendingContainerRemovalsKey(for profile: BrowserProfile) -> String {
+        "browsemium.pendingContainerRemovals.\(profile.id.uuidString)"
+    }
+
+    /// Tries again to remove stores whose spaces were deleted while WebKit
+    /// still held them.
+    func retryPendingContainerRemovals() {
+        let key = Self.pendingContainerRemovalsKey(for: environment.activeProfile)
+        let defaults = environment.userDefaults
+        let pending = (defaults.stringArray(forKey: key) ?? []).compactMap(UUID.init(uuidString:))
+        guard !pending.isEmpty else { return }
+        let live = Set(containerStoreIDs)
+        let engine = environment.engine
+        Task {
+            var failed: [String] = []
+            for identifier in pending where !live.contains(identifier) {
+                do {
+                    try await engine.removeProfileDataStore(dataStoreIdentifier: identifier)
+                } catch {
+                    failed.append(identifier.uuidString)
+                }
+            }
+            defaults.set(failed, forKey: key)
+        }
+    }
+
+    /// Asks the person to authenticate for a locked space and, on success,
+    /// unlocks it for this run. Returns whether they did. Used when something
+    /// other than a space switch needs the space open (routing a tab into it);
+    /// the caller decides what to do afterwards.
+    func unlockSpace(_ spaceID: SpaceID) async -> Bool {
+        guard let space = session.spaces.first(where: { $0.id == spaceID }) else { return false }
+        guard space.isLocked, !unlockedSpaceIDs.contains(spaceID) else { return true }
+        let authenticator = spaceUnlockAuthenticator ?? BiometricSpaceUnlockAuthenticator()
+        let granted = await authenticator.authenticate(reason: "Unlock “\(space.name)”")
+        guard granted, session.spaces.contains(where: { $0.id == spaceID }) else { return false }
+        unlockedSpaceIDs.insert(spaceID)
+        return true
     }
 
     /// The actual space switch. `switchGroup` gates locked spaces and calls
@@ -1106,9 +1410,9 @@ public final class BrowserWindowModel: PermissionPrompting {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let spaces = session.spaces.map { space in
-            space.id == spaceID
-                ? BrowserSpace(id: space.id, name: trimmed, createdAt: space.createdAt, color: space.color)
-                : space
+            // `renamed` carries every other property (lock, data store)
+            // across; rebuilding the space by hand dropped the lock.
+            space.id == spaceID ? space.renamed(trimmed) : space
         }
         session = BrowserSessionState(
             spaces: spaces,
@@ -1138,6 +1442,8 @@ public final class BrowserWindowModel: PermissionPrompting {
             notifyExtensionsOfStripChange(closed: tab.id)
         }
         unlockedSpaceIDs.remove(spaceID)
+        routing.spaceDidDelete(spaceID)
+        if let store = space.dataStoreID { removeContainerStore(store) }
         var spaces = session.spaces.filter { $0.id != spaceID }
         var tabs = session.tabs.filter { $0.spaceID != spaceID }
         // A deleted group takes its folders with it.
@@ -1188,6 +1494,17 @@ public final class BrowserWindowModel: PermissionPrompting {
               tab.spaceID != spaceID,
               session.spaces.contains(where: { $0.id == spaceID }) else { return }
         let folderID = tab.folderID
+        // A web view keeps the website data store it was built with, so a tab
+        // that moves between stores is released here and rebuilt from its
+        // address in the new one. Nothing from the old store follows it.
+        let sourceStore = session.spaces.first { $0.id == tab.spaceID }?.dataStoreID
+        let targetStore = session.spaces.first { $0.id == spaceID }?.dataStoreID
+        if sourceStore != targetStore {
+            if let url = tabURLs[tabID] ?? tab.lastCommittedURL {
+                tabURLs[tabID] = url
+            }
+            environment.engine.discard(tabID: tabID)
+        }
         updateTab(tabID) { tab in
             // Folders belong to a space, so a tab that changes groups leaves
             // its folder behind.
@@ -1211,6 +1528,11 @@ public final class BrowserWindowModel: PermissionPrompting {
         // If the active tab just left the visible group, follow it.
         if session.activeTabID == tabID, spaceID != session.activeSpaceID {
             switchGroup(spaceID)
+        }
+        // A tab released above is rebuilt in its new store right away when
+        // it is the one on screen; any other loads when it is next selected.
+        if sourceStore != targetStore, session.activeTabID == tabID {
+            ensureLoaded(tabID)
         }
         persistSession()
     }
@@ -2018,6 +2340,11 @@ public final class BrowserWindowModel: PermissionPrompting {
         statusMessage = "Element shown again"
     }
 
+    /// Called by controllers whose CSS rides the same injection.
+    func pageStylesDidChange() {
+        refreshCosmeticRules()
+    }
+
     /// Rebuilds the per-host CSS the engine injects. Called at launch, after
     /// a profile switch, and after any rule change.
     private func refreshCosmeticRules() {
@@ -2030,6 +2357,11 @@ public final class BrowserWindowModel: PermissionPrompting {
         for (host, rules) in privateCosmeticRules {
             let css = CosmeticRuleRepository.css(for: rules)
             guard !css.isEmpty else { continue }
+            rulesByHost[host] = rulesByHost[host].map { $0 + "\n" + css } ?? css
+        }
+        // A person's own tweaks follow the hidden elements, so a tweak can
+        // restyle what is left. Same injection, same live update.
+        for (host, css) in siteTweaks.cssByHost() {
             rulesByHost[host] = rulesByHost[host].map { $0 + "\n" + css } ?? css
         }
         environment.engine.replaceCosmeticRules(rulesByHost)
@@ -2272,8 +2604,11 @@ public final class BrowserWindowModel: PermissionPrompting {
         searchEngineTemplate = settings.searchEngineTemplate
         isAIDockVisible = settings.isAIDockEnabled
         tabLayout = settings.tabLayout
+        chromeStyle = settings.chromeStyle
+        isHandoffEnabled = settings.handoffActiveTab
         environment.engine.apply(settings)
         applyAppearanceToApp()
+        environment.spotlight.reconcile()
     }
 
     /// Keeps the whole process in the chosen appearance.
@@ -2373,6 +2708,10 @@ public final class BrowserWindowModel: PermissionPrompting {
         }
 
         var results: [BrowserPaletteCommand] = []
+        // A sum or a unit conversion answers first, ahead of the search row.
+        if let answer = PaletteAnswer.row(for: trimmedQuery) {
+            results.append(answer)
+        }
         if let primary = IntentPaletteCommandProvider.primary(for: trimmedQuery,
             searchTemplate: environment.loadSettings().searchEngineTemplate, searchEngineName: activeSearchEngineName) {
             results.append(primary)
@@ -2386,6 +2725,11 @@ public final class BrowserWindowModel: PermissionPrompting {
         results += LibraryPaletteCommandProvider.history((try? environment.historyRepository.recent(limit: 200)) ?? [],
             query: trimmedQuery, session: session, tabURLs: tabURLs)
         results += LibraryPaletteCommandProvider.ranked(LibraryPaletteCommandProvider.bookmarks(bookmarks), query: trimmedQuery, limit: 5)
+        if !session.isPrivate, environment.loadSettings().indexPageTextOnMac {
+            let hits = (try? environment.pageTextRepository.search(
+                trimmedQuery, limit: 12, excluding: excludedPageTextHosts())) ?? []
+            results += LibraryPaletteCommandProvider.pageTexts(hits, query: trimmedQuery, session: session, tabURLs: tabURLs)
+        }
         return results
     }
 
@@ -2502,6 +2846,16 @@ public final class BrowserWindowModel: PermissionPrompting {
             // The palette view (which can open windows) intercepts this; the
             // model path just arms the request so the next window complies.
             PrivateWindowRequest.shared.arm()
+        case .suggestTabGroups:
+            tabGrouping.begin()
+        case .closeDuplicateTabs:
+            closeDuplicateTabs()
+        case .showWebInspector:
+            showWebInspector()
+        case .watchPage:
+            watchActivePage()
+        case .copyText(let text):
+            copyTextToPasteboard(text)
         }
     }
 
@@ -2637,7 +2991,14 @@ public final class BrowserWindowModel: PermissionPrompting {
                 try environment.bookmarkRepository.remove(url: url)
                 statusMessage = "Bookmark removed"
             } else {
-                try environment.bookmarkRepository.add(url: url, title: activeTab?.title ?? url.host ?? "Bookmark")
+                // Decided once, now: a bookmark saved from a private window,
+                // a locked space or a separate-data space is never offered to
+                // Spotlight, whatever the setting says later.
+                let spotlightEligible = !session.isPrivate
+                    && !isSpaceLocked(session.activeSpaceID)
+                    && session.spaces.first(where: { $0.id == session.activeSpaceID })?.hasSeparateData != true
+                try environment.bookmarkRepository.add(
+                    url: url, title: activeTab?.title ?? url.host ?? "Bookmark", spotlightEligible: spotlightEligible)
                 statusMessage = "Bookmarked"
             }
             refreshNavigationState()
@@ -2653,6 +3014,7 @@ public final class BrowserWindowModel: PermissionPrompting {
         // Kept in memory so the bookmark star never queries SQLite while the
         // user types or navigates.
         bookmarkedURLs = Set(loaded.map(\.url.absoluteString))
+        environment.spotlight.reconcile()
         refreshNavigationState()
     }
 
@@ -2682,6 +3044,153 @@ public final class BrowserWindowModel: PermissionPrompting {
     public func toggleSidebarCollapsed() {
         isSidebarCollapsed.toggle()
         environment.userDefaults.set(isSidebarCollapsed, forKey: "browsemium.sidebarCollapsed")
+    }
+
+    // MARK: - Archiving stale tabs
+
+    /// How often a running window looks for tabs to put away.
+    static let archiveSweepInterval: Duration = .seconds(30 * 60)
+    @ObservationIgnored private var archiveSweepTask: Task<Void, Never>?
+
+    /// Starts the periodic sweep. Safe to call twice.
+    func startArchiveSweeps() {
+        guard archiveSweepTask == nil else { return }
+        archiveSweepTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.archiveSweepInterval)
+                guard !Task.isCancelled else { return }
+                self?.archiveStaleTabs()
+            }
+        }
+    }
+
+    func stopArchiveSweeps() {
+        archiveSweepTask?.cancel()
+        archiveSweepTask = nil
+    }
+
+    /// Puts unused tabs away into the Archive. Off unless the person chose a
+    /// period in Settings. Returns how many tabs were archived.
+    @discardableResult
+    public func archiveStaleTabs(now: Date = Date()) -> Int {
+        guard !session.isPrivate,
+              let hours = environment.loadSettings().archiveStaleTabsAfterHours, hours > 0 else { return 0 }
+        let signals = sleepSignals(for: session.tabs)
+        let protected = Set(signals.filter { $0.value.protectsFromSleep }.map(\.key))
+        let addresses = Dictionary(uniqueKeysWithValues: session.tabs.compactMap { tab in
+            (tabURLs[tab.id] ?? tab.lastCommittedURL).map { (tab.id, $0) }
+        })
+        let doomed = TabArchivePolicy.candidates(
+            tabs: session.tabs,
+            spaces: session.spaces,
+            context: TabArchivePolicy.Context(
+                now: now,
+                hours: hours,
+                visibleTabIDs: Set(paneTabIDs.values).union(session.activeTabID.map { [$0] } ?? []),
+                protectedTabIDs: protected,
+                addresses: addresses
+            )
+        )
+        var archived = 0
+        for id in doomed {
+            guard let tab = session.tabs.first(where: { $0.id == id }), let url = addresses[id] else { continue }
+            do {
+                try environment.archivedTabRepository.record(tab, url: url, archivedAt: now)
+            } catch {
+                reportPersistenceFailure("archived tab", error)
+                continue
+            }
+            closeTab(id, recordingInRecentlyClosed: false)
+            archived += 1
+        }
+        if archived > 0 {
+            statusMessage = "Put away \(archived) unused \(archived == 1 ? "tab" : "tabs") in the Archive"
+        }
+        return archived
+    }
+
+    public func archivedTabs(limit: Int = 100) -> [ClosedTabEntry] {
+        (try? environment.archivedTabRepository.recent(limit: limit)) ?? []
+    }
+
+    /// Opens an archived tab again and removes it from the Archive.
+    public func reopenArchivedTab(_ entry: ClosedTabEntry) {
+        _ = try? environment.archivedTabRepository.remove(id: entry.id)
+        _ = newTab(url: entry.url)
+    }
+
+    public func clearArchivedTabs() {
+        do {
+            try environment.archivedTabRepository.removeAll()
+            statusMessage = "Archive cleared"
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Offering to remember a password
+
+    /// A sign-in the person just submitted, held in memory only until they
+    /// answer or it expires. The password is never part of the description,
+    /// never persisted, and never leaves this struct except to the Keychain.
+    public struct PasswordSaveOffer: Equatable, Sendable, CustomStringConvertible {
+        public let id = UUID()
+        public let host: String
+        public let username: String
+        public let tabID: TabID
+        fileprivate let password: String
+
+        public var description: String { "PasswordSaveOffer(host: \(host))" }
+    }
+
+    public private(set) var passwordOffer: PasswordSaveOffer?
+    /// Offers the person declined this session. In memory only: asking again
+    /// next launch is fine, asking again on every sign-in is not.
+    private var declinedPasswordOffers: Set<String> = []
+    private var passwordOfferExpiry: Task<Void, Never>?
+    /// How long an unanswered offer waits. A secret should not sit in
+    /// memory indefinitely.
+    public static let passwordOfferLifetime: Duration = .seconds(120)
+
+    private func offerToSavePassword(_ candidate: SignInCandidate, from tabID: TabID) {
+        guard !session.isPrivate,
+              session.activeTabID == tabID,
+              peek?.tabID != tabID else { return }
+        let key = candidate.host + "\n" + candidate.username
+        guard !declinedPasswordOffers.contains(key) else { return }
+        // Already remembered: nothing to offer, and no Keychain read to
+        // compare, so no permission prompt.
+        let known = (try? environment.savedCredentialRepository.credentials(for: candidate.host)) ?? []
+        guard !known.contains(where: { $0.username == candidate.username }) else { return }
+        passwordOffer = PasswordSaveOffer(
+            host: candidate.host, username: candidate.username, tabID: tabID, password: candidate.password
+        )
+        passwordOfferExpiry?.cancel()
+        passwordOfferExpiry = Task { [weak self] in
+            try? await Task.sleep(for: Self.passwordOfferLifetime)
+            guard !Task.isCancelled else { return }
+            self?.passwordOffer = nil
+        }
+    }
+
+    /// Saves the offered password into the Keychain, on the person's say-so.
+    public func savePasswordOffer() {
+        guard let offer = passwordOffer else { return }
+        clearPasswordOffer()
+        saveCredential(host: offer.host, username: offer.username, password: offer.password)
+    }
+
+    /// "Not now": remembers the decline for this session.
+    public func declinePasswordOffer() {
+        guard let offer = passwordOffer else { return }
+        declinedPasswordOffers.insert(offer.host + "\n" + offer.username)
+        clearPasswordOffer()
+    }
+
+    func clearPasswordOffer() {
+        passwordOfferExpiry?.cancel()
+        passwordOfferExpiry = nil
+        passwordOffer = nil
     }
 
     public func refreshSavedCredentials() {
@@ -2805,23 +3314,27 @@ public final class BrowserWindowModel: PermissionPrompting {
     /// than the database, and it was missing entirely: signing out of a site
     /// was the only way to drop its cookies.
     public func clearCookiesAndSiteData() {
-        let storeIdentifier = environment.activeProfile.dataStoreUUID
+        let storeIdentifiers = [environment.activeProfile.dataStoreUUID] + containerStoreIDs
         Task { [weak self] in
             guard let self else { return }
-            await self.environment.engine.clearSiteData(
-                dataStoreIdentifier: storeIdentifier,
-                includeCache: true,
-                modifiedSince: .distantPast
-            )
+            for storeIdentifier in storeIdentifiers {
+                await self.environment.engine.clearSiteData(
+                    dataStoreIdentifier: storeIdentifier,
+                    includeCache: true,
+                    modifiedSince: .distantPast
+                )
+            }
             self.statusMessage = "Cookies, site data, and cache cleared for this profile"
         }
     }
 
     public func clearCache() {
-        let storeIdentifier = environment.activeProfile.dataStoreUUID
+        let storeIdentifiers = [environment.activeProfile.dataStoreUUID] + containerStoreIDs
         Task { [weak self] in
             guard let self else { return }
-            await self.environment.engine.clearCache(dataStoreIdentifier: storeIdentifier)
+            for storeIdentifier in storeIdentifiers {
+                await self.environment.engine.clearCache(dataStoreIdentifier: storeIdentifier)
+            }
             self.statusMessage = "Cache cleared for this profile"
         }
     }
@@ -2975,6 +3488,12 @@ public final class BrowserWindowModel: PermissionPrompting {
             self?.handleDownload(info)
         }
         environment.engine.permissionPrompter = self
+        if dataStoreResolverToken == nil {
+            dataStoreResolverToken = environment.engine.addDataStoreResolver { [weak self] tabID in
+                self?.dataStoreID(forTab: tabID)
+            }
+        }
+        startArchiveSweeps()
     }
 
     /// Stops observing the shared runtime. Called when a window closes so a
@@ -2988,6 +3507,11 @@ public final class BrowserWindowModel: PermissionPrompting {
             environment.engine.downloads.removeObserver(downloadObserverToken)
         }
         downloadObserverToken = nil
+        if let dataStoreResolverToken {
+            environment.engine.removeDataStoreResolver(dataStoreResolverToken)
+        }
+        dataStoreResolverToken = nil
+        stopArchiveSweeps()
     }
 
     private func handle(_ event: TabRuntimeEvent, for tabID: TabID) {
@@ -3018,6 +3542,8 @@ public final class BrowserWindowModel: PermissionPrompting {
             guard session.activeTabID == tabID else { return }
             isPickingElement = false
             statusMessage = "That element has no stable selector to save."
+        case .signInFormSubmitted(let candidate):
+            offerToSavePassword(candidate, from: tabID)
         case .audioStateChanged(let state):
             if state.isPlaying || state.isMuted {
                 tabAudio[tabID] = state
@@ -3061,6 +3587,7 @@ public final class BrowserWindowModel: PermissionPrompting {
                 // site's level unless the destination's preference is applied.
                 applySiteZoom(tabID: tabID, url: url)
                 applySiteBlocking(tabID: tabID, url: url)
+                routing.navigationCommitted(tabID: tabID, url: url)
                 if session.activeTabID == tabID {
                     addressText = displayAddress(for: url, tabID: tabID)
                     // Refresh now so the bookmark star follows the new page
@@ -3109,6 +3636,7 @@ public final class BrowserWindowModel: PermissionPrompting {
                 toggleReaderMode()
             }
             recordHistory(url: url, title: title)
+            indexPageTextIfEnabled(tabID: tabID)
             persistSession()
             applySleepPolicy()
             LaunchMetrics.mark(.firstNavigation)
@@ -3433,6 +3961,11 @@ public final class BrowserWindowModel: PermissionPrompting {
         refreshExtensions()
         reloadExtensions()
         refreshAISkills()
+        routing.profileDidChange()
+        siteTweaks.profileDidChange()
+        environment.pageWatches.profileDidChange()
+        clearPasswordOffer()
+        declinedPasswordOffers.removeAll()
         environment.runMaintenance()
         profileSwitchToken += 1
     }
@@ -3716,17 +4249,229 @@ public final class BrowserWindowModel: PermissionPrompting {
         }
     }
 
-    /// Removes an extension: its files, its registry row, and its loaded
-    /// context. Extension storage in the profile's data store is left to the
-    /// normal site-data tools, which is what WebKit keys it to.
+    /// Removes an extension: its files, its registry row, its site choices,
+    /// and its loaded context. Extension storage in the profile's data store
+    /// is left to the normal site-data tools, which is what WebKit keys it to.
     public func removeExtension(_ extensionID: String) {
         if #available(macOS 15.4, *) {
             environment.extensionHost?.unload(id: extensionID)
+            environment.extensionHost?.forgetSitePolicies(for: extensionID)
         }
         try? environment.extensionStore.remove(id: extensionID)
         try? environment.extensionRepository.remove(id: extensionID)
+        try? environment.extensionSitePolicyRepository.removeAll(for: extensionID)
         refreshExtensions()
         statusMessage = "Extension removed"
+    }
+
+    // MARK: - Extension site controls
+
+    /// Stored site choices for one extension, in host order. Empty when the
+    /// extension uses WebKit's default everywhere.
+    public func extensionSitePolicies(for extensionID: String) -> [ExtensionSitePolicy] {
+        (try? environment.extensionSitePolicyRepository.policies(for: extensionID)) ?? []
+    }
+
+    /// The stored choice for one host, if any. Nil means WebKit's default
+    /// (the extension asks on first use).
+    public func extensionSiteMode(for extensionID: String, host: String) -> ExtensionSiteAccessMode? {
+        (try? environment.extensionSitePolicyRepository.mode(extensionID: extensionID, host: host)) ?? nil
+    }
+
+    /// The stored choice for the page on screen, for the site-shield picker.
+    /// Nil in private windows and without a host: site choices are never
+    /// offered there.
+    public func extensionSiteModeForActivePage(_ extensionID: String) -> ExtensionSiteAccessMode? {
+        guard !session.isPrivate, let host = activePageHost else { return nil }
+        return extensionSiteMode(for: extensionID, host: host)
+    }
+
+    /// Stores a per-site choice and enforces it on the live context. Denial
+    /// takes effect on the next load: already-injected page code keeps running
+    /// until the page reloads, and the status message says so honestly.
+    public func setExtensionSiteMode(_ mode: ExtensionSiteAccessMode, for extensionID: String, host: String) {
+        guard !session.isPrivate else {
+            statusMessage = "A private window does not remember site exceptions."
+            return
+        }
+        do {
+            try environment.extensionSitePolicyRepository.set(extensionID: extensionID, host: host, mode: mode)
+        } catch {
+            statusMessage = "Couldn't save site choice"
+            return
+        }
+        if #available(macOS 15.4, *) {
+            let normalized = ExtensionSitePolicy.normalizeHost(host) ?? host.lowercased()
+            environment.extensionHost?.setSitePolicy(
+                ExtensionSitePolicy(extensionID: extensionID, host: normalized, mode: mode)
+            )
+        }
+        if mode == .deny {
+            statusMessage = "Blocked on \(host) — reload the page to remove anything already running there"
+        } else if mode == .allow {
+            statusMessage = "Allowed on \(host)"
+        } else {
+            statusMessage = "Will ask on \(host)"
+        }
+    }
+
+    /// Clears one host back to WebKit's default (ask on first use).
+    public func clearExtensionSiteMode(for extensionID: String, host: String) {
+        do {
+            try environment.extensionSitePolicyRepository.remove(extensionID: extensionID, host: host)
+        } catch {
+            statusMessage = "Couldn't save site choice"
+            return
+        }
+        if #available(macOS 15.4, *) {
+            environment.extensionHost?.removeSitePolicy(extensionID: extensionID, host: host)
+        }
+        statusMessage = "Will ask on \(host)"
+    }
+
+    // MARK: - Page-text index
+
+    /// The site-preference key for per-site index excludes.
+    public static let pageTextExcludePreference = "pageTextIndex"
+    public static let pageTextExcludeValue = "excluded"
+
+    /// Hosts excluded from the page-text index, for Settings and queries.
+    public func excludedPageTextHosts() -> Set<String> {
+        (try? environment.sitePreferenceRepository.origins(
+            preference: Self.pageTextExcludePreference,
+            value: Self.pageTextExcludeValue
+        )) ?? []
+    }
+
+    public func isPageTextExcluded(host: String?) -> Bool {
+        guard let host else { return false }
+        return excludedPageTextHosts().contains(host.lowercased())
+    }
+
+    /// Excludes one site from the page-text index, dropping its pages.
+    public func setPageTextExcluded(_ excluded: Bool, host: String) {
+        let normalized = host.lowercased()
+        do {
+            if excluded {
+                try environment.sitePreferenceRepository.set(
+                    origin: normalized,
+                    preference: Self.pageTextExcludePreference,
+                    value: Self.pageTextExcludeValue
+                )
+                try? environment.pageTextRepository.remove(
+                    urls: (try? environment.pageTextRepository.recent(limit: 2000))?.filter {
+                        $0.url.host?.lowercased() == normalized
+                    }.map(\.url) ?? []
+                )
+                statusMessage = "Excluded \(host) from the page index"
+            } else {
+                try environment.sitePreferenceRepository.remove(
+                    origin: normalized,
+                    preference: Self.pageTextExcludePreference
+                )
+                statusMessage = "Included \(host) in the page index"
+            }
+        } catch {
+            statusMessage = "Couldn't save site choice"
+        }
+    }
+
+    /// Visible index size for Settings. Private windows report nothing:
+    /// they never index, and must not confirm what the index holds.
+    public func pageTextIndexSize() -> (pages: Int, bytes: Int)? {
+        guard !session.isPrivate else { return nil }
+        return try? environment.pageTextRepository.size()
+    }
+
+    public func clearPageTextIndex() {
+        do {
+            try environment.pageTextRepository.clear()
+            statusMessage = "Page index cleared."
+        } catch {
+            statusMessage = "Couldn't clear the page index"
+        }
+    }
+
+    // MARK: - Resume topics
+
+    /// Up to three topic groups from recently indexed pages, for the start
+    /// page. Embeddings when the on-device model assets are present (never
+    /// downloaded on the user's behalf), title-term overlap otherwise. Only
+    /// pages already in the opted-in index can appear: private, locked,
+    /// separate-data, and credentialed pages are excluded at index time, and
+    /// per-site excludes are filtered again here in case the index predates
+    /// them. Empty outside the index: private windows see no topics.
+    public func resumeTopics() async -> [ResumeTopic] {
+        guard !session.isPrivate, environment.loadSettings().indexPageTextOnMac else { return [] }
+        let excluded = excludedPageTextHosts()
+        let entries = ((try? environment.pageTextRepository.recent(limit: 60)) ?? []).filter {
+            !excluded.contains($0.url.host?.lowercased() ?? "")
+        }
+        guard entries.count >= TopicClustering.minimumGroupSize else { return [] }
+        let pages = entries.map { TopicPage(url: $0.url, title: $0.title, snippet: $0.snippet) }
+        return await ResumeTopicsBuilder.build(pages: pages, embed: NLTopicEmbedder.embed)
+    }
+
+    /// Reopens every page in a resume topic, in listed order.
+    public func openResumeTopic(_ topic: ResumeTopic) {
+        guard !session.isPrivate else {
+            statusMessage = "Private windows do not keep resume topics."
+            return
+        }
+        for page in topic.pages {
+            newTab(url: page.url)
+        }
+    }
+
+    /// Captures a finished page into the opt-in index. Called from the
+    /// finished-load path; every gate is re-checked after the capture round
+    /// trip, because the tab may have navigated, locked, or gone private
+    /// while the text was being read. Failures are silent: background
+    /// indexing never interrupts browsing.
+    func indexPageTextIfEnabled(tabID: TabID) {
+        guard environment.loadSettings().indexPageTextOnMac, !session.isPrivate else { return }
+        guard Self.indexEligibility(tabID: tabID, in: session, tabURLs: tabURLs) != nil else { return }
+        let environment = environment
+        Task { [weak self] in
+            guard let captured = try? await environment.engine.capture(
+                tabID: tabID, request: CaptureRequest(kinds: [.readablePage])
+            ) else { return }
+            var text = ""
+            var capturedTitle: String?
+            for attachment in captured.attachments where attachment.isPageText {
+                if case .readablePage(let context) = attachment {
+                    text = context.text
+                    capturedTitle = context.title
+                }
+            }
+            guard let self, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            guard let (url, title) = Self.indexEligibility(
+                tabID: tabID, in: self.session, tabURLs: self.tabURLs) else { return }
+            guard !self.isPageTextExcluded(host: url.host) else { return }
+            let snippet = PageTextIndexPolicy.snippet(text)
+            guard !snippet.isEmpty else { return }
+            try? self.environment.pageTextRepository.index(
+                url: url,
+                title: (capturedTitle?.isEmpty == false ? capturedTitle! : nil) ?? title,
+                snippet: snippet
+            )
+        }
+    }
+
+    /// The indexable page for a tab right now, or nil with no reason given.
+    /// Eligibility is decided twice per capture (before and after), so this
+    /// is the single place the rules live. Locked spaces stay out even while
+    /// unlocked: the lock hides their content from every surface, and the
+    /// index would outlive the unlock.
+    private static func indexEligibility(tabID: TabID, in session: BrowserSessionState,
+                                         tabURLs: [TabID: URL]) -> (URL, String)? {
+        guard !session.isPrivate,
+              let tab = session.tabs.first(where: { $0.id == tabID }),
+              let space = session.spaces.first(where: { $0.id == tab.spaceID }) else { return nil }
+        let url = tabURLs[tabID] ?? tab.lastCommittedURL
+        guard PageTextIndexPolicy.mayIndex(url: url, isPrivate: false, space: space),
+              let url else { return nil }
+        return (url, tab.title)
     }
 
     /// Reloads enabled extensions and rebinds the host to this window. The

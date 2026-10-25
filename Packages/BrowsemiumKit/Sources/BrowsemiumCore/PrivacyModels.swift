@@ -18,14 +18,17 @@ public enum ProtectionLevel: String, CaseIterable, Codable, Sendable {
         case .off:
             "No bundled blocking rules. WebKit's own tracking protection stays on."
         case .standard:
-            "Blocks ads and trackers with the bundled rules. WebKit's own tracking protection stays on."
+            "Blocks ads and trackers with the bundled rules and removes known tracking parameters from links. WebKit's own tracking protection stays on."
         case .strict:
             Self.strictSummary
         }
     }
 
     private static var strictSummary: String {
-        var sentences = ["Strict upgrades http pages to https, except local addresses."]
+        var sentences = [
+            "Strict upgrades http pages to https, except local addresses.",
+            "It also removes known tracking parameters from links."
+        ]
         if #available(macOS 26.4, *) {
             sentences.append("Pages run with JavaScript JIT disabled, which can slow heavy web apps.")
         } else {
@@ -40,6 +43,12 @@ public enum ProtectionLevel: String, CaseIterable, Codable, Sendable {
     }
 
     public var blocksContentRules: Bool {
+        self != .off
+    }
+
+    /// Known campaign identifiers (`utm_*`, `fbclid`, …) are removed from
+    /// links before the request. Never applied to sign-in flows.
+    public var stripsTrackingParameters: Bool {
         self != .off
     }
 
@@ -211,6 +220,21 @@ public enum SearchBangParser {
     }
 }
 
+/// How much vertical room the toolbar and tab strip take. Compact trims both
+/// rows and shows the bookmarks bar only on the start page, so the page gets
+/// the space. Nothing is removed; every action stays where it was.
+public enum ChromeStyle: String, CaseIterable, Codable, Sendable {
+    case standard
+    case compact
+
+    public var title: String {
+        switch self {
+        case .standard: "Standard"
+        case .compact: "Compact"
+        }
+    }
+}
+
 public struct BrowserSettings: Hashable, Codable, Sendable {
     public var searchEngineTemplate: String
     public var appearance: AppearancePreference
@@ -247,6 +271,27 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
     /// open in the active tab. On by default; turning it off keeps the store
     /// an ordinary web page.
     public var offerWebStoreInstalls: Bool
+    /// Lets Safari's Develop menu list this browser's pages and enables the
+    /// Web Inspector (⌥⌘I). Off by default: it exposes page contents to
+    /// local developer tooling.
+    public var developerToolsEnabled: Bool
+    /// Hours an unpinned, unfiled tab may sit unused before it is put away
+    /// into the Library's Archive. Nil keeps tabs until they are closed.
+    public var archiveStaleTabsAfterHours: Int?
+    public var chromeStyle: ChromeStyle
+    /// Stores readable page text (at most 4 KB per page) in a local full-text
+    /// index on this Mac. Off by default: the index is a second copy of page
+    /// content, stored unencrypted in the profile database. Private windows,
+    /// locked spaces, separate-data spaces, and credentialed pages are never
+    /// indexed, and sites can be excluded one by one.
+    public var indexPageTextOnMac: Bool
+    /// Adds bookmarks (title and address only, never page text or history) to
+    /// Spotlight. Off by default; turning it off removes every item.
+    public var indexBookmarksInSpotlight: Bool
+    /// Offers the active tab's https address to the person's other Apple
+    /// devices through Handoff. Off by default; never private, locked or
+    /// separate-data tabs.
+    public var handoffActiveTab: Bool
 
     public var contentBlockingEnabled: Bool {
         protectionLevel.blocksContentRules
@@ -268,7 +313,13 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
         warmTabPreloading: Bool = true,
         tabLayout: TabLayout = .top,
         linkPreviewOnHover: Bool = false,
-        offerWebStoreInstalls: Bool = true
+        offerWebStoreInstalls: Bool = true,
+        developerToolsEnabled: Bool = false,
+        archiveStaleTabsAfterHours: Int? = nil,
+        chromeStyle: ChromeStyle = .standard,
+        indexPageTextOnMac: Bool = false,
+        indexBookmarksInSpotlight: Bool = false,
+        handoffActiveTab: Bool = false
     ) {
         self.searchEngineTemplate = searchEngineTemplate
         self.appearance = appearance
@@ -286,6 +337,12 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
         self.tabLayout = tabLayout
         self.linkPreviewOnHover = linkPreviewOnHover
         self.offerWebStoreInstalls = offerWebStoreInstalls
+        self.developerToolsEnabled = developerToolsEnabled
+        self.archiveStaleTabsAfterHours = archiveStaleTabsAfterHours
+        self.chromeStyle = chromeStyle
+        self.indexPageTextOnMac = indexPageTextOnMac
+        self.indexBookmarksInSpotlight = indexBookmarksInSpotlight
+        self.handoffActiveTab = handoffActiveTab
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -306,6 +363,12 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
         case tabLayout
         case linkPreviewOnHover
         case offerWebStoreInstalls
+        case developerToolsEnabled
+        case archiveStaleTabsAfterHours
+        case chromeStyle
+        case indexPageTextOnMac
+        case indexBookmarksInSpotlight
+        case handoffActiveTab
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -330,6 +393,16 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
         try container.encode(tabLayout, forKey: .tabLayout)
         try container.encode(linkPreviewOnHover, forKey: .linkPreviewOnHover)
         try container.encode(offerWebStoreInstalls, forKey: .offerWebStoreInstalls)
+        try container.encode(developerToolsEnabled, forKey: .developerToolsEnabled)
+        try container.encode(chromeStyle, forKey: .chromeStyle)
+        try container.encode(indexPageTextOnMac, forKey: .indexPageTextOnMac)
+        try container.encode(indexBookmarksInSpotlight, forKey: .indexBookmarksInSpotlight)
+        try container.encode(handoffActiveTab, forKey: .handoffActiveTab)
+        if let archiveStaleTabsAfterHours {
+            try container.encode(archiveStaleTabsAfterHours, forKey: .archiveStaleTabsAfterHours)
+        } else {
+            try container.encodeNil(forKey: .archiveStaleTabsAfterHours)
+        }
     }
 
     /// Settings written by older builds must still decode; any key that did
@@ -363,6 +436,12 @@ public struct BrowserSettings: Hashable, Codable, Sendable {
         tabLayout = try container.decodeIfPresent(TabLayout.self, forKey: .tabLayout) ?? defaults.tabLayout
         linkPreviewOnHover = try container.decodeIfPresent(Bool.self, forKey: .linkPreviewOnHover) ?? defaults.linkPreviewOnHover
         offerWebStoreInstalls = try container.decodeIfPresent(Bool.self, forKey: .offerWebStoreInstalls) ?? defaults.offerWebStoreInstalls
+        developerToolsEnabled = try container.decodeIfPresent(Bool.self, forKey: .developerToolsEnabled) ?? defaults.developerToolsEnabled
+        archiveStaleTabsAfterHours = try container.decodeIfPresent(Int.self, forKey: .archiveStaleTabsAfterHours)
+        chromeStyle = try container.decodeIfPresent(ChromeStyle.self, forKey: .chromeStyle) ?? defaults.chromeStyle
+        indexPageTextOnMac = try container.decodeIfPresent(Bool.self, forKey: .indexPageTextOnMac) ?? defaults.indexPageTextOnMac
+        indexBookmarksInSpotlight = try container.decodeIfPresent(Bool.self, forKey: .indexBookmarksInSpotlight) ?? defaults.indexBookmarksInSpotlight
+        handoffActiveTab = try container.decodeIfPresent(Bool.self, forKey: .handoffActiveTab) ?? defaults.handoffActiveTab
     }
 
     /// Idle seconds before a background tab may be unloaded.

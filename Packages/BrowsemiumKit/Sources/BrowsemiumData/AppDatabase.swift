@@ -201,6 +201,146 @@ public final class AppDatabase: @unchecked Sendable {
                 )
                 """)
         }
+        migrator.registerMigration("profile-v12-space-routes") { database in
+            // "This site opens in that space". No foreign key on space_id:
+            // session writes are async, so a rule can briefly name a space
+            // whose row has not landed, and a deleted space must leave the
+            // rule inert (checked when it fires) rather than blocking the
+            // delete.
+            try database.execute(sql: """
+                CREATE TABLE space_routes (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    host TEXT NOT NULL,
+                    includes_subdomains INTEGER NOT NULL CHECK (includes_subdomains IN (0, 1)),
+                    space_id TEXT NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    UNIQUE (host, includes_subdomains)
+                )
+                """)
+        }
+        migrator.registerMigration("profile-v13-site-tweaks") { database in
+            // A person's own CSS for one host. The validator in Core is the
+            // gate for what may be stored; the size check here is a backstop.
+            try database.execute(sql: """
+                CREATE TABLE site_tweaks (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    host TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    css TEXT NOT NULL CHECK (length(CAST(css AS BLOB)) <= 32768),
+                    is_enabled INTEGER NOT NULL CHECK (is_enabled IN (0, 1)),
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+                """)
+            try database.execute(sql: "CREATE INDEX site_tweaks_host ON site_tweaks (host)")
+        }
+        migrator.registerMigration("profile-v14-space-data-store") { database in
+            // A space may keep its cookies and site storage in a WebKit data
+            // store of its own. NULL means the profile's store. Fixed at
+            // creation: the save path never updates it.
+            try database.execute(sql: "ALTER TABLE spaces ADD COLUMN data_store_id TEXT")
+        }
+        migrator.registerMigration("profile-v15-archived-tabs") { database in
+            // Tabs the browser put away after they sat unused. Kept apart
+            // from closed_tabs so a long archive cannot push out the tabs the
+            // person closed on purpose, and so the two can be cleared apart.
+            try database.execute(sql: """
+                CREATE TABLE archived_tabs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tab_id TEXT NOT NULL,
+                    space_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    url TEXT NOT NULL,
+                    archived_at DATETIME NOT NULL
+                )
+                """)
+        }
+        migrator.registerMigration("profile-v16-page-watches") { database in
+            // Pages the person asked to be told about. The page text itself
+            // is never stored: only a hash of it and short hashes of its
+            // sentences, enough to notice what is new.
+            try database.execute(sql: """
+                CREATE TABLE page_watches (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    url TEXT NOT NULL UNIQUE,
+                    title TEXT NOT NULL,
+                    interval_minutes INTEGER NOT NULL CHECK (interval_minutes >= 15),
+                    last_hash TEXT,
+                    last_sentences TEXT,
+                    last_checked_at DATETIME,
+                    last_changed_at DATETIME,
+                    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+                    last_problem TEXT,
+                    created_at DATETIME NOT NULL
+                )
+                """)
+        }
+        migrator.registerMigration("profile-v17-extension-site-policies") { database in            // Per-extension site-access choices. Explicit rows only: no row
+            // means WebKit's default (ask on first use). Host is a bare
+            // lower-cased host; matching is exact.
+            try database.execute(sql: """
+                CREATE TABLE extension_site_policies (
+                    extension_id TEXT NOT NULL,
+                    host TEXT NOT NULL,
+                    mode TEXT NOT NULL CHECK (mode IN ('allow', 'ask', 'deny')),
+                    updated_at DATETIME NOT NULL,
+                    PRIMARY KEY (extension_id, host)
+                )
+                """)
+            try database.execute(sql: "CREATE INDEX extension_site_policies_host ON extension_site_policies (host)")
+        }
+        migrator.registerMigration("profile-v19-bookmark-spotlight-eligibility") { database in
+            // Whether a bookmark may be offered to Spotlight. Decided once,
+            // when the bookmark is made: one saved from a private window,
+            // a locked space or a separate-data space is never offered, and
+            // nothing later can change that. Bookmarks that already exist
+            // were made in ordinary windows as far as anyone can tell, so
+            // they default to eligible (Spotlight itself stays opt-in).
+            try database.execute(sql: "ALTER TABLE bookmarks ADD COLUMN spotlight_eligible INTEGER NOT NULL DEFAULT 1")
+        }
+        migrator.registerMigration("profile-v18-page-text-index") { database in
+            // Opt-in page-text index (Settings: "Index page text on this
+            // Mac", off by default). One row per page: title plus at most
+            // 4 KB of readable text. Stored unencrypted in the profile
+            // database — the Settings copy says so.
+            try database.execute(sql: """
+                CREATE TABLE page_texts (
+                    url TEXT PRIMARY KEY NOT NULL,
+                    title TEXT NOT NULL,
+                    snippet TEXT NOT NULL CHECK (length(CAST(snippet AS BLOB)) <= 4096),
+                    indexed_at DATETIME NOT NULL
+                )
+                """)
+            try database.execute(sql: """
+                CREATE VIRTUAL TABLE page_texts_fts USING fts5(
+                    title,
+                    snippet,
+                    url,
+                    content='page_texts',
+                    content_rowid='rowid'
+                )
+                """)
+            try database.execute(sql: """
+                CREATE TRIGGER page_texts_ai AFTER INSERT ON page_texts BEGIN
+                    INSERT INTO page_texts_fts(rowid, title, snippet, url)
+                    VALUES (new.rowid, new.title, new.snippet, new.url);
+                END
+                """)
+            try database.execute(sql: """
+                CREATE TRIGGER page_texts_ad AFTER DELETE ON page_texts BEGIN
+                    INSERT INTO page_texts_fts(page_texts_fts, rowid, title, snippet, url)
+                    VALUES ('delete', old.rowid, old.title, old.snippet, old.url);
+                END
+                """)
+            try database.execute(sql: """
+                CREATE TRIGGER page_texts_au AFTER UPDATE ON page_texts BEGIN
+                    INSERT INTO page_texts_fts(page_texts_fts, rowid, title, snippet, url)
+                    VALUES ('delete', old.rowid, old.title, old.snippet, old.url);
+                    INSERT INTO page_texts_fts(rowid, title, snippet, url)
+                    VALUES (new.rowid, new.title, new.snippet, new.url);
+                END
+                """)
+        }
         return migrator
     }
 
@@ -420,13 +560,16 @@ public final class BrowserSessionRepository: @unchecked Sendable {
                 for space in session.spaces {
                         try database.execute(
                             sql: """
-                                INSERT INTO spaces (id, name, created_at, color, is_locked) VALUES (?, ?, ?, ?, ?)
+                                INSERT INTO spaces (id, name, created_at, color, is_locked, data_store_id) VALUES (?, ?, ?, ?, ?, ?)
                                 ON CONFLICT(id) DO UPDATE SET
                                     name = excluded.name,
                                     color = excluded.color,
                                     is_locked = excluded.is_locked
                                 """,
-                            arguments: [space.id.rawValue.uuidString, space.name, space.createdAt, space.color, space.isLocked]
+                            arguments: [
+                                space.id.rawValue.uuidString, space.name, space.createdAt, space.color, space.isLocked,
+                                space.dataStoreID?.uuidString
+                            ]
                         )
                     }
                     // Folders that vanished from the session are dropped;
@@ -500,7 +643,7 @@ public final class BrowserSessionRepository: @unchecked Sendable {
             return try database.databaseQueue.read { database in
                 let spaces: [BrowserSpace] = try Row.fetchAll(
                     database,
-                    sql: "SELECT id, name, created_at, color, is_locked FROM spaces ORDER BY created_at"
+                    sql: "SELECT id, name, created_at, color, is_locked, data_store_id FROM spaces ORDER BY created_at"
                 ).compactMap { row in
                     guard let idString = row["id"] as String?, let id = UUID(uuidString: idString) else { return nil }
                     return BrowserSpace(
@@ -508,7 +651,8 @@ public final class BrowserSessionRepository: @unchecked Sendable {
                         name: row["name"] ?? "Personal",
                         createdAt: row["created_at"] ?? Date(),
                         color: row["color"] as String?,
-                        isLocked: row["is_locked"] ?? false
+                        isLocked: row["is_locked"] ?? false,
+                        dataStoreID: (row["data_store_id"] as String?).flatMap(UUID.init(uuidString:))
                     )
                 }
                 guard let activeSpace = spaces.first else { return nil }

@@ -60,19 +60,19 @@ struct PeekOverlay: View {
                     .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
             } else {
                 Image(systemName: "eye")
-                    .font(.system(size: 11))
+                    .font(BrowserType.font(.caption))
                     .foregroundStyle(Color.browsemiumTertiary)
                     .frame(width: 14, height: 14)
             }
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(peek.title)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(BrowserType.font(.small, weight: .medium))
                     .foregroundStyle(Color.browsemiumPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Text(peek.url.absoluteString)
-                    .font(.system(size: 10))
+                    .font(BrowserType.font(.caption))
                     .foregroundStyle(Color.browsemiumTertiary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -85,7 +85,7 @@ struct PeekOverlay: View {
                 model.promotePeekToSplitView()
             } label: {
                 Label("Open in Split", systemImage: "rectangle.split.2x1")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(BrowserType.font(.caption, weight: .medium))
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 10)
@@ -106,7 +106,7 @@ struct PeekOverlay: View {
                 model.promotePeekToTab()
             } label: {
                 Label("Open as Tab", systemImage: "arrow.up.forward.app")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(BrowserType.font(.caption, weight: .medium))
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 10)
@@ -146,11 +146,11 @@ struct PeekOverlay: View {
                 .font(.system(size: 9))
                 .foregroundStyle(Color.browsemiumTertiary)
             Text("Preview — nothing is saved unless you open it as a tab.")
-                .font(.system(size: 10))
+                .font(BrowserType.font(.caption))
                 .foregroundStyle(Color.browsemiumTertiary)
             Spacer(minLength: 0)
             Text("⌘-click any link to preview it")
-                .font(.system(size: 10))
+                .font(BrowserType.font(.caption))
                 .foregroundStyle(Color.browsemiumTertiary)
         }
         .padding(.horizontal, 12)

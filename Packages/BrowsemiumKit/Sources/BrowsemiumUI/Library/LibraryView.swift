@@ -11,6 +11,7 @@ struct LibraryView: View {
         case bookmarks
         case downloads
         case recentlyClosed
+        case archived
 
         var id: String { rawValue }
 
@@ -20,6 +21,7 @@ struct LibraryView: View {
             case .bookmarks: "Bookmarks"
             case .downloads: "Downloads"
             case .recentlyClosed: "Recently Closed"
+            case .archived: "Archive"
             }
         }
     }
@@ -31,6 +33,7 @@ struct LibraryView: View {
     @State private var bookmarks: [Bookmark] = []
     @State private var downloads: [DownloadRecord] = []
     @State private var closedTabs: [ClosedTabEntry] = []
+    @State private var archivedTabs: [ClosedTabEntry] = []
     @State private var errorMessage: String?
 
     var body: some View {
@@ -73,7 +76,7 @@ struct LibraryView: View {
             Spacer(minLength: 12)
 
             TextField("Filter", text: $query)
-                .font(.system(size: 12))
+                .font(BrowserType.font(.small))
                 .browsemiumField()
                 .frame(width: 180, height: 24)
                 .padding(.horizontal, 8)
@@ -127,6 +130,16 @@ struct LibraryView: View {
                     )
                 } else {
                     list(closedTabs)
+                }
+            case .archived:
+                if archivedTabs.isEmpty {
+                    BrowsemiumEmptyState(
+                        systemName: "archivebox",
+                        title: "Nothing archived",
+                        message: "Choose a period in Settings and tabs you leave unused are put away here instead of piling up. Pinned and filed tabs are never archived."
+                    )
+                } else {
+                    list(archivedTabs, reopen: { model.reopenArchivedTab($0) })
                 }
             }
         }
@@ -200,7 +213,10 @@ struct LibraryView: View {
         }
     }
 
-    private func list(_ items: [ClosedTabEntry]) -> some View {
+    private func list(
+        _ items: [ClosedTabEntry],
+        reopen: @escaping (ClosedTabEntry) -> Void = { _ in }
+    ) -> some View {
         ScrollView {
             LazyVStack(spacing: 1) {
                 ForEach(items) { entry in
@@ -209,7 +225,11 @@ struct LibraryView: View {
                         subtitle: entry.url?.absoluteString ?? "No address recorded",
                         trailing: entry.closedAt.formatted(date: .abbreviated, time: .shortened),
                         action: {
-                            model.reopenClosedTab(entry)
+                            if section == .archived {
+                                reopen(entry)
+                            } else {
+                                model.reopenClosedTab(entry)
+                            }
                             reload()
                         }
                     )
@@ -244,6 +264,14 @@ struct LibraryView: View {
                         $0.title.localizedCaseInsensitiveContains(trimmed)
                             || ($0.url?.absoluteString.localizedCaseInsensitiveContains(trimmed) ?? false)
                     }
+            case .archived:
+                let entries = try environment.archivedTabRepository.recent(limit: 200)
+                archivedTabs = trimmed.isEmpty
+                    ? entries
+                    : entries.filter {
+                        $0.title.localizedCaseInsensitiveContains(trimmed)
+                            || ($0.url?.absoluteString.localizedCaseInsensitiveContains(trimmed) ?? false)
+                    }
             }
             errorMessage = nil
         } catch {
@@ -267,11 +295,11 @@ private struct LibraryRow: View {
             Button(action: action) {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(title)
-                        .font(.system(size: 12.5))
+                        .font(BrowserType.font(.body))
                         .foregroundStyle(Color.browsemiumPrimary)
                         .lineLimit(1)
                     Text(subtitle)
-                        .font(.system(size: 11))
+                        .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumTertiary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -284,14 +312,14 @@ private struct LibraryRow: View {
 
             if let trailing {
                 Text(trailing)
-                    .font(.system(size: 11))
+                    .font(BrowserType.font(.caption))
                     .foregroundStyle(Color.browsemiumTertiary)
             }
 
             if let removeAction, isHovering {
                 Button(action: removeAction) {
                     Image(systemName: "trash")
-                        .font(.system(size: 11))
+                        .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumTertiary)
                         .contentShape(Rectangle())
                 }

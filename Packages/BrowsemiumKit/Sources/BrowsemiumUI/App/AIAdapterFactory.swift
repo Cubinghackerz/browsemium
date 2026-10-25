@@ -18,6 +18,8 @@ public enum AIAdapterFactory {
             OllamaAdapter()
         case .vercelV0:
             V0Adapter(credential: credential)
+        case .appleIntelligence:
+            AppleIntelligence.makeAdapter()
         }
     }
 }

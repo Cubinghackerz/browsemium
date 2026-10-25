@@ -46,7 +46,7 @@ private struct BookmarkItem: View {
                 icon
 
                 Text(bookmark.title.isEmpty ? (bookmark.url.host ?? bookmark.url.absoluteString) : bookmark.title)
-                    .font(.system(size: 11.5))
+                    .font(BrowserType.font(.small))
                     .foregroundStyle(Color.browsemiumSecondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -85,7 +85,7 @@ private struct BookmarkItem: View {
                 .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
         } else {
             Image(systemName: "globe")
-                .font(.system(size: 10))
+                .font(BrowserType.font(.caption))
                 .foregroundStyle(Color.browsemiumTertiary)
                 .frame(width: 13, height: 13)
         }

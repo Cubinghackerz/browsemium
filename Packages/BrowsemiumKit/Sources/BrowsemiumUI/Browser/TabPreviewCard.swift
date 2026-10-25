@@ -2,6 +2,31 @@ import BrowsemiumCore
 import SwiftUI
 import BrowsemiumEngineKit
 
+/// What to say in place of a thumbnail. A snapshot can be missing for
+/// different reasons, and only a hibernated or suspended tab is asleep.
+enum PreviewNote {
+    static func text(for lifecycle: TabLifecycle, hasPage: Bool) -> String {
+        switch lifecycle {
+        case .hibernated, .suspended:
+            return "This tab is asleep — wake it to see the page."
+        case .metadataOnly:
+            return hasPage ? "This tab has not loaded yet." : "This tab is blank."
+        case .crashed:
+            return "This tab stopped responding."
+        case .loading, .active:
+            return "No preview is available for this tab right now."
+        }
+    }
+
+    static func symbol(for lifecycle: TabLifecycle) -> String {
+        switch lifecycle {
+        case .hibernated, .suspended: "moon.zzz"
+        case .crashed: "exclamationmark.triangle"
+        default: "photo"
+        }
+    }
+}
+
 /// Hover preview for a tab — the page snapshot plus the facts that can be
 /// verified: the tab's real load state, whether it currently holds a web
 /// view, and Browsemium's own measured memory footprint. A sleeping or
@@ -34,11 +59,11 @@ struct TabPreviewCard: View {
                 // A snapshot was attempted and the tab had nothing to show —
                 // say so rather than leaving a blank box.
                 HStack(spacing: 6) {
-                    Image(systemName: "moon.zzz")
-                        .font(.system(size: 11))
+                    Image(systemName: PreviewNote.symbol(for: tab.lifecycle))
+                        .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumTertiary)
-                    Text("This tab is asleep — wake it to see the page.")
-                        .font(.system(size: 10))
+                    Text(PreviewNote.text(for: tab.lifecycle, hasPage: tab.lastCommittedURL != nil))
+                        .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumTertiary)
                 }
                 .frame(maxWidth: .infinity)
@@ -60,14 +85,14 @@ struct TabPreviewCard: View {
                             .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
                     }
                     Text(tab.title.isEmpty ? "New Tab" : tab.title)
-                        .font(.system(size: 12.5, weight: .semibold))
+                        .font(BrowserType.font(.body, weight: .semibold))
                         .foregroundStyle(Color.browsemiumPrimary)
                         .lineLimit(2)
                 }
 
                 if let url = tab.lastCommittedURL {
                     Text(url.absoluteString)
-                        .font(.system(size: 10))
+                        .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumTertiary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -115,11 +140,11 @@ struct TabPreviewCard: View {
     private func statRow(_ label: String, _ value: String, accent: Color = .browsemiumSecondary) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(label)
-                .font(.system(size: 10.5))
+                .font(BrowserType.font(.caption))
                 .foregroundStyle(Color.browsemiumTertiary)
             Spacer(minLength: 10)
             Text(value)
-                .font(.system(size: 11, weight: .medium))
+                .font(BrowserType.font(.caption, weight: .medium))
                 .foregroundStyle(accent)
                 .lineLimit(1)
         }

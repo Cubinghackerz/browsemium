@@ -219,6 +219,8 @@ struct BrowserCommands: Commands {
             Button("Hide Element…") { model?.beginElementHiding() }
                 .keyboardShortcut("h", modifiers: [.command, .shift])
                 .disabled(model == nil)
+            Button("Watch Page for Changes") { model?.watchActivePage() }
+                .disabled(model == nil)
             Button("Show Reader") { model?.toggleReaderMode() }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
                 .disabled(model == nil)
@@ -243,6 +245,10 @@ struct BrowserCommands: Commands {
             Divider()
             Button("Print…") { model?.printPage() }
                 .keyboardShortcut("p", modifiers: .command)
+                .disabled(model == nil)
+            Divider()
+            Button("Show Web Inspector") { model?.showWebInspector() }
+                .keyboardShortcut("i", modifiers: [.command, .option])
                 .disabled(model == nil)
         }
 

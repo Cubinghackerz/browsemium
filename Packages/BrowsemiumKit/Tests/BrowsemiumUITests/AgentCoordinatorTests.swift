@@ -1,8 +1,10 @@
+import AppKit
 import BrowsemiumAgent
 import BrowsemiumCore
 import BrowsemiumData
 import Foundation
 import Security
+import SwiftUI
 import Testing
 @testable import BrowsemiumUI
 
@@ -331,4 +333,96 @@ func clientConfigurationTextCarriesTheTokenAndTheFixedLoopbackAddress() {
     let entry = servers?["browsemium"] as? [String: Any]
     #expect(entry?["url"] as? String == "http://127.0.0.1:\(AgentCoordinator.port)/mcp")
     #expect((entry?["headers"] as? [String: String])?["Authorization"] == "Bearer bm_fixture")
+}
+
+@Test @MainActor
+func webMCPIsOffByDefaultAndTheSwitchReachesTheGateAndTheActuator() {
+    let harness = AgentHarness()
+    let coordinator = harness.coordinator
+    #expect(!coordinator.isWebMCPEnabled)
+    #expect(!coordinator.gate.webMCPEnabled())
+    #expect(!coordinator.actuator.webMCPEnabled())
+
+    coordinator.setWebMCPEnabled(true)
+    #expect(coordinator.isWebMCPEnabled)
+    #expect(coordinator.gate.webMCPEnabled())
+    #expect(coordinator.actuator.webMCPEnabled())
+
+    coordinator.setWebMCPEnabled(false)
+    #expect(!coordinator.gate.webMCPEnabled())
+}
+
+@Test @MainActor
+func takingOverThenStoppingFromThePanelKeepsThePagesAndEndsTheTask() async throws {
+    let harness = AgentHarness()
+    let coordinator = harness.coordinator
+    let task = try await harness.beginGrant(harness.request())
+    coordinator.answerGrant(true)
+    #expect(await outcome(of: task) == nil)
+    let tabs = coordinator.gate.tabs
+
+    AgentTaskControls.perform(.takeOver, on: coordinator)
+    #expect(coordinator.gate.state == .paused)
+    #expect(AgentTaskControls.controls(for: coordinator.gate.state).map(\.kind) == [.handBack, .stop])
+
+    AgentTaskControls.perform(.stop, on: coordinator)
+    #expect(coordinator.gate.state == .stopped)
+    #expect(coordinator.gate.tabs == tabs, "Stopping keeps the pages")
+
+    AgentTaskControls.perform(.handBack, on: coordinator)
+    #expect(coordinator.gate.state == .stopped, "A stopped task cannot be handed back")
+}
+
+@Test @MainActor
+func handingBackFromThePanelRestoresAuthority() async throws {
+    let harness = AgentHarness()
+    let coordinator = harness.coordinator
+    let task = try await harness.beginGrant(harness.request())
+    coordinator.answerGrant(true)
+    #expect(await outcome(of: task) == nil)
+
+    AgentTaskControls.perform(.takeOver, on: coordinator)
+    AgentTaskControls.perform(.handBack, on: coordinator)
+
+    #expect(coordinator.gate.state == .ready)
+}
+
+@Test @MainActor
+func theTaskControlRowRendersInEveryStateAndBothAppearances() async throws {
+    var directory: URL
+    if ProcessInfo.processInfo.environment["BROWSEMIUM_WRITE_UI_SNAPSHOTS"] == "1" {
+        var root = URL(fileURLWithPath: #filePath)
+        for _ in 0..<5 { root.deleteLastPathComponent() }
+        directory = root.appendingPathComponent(".impeccable/review/app", isDirectory: true)
+    } else {
+        directory = FileManager.default.temporaryDirectory.appendingPathComponent("browsemium-agent-controls-" + UUID().uuidString, isDirectory: true)
+    }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+    let harness = AgentHarness()
+    let coordinator = harness.coordinator
+    let task = try await harness.beginGrant(harness.request(title: "Check the order status"))
+    coordinator.answerGrant(true)
+    #expect(await outcome(of: task) == nil)
+
+    func render(_ name: String) throws {
+        for dark in [false, true] {
+            let host = NSHostingView(rootView: AgentActivityBar(coordinator: coordinator)
+                .frame(width: 720)
+                .background(Color.browsemiumRaised)
+                .environment(\.colorScheme, dark ? .dark : .light))
+            host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            host.frame = NSRect(x: 0, y: 0, width: 720, height: 56)
+            host.layoutSubtreeIfNeeded()
+            let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            let data = try #require(bitmap.representation(using: .png, properties: [:]))
+            try data.write(to: directory.appendingPathComponent("agent-controls-\(name)-\(dark ? "dark" : "light").png"))
+        }
+    }
+    try render("active")
+    coordinator.takeOver()
+    try render("paused")
+    coordinator.stopTask()
+    try render("ended")
 }

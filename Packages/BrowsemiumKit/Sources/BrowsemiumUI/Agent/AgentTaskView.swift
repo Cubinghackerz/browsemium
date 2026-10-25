@@ -72,7 +72,7 @@ struct AgentTaskView: View {
                 taskContent
             } else {
                 Text("No task is running.")
-                    .font(.system(size: 13))
+                    .font(BrowserType.font(.body))
                     .foregroundStyle(Color.browsemiumSecondary)
             }
         }
@@ -89,10 +89,17 @@ struct AgentTaskView: View {
         }
         .onAppear {
             guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { pulse = true }
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { pulse = true }
         }
         .onChange(of: gate.pendingApproval?.id) {
             if gate.pendingApproval != nil { coordinator.requestAttention() }
+        }
+        .onChange(of: gate.state) { old, new in
+            // Take over, hand back and the end of a task change what the
+            // controls do; say so, since the pill's text alone is not announced.
+            if let text = AgentTaskControls.announcement(from: old, to: new) {
+                AccessibilityNotification.Announcement(text).post()
+            }
         }
     }
 
@@ -105,6 +112,7 @@ struct AgentTaskView: View {
                 AgentPageHost(actuator: coordinator.actuator, tab: currentTab)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.browsemiumCanvas)
+                    .accessibilityLabel("Page the agent is working on")
                 if gate.state == .paused {
                     banner("You are in control. The agent cannot act until you hand control back.")
                 } else if !gate.state.hasAuthority {
@@ -133,7 +141,7 @@ struct AgentTaskView: View {
                 ForEach(Array(gate.tabs.enumerated()), id: \.element) { index, tab in
                     Button("Tab \(index + 1)") { coordinator.selectedTab = tab }
                         .buttonStyle(.plain)
-                        .font(.system(size: 11.5, weight: tab == currentTab ? .semibold : .regular))
+                        .font(BrowserType.font(.small, weight: tab == currentTab ? .semibold : .regular))
                         .padding(.horizontal, 9).padding(.vertical, 4)
                         .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(tab == currentTab ? Color.browsemiumSelection : Color.clear))
@@ -156,7 +164,7 @@ struct AgentTaskView: View {
 
     private func banner(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 12))
+            .font(BrowserType.font(.small))
             .padding(.horizontal, 12).padding(.vertical, 8)
             .frame(maxWidth: .infinity)
             .background(Color.browsemiumRaised.opacity(0.96))
@@ -169,7 +177,7 @@ struct AgentTaskView: View {
 // MARK: - Activity bar
 
 @MainActor
-private struct AgentActivityBar: View {
+struct AgentActivityBar: View {
     @Bindable var coordinator: AgentCoordinator
     private var gate: AgentActionGate { coordinator.gate }
 
@@ -178,25 +186,23 @@ private struct AgentActivityBar: View {
             statePill
             VStack(alignment: .leading, spacing: 1) {
                 Text(gate.task?.title ?? "")
-                    .font(.system(size: 12.5, weight: .semibold))
+                    .font(BrowserType.font(.body, weight: .semibold))
                     .lineLimit(1)
                 Text(detail)
-                    .font(.system(size: 11))
+                    .font(BrowserType.font(.caption))
                     .foregroundStyle(Color.browsemiumSecondary)
                     .lineLimit(1)
             }
             Spacer(minLength: 8)
-            if gate.state == .paused {
-                BrowsemiumPrimaryButton("Hand back") { coordinator.handBack() }
-            } else if gate.state.hasAuthority {
-                BrowsemiumTextButton("Take over") { coordinator.takeOver() }
-                BrowsemiumTextButton("Stop", role: .destructive) { coordinator.stopTask() }
-            } else {
-                BrowsemiumPrimaryButton("Close") { coordinator.closeWorkspace() }
+            ForEach(AgentTaskControls.controls(for: gate.state)) { control in
+                AgentTaskControlButton(control: control) {
+                    AgentTaskControls.perform(control.kind, on: coordinator)
+                }
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 9)
         .accessibilityElement(children: .contain)
+        .accessibilityLabel("Task controls")
     }
 
     private var detail: String {
@@ -209,7 +215,7 @@ private struct AgentActivityBar: View {
     private var statePill: some View {
         HStack(spacing: 6) {
             Circle().fill(color).frame(width: 7, height: 7)
-            Text(label).font(.system(size: 11.5, weight: .semibold))
+            Text(label).font(BrowserType.font(.small, weight: .semibold))
         }
         .padding(.horizontal, 9).padding(.vertical, 4)
         .background(Capsule().fill(Color.browsemiumField))
@@ -272,7 +278,7 @@ private struct AgentGrantCard: View {
                     label("Sites it may use")
                     ForEach(request.origins, id: \.description) { origin in
                         Text(origin.description)
-                            .font(.system(size: 12, design: .monospaced))
+                            .font(BrowserType.font(.small, design: .monospaced))
                             .textSelection(.enabled)
                     }
                 }
@@ -287,10 +293,13 @@ private struct AgentGrantCard: View {
                     if request.capabilities.contains(.screenshot) {
                         capability("Take screenshots, which may show sensitive information")
                     }
+                    if request.capabilities.contains(.webmcp) {
+                        capability("Run tools the site itself registers (WebMCP, experimental) — you confirm every call")
+                    }
                 }
 
                 Text("The grant ends after 15 minutes or 100 actions. You can take over or stop at any time. Page text and screenshots may be passed on by the app to its AI model. If you are logged in to these sites, the task can change your accounts, and Browsemium cannot tell whether a page action is harmless.")
-                    .font(.system(size: 11.5))
+                    .font(BrowserType.font(.small))
                     .foregroundStyle(Color.browsemiumSecondary)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -317,22 +326,22 @@ private struct AgentGrantCard: View {
     }
 
     private func label(_ text: String) -> some View {
-        Text(text).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(Color.browsemiumSecondary)
+        Text(text).font(BrowserType.font(.small, weight: .semibold)).foregroundStyle(Color.browsemiumSecondary)
     }
 
     private func fact(_ title: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             label(title)
-            Text(value).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+            Text(value).font(BrowserType.font(.body)).fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
     }
 
     private func capability(_ text: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(Color.browsemiumSecondary)
+            Image(systemName: "checkmark").font(BrowserType.font(.caption, weight: .bold)).foregroundStyle(Color.browsemiumSecondary)
                 .accessibilityHidden(true)
-            Text(text).font(.system(size: 12.5))
+            Text(text).font(BrowserType.font(.body))
         }
     }
 }
@@ -340,38 +349,75 @@ private struct AgentGrantCard: View {
 // MARK: - Approval card
 
 @MainActor
-private struct AgentApprovalCard: View {
+struct AgentApprovalCard: View {
     let gate: AgentActionGate
     let request: AgentApprovalRequest
     @State private var armed = false
     @FocusState private var declineFocused: Bool
 
-    private var verb: String { request.kind == .click ? "click" : "type into" }
+    private var title: String {
+        switch request.kind {
+        case .click: "The task wants to click an element"
+        case .type: "The task wants to type into an element"
+        case .pageTool: "The task wants to run a tool the page offers"
+        }
+    }
+
+    private var allowTitle: String {
+        switch request.kind {
+        case .click: "Allow click"
+        case .type: "Allow typing"
+        case .pageTool: "Allow tool call"
+        }
+    }
+
+    private var explanation: String {
+        switch request.kind {
+        case .click, .type:
+            "On \(request.origin.description), the page calls it “\(request.name)” (\(request.role)). This label comes from the page and may not describe what really happens."
+        case .pageTool:
+            "On \(request.origin.description), the page calls this tool “\(request.name)”. The page wrote the tool and its description, so neither proves what it does. It runs the page's own code with the arguments below."
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("The task wants to \(verb) an element")
-                .font(.system(size: 13.5, weight: .semibold))
+            Text(title)
+                .font(BrowserType.font(.body, weight: .semibold))
                 .accessibilityAddTraits(.isHeader)
             // The label is the page's own text, so it is quoted and labelled.
-            Text("On \(request.origin.description), the page calls it “\(request.name)” (\(request.role)). This label comes from the page and may not describe what really happens.")
-                .font(.system(size: 12))
+            Text(explanation)
+                .font(BrowserType.font(.small))
                 .foregroundStyle(Color.browsemiumSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if let detail = request.detail, !detail.isEmpty {
+                Text("The page describes it as: “\(detail)”")
+                    .font(BrowserType.font(.small))
+                    .foregroundStyle(Color.browsemiumSecondary)
+                    .lineLimit(4)
+                    .accessibilityLabel("The page describes the tool as: \(detail)")
+            }
             if let typed = request.typedText {
-                Text(typed.count > 400 ? String(typed.prefix(400)) + "…" : typed)
-                    .font(.system(size: 12, design: .monospaced))
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.browsemiumField))
-                    .accessibilityLabel("Text to type: \(typed.prefix(400))")
+                // A page tool's arguments are capped so they fit; nothing the
+                // person approves is hidden behind an ellipsis.
+                let shown = request.kind == .pageTool ? typed : (typed.count > 400 ? String(typed.prefix(400)) + "…" : typed)
+                ScrollView {
+                    Text(shown)
+                        .font(BrowserType.font(.small, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 140)
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.browsemiumField))
+                .accessibilityLabel(request.kind == .pageTool ? "Arguments: \(shown)" : "Text to type: \(shown)")
             }
             HStack(spacing: 10) {
                 Spacer()
                 Button("Decline") { gate.resolveApproval(id: request.id, approved: false) }
                     .keyboardShortcut(.cancelAction)
                     .focused($declineFocused)
-                BrowsemiumPrimaryButton(request.kind == .click ? "Allow click" : "Allow typing", isDisabled: !armed) {
+                BrowsemiumPrimaryButton(allowTitle, isDisabled: !armed) {
                     guard armed else { return }
                     gate.resolveApproval(id: request.id, approved: true)
                 }
@@ -404,7 +450,7 @@ private struct AgentTimeline: View {
         DisclosureGroup(isExpanded: $expanded) {
             if entries.isEmpty {
                 Text("Nothing has happened yet.")
-                    .font(.system(size: 11.5)).foregroundStyle(Color.browsemiumTertiary)
+                    .font(BrowserType.font(.small)).foregroundStyle(Color.browsemiumTertiary)
                     .padding(.vertical, 4)
             } else {
                 ScrollView {
@@ -412,12 +458,12 @@ private struct AgentTimeline: View {
                         ForEach(entries.suffix(30).reversed()) { entry in
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
                                 Text(entry.time, style: .time)
-                                    .font(.system(size: 11, design: .monospaced))
+                                    .font(BrowserType.font(.caption, design: .monospaced))
                                     .foregroundStyle(Color.browsemiumTertiary)
-                                Text(entry.action).font(.system(size: 11.5, weight: .medium))
-                                Text(entry.origin).font(.system(size: 11)).foregroundStyle(Color.browsemiumSecondary).lineLimit(1)
+                                Text(entry.action).font(BrowserType.font(.small, weight: .medium))
+                                Text(entry.origin).font(BrowserType.font(.caption)).foregroundStyle(Color.browsemiumSecondary).lineLimit(1)
                                 Spacer(minLength: 4)
-                                Text(entry.result).font(.system(size: 11)).foregroundStyle(Color.browsemiumSecondary)
+                                Text(entry.result).font(BrowserType.font(.caption)).foregroundStyle(Color.browsemiumSecondary)
                             }
                             .accessibilityElement(children: .combine)
                         }
@@ -427,7 +473,7 @@ private struct AgentTimeline: View {
                 .frame(maxHeight: 110)
             }
         } label: {
-            Text("Activity").font(.system(size: 11.5, weight: .semibold))
+            Text("Activity").font(BrowserType.font(.small, weight: .semibold))
         }
         .padding(.horizontal, 14).padding(.vertical, 8)
     }

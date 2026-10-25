@@ -11,9 +11,13 @@ func passwordImportRecoveryRendersInLightAndDark() throws {
     let directory = URL(fileURLWithPath: "/tmp/browsemium-import-qa-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
     let csv = try BrowserPasswordCSV(data: Data("name,url,username,password\nFixture,https://fixture.example,fixture-user,fixture-only\n".utf8))
-    let preview = BrowserImportPreview(source: .chrome, bookmarks: [], visits: [], folders: [],
+    var preview = BrowserImportPreview(source: .chrome, bookmarks: [], visits: [], folders: [],
         credentials: [.init(url: URL(string: "https://fixture.example")!, username: "fixture-user")],
         cookieCount: 1, extensionIDs: [], searchEngine: nil, notImportable: [])
+    preview.sessionTabs = [
+        .init(ordinal: 1, url: URL(string: "https://fixture.example/a")!, title: "Fixture A", isPinned: true),
+        .init(ordinal: 2, url: URL(string: "https://fixture.example/b")!, title: "Fixture B", isPinned: false)
+    ]
     let error = BrowserDataImporter.ImportError.credentialsLocked("Chrome").localizedDescription
     for dark in [false, true] {
         let csvView = PasswordCSVImportSheet(csv: csv, destinationName: "Imported profile",

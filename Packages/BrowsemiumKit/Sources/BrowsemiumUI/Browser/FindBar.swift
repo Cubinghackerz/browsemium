@@ -9,7 +9,7 @@ struct FindBar: View {
         HStack(spacing: 6) {
             TextField("Find on page", text: $model.findText)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12))
+                .font(BrowserType.font(.small))
                 .focused($isFocused)
                 .onSubmit { model.findOnPage() }
                 .onChange(of: model.findText) { model.findOnPage() }
@@ -17,7 +17,7 @@ struct FindBar: View {
 
             if let status = model.findStatus {
                 Text(status)
-                    .font(.system(size: 10.5))
+                    .font(BrowserType.font(.caption))
                     .foregroundStyle(Color.browsemiumTertiary)
             }
 
@@ -34,15 +34,7 @@ struct FindBar: View {
         .padding(.leading, 10)
         .padding(.trailing, 4)
         .frame(width: 330, height: 30)
-        .background(
-            RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous)
-                .fill(Color.browsemiumRaised)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous)
-                .stroke(Color.browsemiumBorderStrong, lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.14), radius: 10, y: 3)
+        .browsemiumOverlaySurface(radius: BrowserMetrics.controlRadius, strongBorder: true, shadowOpacity: 0.14, shadowRadius: 10, shadowY: 3)
         .onAppear { isFocused = true }
     }
 }

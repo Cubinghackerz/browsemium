@@ -299,6 +299,31 @@ func importReportKeepsCredentialTransferSeparateFromPersistence() throws {
 }
 
 @Test
+func transferCompletionAcceptsCustomPerOutcomeReasons() {
+    var report = BrowserImportReport()
+    report.record(.sessionTab, ordinal: 1, stage: .transfer, outcome: .accepted, reason: .preparedForTransfer)
+    report.record(.sessionTab, ordinal: 2, stage: .transfer, outcome: .accepted, reason: .preparedForTransfer)
+    let didComplete = report.completeTransfer(.sessionTab, outcomes: [.accepted, .duplicate]) { outcome in
+        outcome == .accepted ? .imported : .alreadyPresent
+    }
+    #expect(didComplete)
+    #expect(report.items.contains {
+        $0.category == .sessionTab && $0.stage == .persistence && $0.outcome == .accepted && $0.reason == .imported
+    })
+    #expect(report.items.contains {
+        $0.category == .sessionTab && $0.stage == .persistence && $0.outcome == .duplicate && $0.reason == .alreadyPresent
+    })
+    // The default mapping is unchanged for every existing caller.
+    var plain = BrowserImportReport()
+    plain.record(.password, ordinal: 1, stage: .transfer, outcome: .accepted, reason: .preparedForTransfer)
+    let didCompletePlain = plain.completeTransfer(.password, outcomes: [.failed])
+    #expect(didCompletePlain)
+    #expect(plain.items.contains {
+        $0.stage == .persistence && $0.outcome == .failed && $0.reason == .destinationWriteFailed
+    })
+}
+
+@Test
 func importReportNeverCountsRolledBackWritesAsAccepted() throws {
     let profile = try FakeChromeProfile(bookmarks: [
         ["type": "url", "name": "First", "url": "https://first.example"],

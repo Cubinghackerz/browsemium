@@ -35,4 +35,21 @@ public protocol PageActuating: AnyObject {
     /// Performs the action only if the live element still matches the
     /// action's element fingerprint and the page is still on its origin.
     func perform(_ action: AgentPageAction, in id: TabID) async throws
+
+    /// Tools the page registered through WebMCP. Empty when the page did not
+    /// register any or the bridge is off. Every field is page-authored.
+    func pageTools(in id: TabID) async throws -> [AgentPageTool]
+    /// Runs one page tool with JSON-object `arguments` and returns its result
+    /// serialised as JSON text. The page's own code runs; the gate has already
+    /// obtained the person's confirmation and checked `expected` against the
+    /// live tool, and the actuator checks it again right before the call.
+    func callPageTool(_ expected: AgentPageTool, arguments: String, in id: TabID) async throws -> String
+}
+
+public extension PageActuating {
+    /// Conformers that do not host WebMCP refuse rather than guess.
+    func pageTools(in id: TabID) async throws -> [AgentPageTool] { throw AgentError.unavailable }
+    func callPageTool(_ expected: AgentPageTool, arguments: String, in id: TabID) async throws -> String {
+        throw AgentError.unavailable
+    }
 }

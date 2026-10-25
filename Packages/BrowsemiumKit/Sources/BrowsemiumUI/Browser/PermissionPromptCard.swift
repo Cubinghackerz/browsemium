@@ -19,7 +19,7 @@ struct PermissionPromptCard: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
                 Image(systemName: iconName)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(BrowserType.font(.title, weight: .medium))
                     .foregroundStyle(Color.browsemiumAccent)
                     .frame(width: 30, height: 30)
                     .background(
@@ -30,11 +30,11 @@ struct PermissionPromptCard: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(host) wants to \(request.kind.requestDescription)")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(BrowserType.font(.body, weight: .semibold))
                         .foregroundStyle(Color.browsemiumPrimary)
                         .fixedSize(horizontal: false, vertical: true)
                     Text("Nothing is shared until you allow it.")
-                        .font(.system(size: 11))
+                        .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumTertiary)
                 }
             }

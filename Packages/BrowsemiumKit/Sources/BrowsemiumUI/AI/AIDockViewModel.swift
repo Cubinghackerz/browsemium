@@ -233,21 +233,19 @@ public final class AIDockViewModel {
             let work = beginWork()
             defer { endWork(work) }
             do {
-                let fetched = try await OllamaAdapter().listModels()
+                let fetched = try await makeAdapter(for: requestedProvider, credential: "").listModels()
                 guard provider == requestedProvider else { return }
                 models = fetched
                 if selectedModelID == nil {
                     selectedModelID = models.first?.id
                 }
                 hasStoredCredential = true
-                credentialStatus = fetched.isEmpty
-                    ? "Ollama is running, but it has no models yet. Pull one with `ollama pull llama3.2`."
-                    : "Connected to Ollama on this Mac. \(models.count) models available."
+                credentialStatus = Self.localConnectedMessage(for: requestedProvider, modelCount: fetched.count)
                 errorMessage = nil
             } catch {
                 guard provider == requestedProvider else { return }
                 credentialStatus = nil
-                errorMessage = "Ollama is not reachable at localhost:11434. Install it from ollama.com and run `ollama serve`."
+                errorMessage = Self.localUnreachableMessage(for: requestedProvider, error: error, detailed: true)
             }
             return
         }
@@ -288,7 +286,7 @@ public final class AIDockViewModel {
             let work = beginWork()
             defer { endWork(work) }
             do {
-                let fetched = try await OllamaAdapter().listModels()
+                let fetched = try await makeAdapter(for: requestedProvider, credential: "").listModels()
                 guard provider == requestedProvider else { return }
                 models = fetched
                 if selectedModelID == nil {
@@ -296,7 +294,7 @@ public final class AIDockViewModel {
                 }
             } catch {
                 guard provider == requestedProvider else { return }
-                errorMessage = "Ollama is not reachable at localhost:11434."
+                errorMessage = Self.localUnreachableMessage(for: requestedProvider, error: error, detailed: false)
             }
             return
         }
@@ -1219,6 +1217,31 @@ public final class AIDockViewModel {
         guard let index = messages.firstIndex(where: { $0.id == id }),
               messages[index].content.isEmpty else { return }
         messages.remove(at: index)
+    }
+
+    /// What the dock says after a local provider answered the probe.
+    static func localConnectedMessage(for provider: AIProviderID, modelCount: Int) -> String {
+        switch provider {
+        case .appleIntelligence:
+            return "Apple Intelligence is ready. It runs on this Mac."
+        default:
+            return modelCount == 0
+                ? "Ollama is running, but it has no models yet. Pull one with `ollama pull llama3.2`."
+                : "Connected to Ollama on this Mac. \(modelCount) models available."
+        }
+    }
+
+    /// What the dock says when a local provider cannot be used. Apple's own
+    /// reasons are already plain sentences; Ollama's failure is a connection.
+    static func localUnreachableMessage(for provider: AIProviderID, error: Error, detailed: Bool) -> String {
+        switch provider {
+        case .appleIntelligence:
+            return error.localizedDescription
+        default:
+            return detailed
+                ? "Ollama is not reachable at localhost:11434. Install it from ollama.com and run `ollama serve`."
+                : "Ollama is not reachable at localhost:11434."
+        }
     }
 
     private func makeAdapter(credential: String) -> any AIProviderAdapter {

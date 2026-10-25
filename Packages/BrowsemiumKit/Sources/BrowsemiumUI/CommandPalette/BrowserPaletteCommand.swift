@@ -3,7 +3,7 @@ import BrowsemiumCore
 public struct BrowserPaletteCommand: Identifiable, Hashable, Sendable {
     /// What a row is, so the palette can show the right icon.
     public enum Kind: String, Sendable, Hashable {
-        case tab, history, bookmark, action, command
+        case tab, history, bookmark, action, command, answer, pageText
     }
 
     public let id: String

@@ -59,6 +59,23 @@ struct TabMenuContent: View {
                 }
             }
         }
+        if let host = SpaceRouteHost.routableHost(of: model.tabURLs[tab.id] ?? tab.lastCommittedURL ?? URL(fileURLWithPath: "/")),
+           !model.session.isPrivate {
+            if let rule = model.routing.exactRoute(forHost: host) {
+                Button("Stop Routing \(host)") { model.routing.removeRoute(rule) }
+            } else {
+                Menu("Always Open \(host) In") {
+                    ForEach(model.session.spaces) { space in
+                        Button(space.name) {
+                            if model.routing.setRoute(host: host, includesSubdomains: false, to: space.id),
+                               tab.id == model.session.activeTabID {
+                                model.routing.routeActiveTabNow()
+                            }
+                        }
+                    }
+                }
+            }
+        }
         Divider()
         Button("Close Other Tabs") { model.closeOtherTabs(around: tab.id) }
             .disabled(!closableOthersExist)

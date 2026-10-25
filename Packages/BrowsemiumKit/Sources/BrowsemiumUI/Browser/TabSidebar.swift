@@ -13,6 +13,7 @@ import BrowsemiumEngineKit
 struct TabSidebar: View {
     @Bindable var model: BrowserWindowModel
     @State private var isNamingGroup = false
+    @State private var newGroupIsSeparate = false
     @State private var newGroupName = ""
     @State private var isRenamingGroup = false
     @State private var groupRenameText = ""
@@ -83,9 +84,7 @@ struct TabSidebar: View {
                     LazyVStack(spacing: 2) {
                         if !pinnedTabs.isEmpty {
                             sectionLabel("Pinned")
-                            ForEach(pinnedTabs) { tab in
-                                SidebarTabRow(model: model, tab: tab, indent: false)
-                            }
+                            PinnedTabGrid(model: model, tabs: pinnedTabs)
                         }
 
                         if !regularTabs.isEmpty {
@@ -99,6 +98,7 @@ struct TabSidebar: View {
                                 case .tab(let tab, let indent):
                                     SidebarTabRow(model: model, tab: tab, indent: indent)
                                         .id(tab.id)
+                                        .transition(.opacity.combined(with: .move(edge: .top)))
                                 }
                             }
                         }
@@ -106,7 +106,7 @@ struct TabSidebar: View {
                             VStack(spacing: 5) {
                                 BrowsemiumWatermark(size: 92)
                                 Text("No tabs in this space")
-                                    .font(.system(size: 11))
+                                    .font(BrowserType.font(.caption))
                                     .foregroundStyle(Color.browsemiumTertiary)
                             }
                             .frame(maxWidth: .infinity)
@@ -115,10 +115,13 @@ struct TabSidebar: View {
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 8)
+                    // Folders opening and closing, and tabs arriving or leaving,
+                    // slide the rows below them rather than jumping.
+                    .animation(BrowserMotion.standard(reduceMotion: reduceMotion), value: sidebarEntries.map(\.id))
                 }
                 .onChange(of: model.session.activeTabID) {
                     guard let active = model.session.activeTabID else { return }
-                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                    withAnimation(BrowserMotion.standard(reduceMotion: reduceMotion)) {
                         proxy.scrollTo(active, anchor: .center)
                     }
                 }
@@ -133,16 +136,21 @@ struct TabSidebar: View {
         }
         .frame(width: BrowserMetrics.sidebarWidth)
         .frame(maxHeight: .infinity)
-        .alert("New Tab Group", isPresented: $isNamingGroup) {
+        .alert(newGroupIsSeparate ? "New Separate Group" : "New Tab Group", isPresented: $isNamingGroup) {
             TextField("Name", text: $newGroupName)
             Button("Create") {
                 let name = newGroupName
                 newGroupName = ""
-                model.createGroup(named: name.isEmpty ? "Group \(model.session.spaces.count)" : name)
+                model.createGroup(
+                    named: name.isEmpty ? "Group \(model.session.spaces.count)" : name,
+                    separateData: newGroupIsSeparate
+                )
             }
             Button("Cancel", role: .cancel) { newGroupName = "" }
         } message: {
-            Text("Groups keep related tabs together and switch as a set.")
+            Text(newGroupIsSeparate
+                 ? "Cookies, logins and site data in this group are kept apart from your other groups, so you can sign in to two accounts on one site. History, bookmarks and passwords are still shared. This cannot be changed later."
+                 : "Groups keep related tabs together and switch as a set.")
         }
         .alert("Rename Group", isPresented: $isRenamingGroup) {
             TextField("Name", text: $groupRenameText)
@@ -183,29 +191,36 @@ struct TabSidebar: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "rectangle.stack")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(Color.browsemiumTertiary)
-            Text("\(model.visibleTabs.count) \(model.visibleTabs.count == 1 ? "tab" : "tabs")")
-                .font(.system(size: 11))
-                .foregroundStyle(Color.browsemiumTertiary)
-            if model.sleepingTabCount > 0 {
-                Text("· \(model.sleepingTabCount) sleeping")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.browsemiumTertiary)
+        VStack(spacing: 0) {
+            if SpaceSwitcher.isVisible(spaceCount: model.session.spaces.count, isPrivate: model.session.isPrivate) {
+                SpaceSwitcherRow(
+                    items: SpaceSwitcher.items(spaces: model.session.spaces, active: model.session.activeSpaceID)
+                ) { model.switchGroup($0) }
             }
-            Spacer(minLength: 0)
+            HStack(spacing: 6) {
+                Image(systemName: "rectangle.stack")
+                    .font(BrowserType.font(.caption, weight: .medium))
+                    .foregroundStyle(Color.browsemiumTertiary)
+                Text("\(model.visibleTabs.count) \(model.visibleTabs.count == 1 ? "tab" : "tabs")")
+                    .font(BrowserType.font(.caption))
+                    .foregroundStyle(Color.browsemiumTertiary)
+                if model.sleepingTabCount > 0 {
+                    Text("· \(model.sleepingTabCount) sleeping")
+                        .font(BrowserType.font(.caption))
+                        .foregroundStyle(Color.browsemiumTertiary)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(model.visibleTabs.count) tabs, \(model.sleepingTabCount) sleeping")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(model.visibleTabs.count) tabs, \(model.sleepingTabCount) sleeping")
     }
 
     private func sectionLabel(_ title: String) -> some View {
         Text(title)
-            .font(.system(size: 10, weight: .semibold))
+            .font(BrowserType.font(.caption, weight: .semibold))
             .foregroundStyle(Color.browsemiumTertiary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 8)
@@ -225,6 +240,8 @@ struct TabSidebar: View {
                         Label(space.name, systemImage: "checkmark")
                     } else if space.isLocked {
                         Label(space.name, systemImage: "lock.fill")
+                    } else if space.hasSeparateData {
+                        Label(space.name, systemImage: "person.crop.square")
                     } else {
                         Text(space.name)
                     }
@@ -233,8 +250,17 @@ struct TabSidebar: View {
             Divider()
             Button("New Group…") {
                 newGroupName = ""
+                newGroupIsSeparate = false
                 isNamingGroup = true
             }
+            .disabled(model.session.isPrivate)
+            Button("New Separate Group…") {
+                newGroupName = ""
+                newGroupIsSeparate = true
+                isNamingGroup = true
+            }
+            .disabled(model.session.isPrivate)
+            .help("A group with its own cookies and logins")
             Button("New Folder…") {
                 newFolderName = ""
                 isNamingFolder = true
@@ -266,8 +292,15 @@ struct TabSidebar: View {
                 Circle()
                     .fill(groupColor)
                     .frame(width: 7, height: 7)
+                if model.activeGroup?.hasSeparateData == true {
+                    Image(systemName: "person.crop.square")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(Color.browsemiumTertiary)
+                        .help("This group keeps its own cookies and logins")
+                        .accessibilityLabel("Separate cookies and logins")
+                }
                 Text(model.activeGroup?.name ?? "Tabs")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(BrowserType.font(.small, weight: .medium))
                     .foregroundStyle(Color.browsemiumPrimary)
                     .lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down")
@@ -310,7 +343,7 @@ private struct NewTabSidebarButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "plus")
-                .font(.system(size: 12, weight: .semibold))
+                .font(BrowserType.font(.small, weight: .semibold))
                 .foregroundStyle(isHovering ? Color.browsemiumPrimary : Color.browsemiumSecondary)
                 .frame(width: 26, height: 26)
                 .background(
@@ -337,6 +370,7 @@ private struct SidebarTabRow: View {
     let indent: Bool
 
     @State private var isHovering = false
+    @State private var isDropTargeted = false
     @State private var isShowingStats = false
     @State private var isNamingFolder = false
     @State private var newFolderName = ""
@@ -352,7 +386,7 @@ private struct SidebarTabRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            icon
+            TabFaviconView(model: model, tab: tab, size: 16, isActive: isActive)
 
             if model.isTabInSplit(tab.id) {
                 Image(systemName: "rectangle.split.2x1")
@@ -363,13 +397,13 @@ private struct SidebarTabRow: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(tab.title)
-                    .font(.system(size: 12))
+                    .font(BrowserType.font(.small))
                     .foregroundStyle(isActive ? Color.browsemiumPrimary : Color.browsemiumSecondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 if let host = tab.lastCommittedURL?.host, isActive || isHovering {
                     Text(host)
-                        .font(.system(size: 10))
+                        .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumTertiary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -391,7 +425,29 @@ private struct SidebarTabRow: View {
         .overlay {
             if isActive {
                 RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous)
-                    .stroke(Color.browsemiumBorder, lineWidth: 1)
+                    .stroke(Color.browsemiumBorderStrong, lineWidth: 1)
+            }
+        }
+        .overlay(alignment: .leading) {
+            // A 2pt bar makes the selected row findable at a glance without
+            // leaning on a faint tint alone.
+            if isActive {
+                Capsule()
+                    .fill(Color.browsemiumPrimary)
+                    .frame(width: 2, height: 14)
+                    .padding(.leading, 2)
+                    .accessibilityHidden(true)
+            }
+        }
+        .overlay(alignment: .top) {
+            // Where a dragged tab will land: just above this row.
+            if isDropTargeted {
+                Capsule()
+                    .fill(Color.browsemiumFocus)
+                    .frame(height: 2)
+                    .padding(.horizontal, 4)
+                    .offset(y: -2)
+                    .accessibilityHidden(true)
             }
         }
         .opacity(isAsleep && !isActive ? 0.55 : 1)
@@ -437,16 +493,19 @@ private struct SidebarTabRow: View {
             model.beginTabDrag()
             return NSItemProvider(object: tab.id.rawValue.uuidString as NSString)
         }
-        .dropDestination(for: String.self) { items, _ in
+        .dropDestination(for: String.self, action: { items, _ in
             guard let rawID = items.first,
                   let uuid = UUID(uuidString: rawID) else { return false }
             model.endTabDrag()
             model.moveTab(TabID(rawValue: uuid), before: tab.id)
             return true
-        }
+        }, isTargeted: { isDropTargeted = $0 })
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(isActive ? [.isSelected] : [])
+        // The close button below appears only while the pointer is over the
+        // row. This action gives VoiceOver and the rotor the same command.
+        .accessibilityAction(named: "Close tab") { model.closeTab(tab.id) }
     }
 
     @ViewBuilder
@@ -482,45 +541,6 @@ private struct SidebarTabRow: View {
         }
     }
 
-    @ViewBuilder
-    private var icon: some View {
-        if tab.lifecycle == .loading {
-            ProgressView()
-                .controlSize(.mini)
-                .scaleEffect(0.7)
-                .frame(width: 14, height: 14)
-        } else if let favicon = model.favicons.image(for: tab.lastCommittedURL) {
-            Image(nsImage: favicon)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 14, height: 14)
-                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-        } else if tab.lifecycle == .crashed {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 10))
-                .foregroundStyle(Color.browsemiumWarning)
-                .frame(width: 14, height: 14)
-        } else {
-            monogram
-        }
-    }
-
-    @ViewBuilder
-    private var monogram: some View {
-        if let letter = tab.lastCommittedURL?.host?.first.map({ String($0).uppercased() }) {
-            Text(letter)
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(isActive ? Color.browsemiumPrimary : Color.browsemiumTertiary)
-                .frame(width: 14, height: 14)
-                .accessibilityHidden(true)
-        } else {
-            Image(systemName: "sparkle")
-                .font(.system(size: 10))
-                .foregroundStyle(Color.browsemiumTertiary)
-                .frame(width: 14, height: 14)
-                .accessibilityHidden(true)
-        }
-    }
 
     private var accessibilityLabel: String {
         var label = "Tab, \(tab.title)"
@@ -548,7 +568,9 @@ private struct SidebarFolderRow: View {
     let folder: TabFolder
     let count: Int
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
+    @State private var isDropTargeted = false
     @State private var isRenaming = false
     @State private var renameText = ""
 
@@ -564,17 +586,17 @@ private struct SidebarFolderRow: View {
                 .rotationEffect(.degrees(folder.isCollapsed ? 0 : 90))
                 .frame(width: 10)
             Image(systemName: folder.isCollapsed ? "folder.fill" : "folder")
-                .font(.system(size: 10))
+                .font(BrowserType.font(.caption))
                 .foregroundStyle(accent)
                 .frame(width: 14)
             Text(folder.name)
-                .font(.system(size: 11, weight: .semibold))
+                .font(BrowserType.font(.caption, weight: .semibold))
                 .foregroundStyle(Color.browsemiumSecondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 2)
             Text("\(count)")
-                .font(.system(size: 10, weight: .medium))
+                .font(BrowserType.font(.caption, weight: .medium))
                 .foregroundStyle(Color.browsemiumTertiary)
                 .monospacedDigit()
         }
@@ -583,12 +605,21 @@ private struct SidebarFolderRow: View {
         .frame(height: 24)
         .background(
             RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous)
-                .fill(isHovering ? Color.browsemiumHover : Color.clear)
+                .fill(isDropTargeted ? Color.browsemiumSelection : (isHovering ? Color.browsemiumHover : Color.clear))
         )
+        .overlay {
+            // Dropping here files the tab, so the whole folder row is the target.
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous)
+                    .stroke(Color.browsemiumFocus, lineWidth: 1.5)
+            }
+        }
         .contentShape(Rectangle())
         .onTapGesture {
             BrowserHaptics.perform()
-            model.toggleFolderCollapsed(folder.id)
+            withAnimation(BrowserMotion.standard(reduceMotion: reduceMotion)) {
+                model.toggleFolderCollapsed(folder.id)
+            }
         }
         .onHover { isHovering = $0 }
         .contextMenu {
@@ -608,12 +639,12 @@ private struct SidebarFolderRow: View {
             Button("Rename") { model.renameFolder(folder.id, to: renameText) }
             Button("Cancel", role: .cancel) {}
         }
-        .dropDestination(for: String.self) { items, _ in
+        .dropDestination(for: String.self, action: { items, _ in
             guard let rawID = items.first,
                   let uuid = UUID(uuidString: rawID) else { return false }
             model.assignTab(TabID(rawValue: uuid), toFolder: folder.id)
             return true
-        }
+        }, isTargeted: { isDropTargeted = $0 })
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Folder, \(folder.name), \(count) tabs, \(folder.isCollapsed ? "collapsed" : "expanded")")
         .accessibilityAddTraits(.isButton)

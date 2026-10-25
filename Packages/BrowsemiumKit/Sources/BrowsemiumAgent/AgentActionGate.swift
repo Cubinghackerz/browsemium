@@ -28,7 +28,7 @@ public struct AgentAuditEntry: Identifiable, Sendable, Equatable {
 /// submit an order. The card must present them as "the page calls this ..."
 /// and must never imply the action is safe.
 public struct AgentApprovalRequest: Identifiable, Sendable, Equatable {
-    public enum Kind: String, Sendable { case click, type }
+    public enum Kind: String, Sendable { case click, type, pageTool }
 
     public let id: UUID
     public let taskID: UUID
@@ -36,9 +36,28 @@ public struct AgentApprovalRequest: Identifiable, Sendable, Equatable {
     public let origin: AgentOrigin
     public let role: String
     public let name: String
-    /// What would be typed, shown only on the confirmation card.
+    /// What would be typed, or the JSON arguments of a page tool call, shown
+    /// only on the confirmation card and never truncated.
     public let typedText: String?
+    /// For a page tool: the description the page gave it. Page-authored, so
+    /// the card must present it as the page's claim.
+    public let detail: String?
     public let expiresAt: Date
+
+    public init(
+        id: UUID, taskID: UUID, kind: Kind, origin: AgentOrigin, role: String, name: String,
+        typedText: String?, detail: String?, expiresAt: Date
+    ) {
+        self.id = id
+        self.taskID = taskID
+        self.kind = kind
+        self.origin = origin
+        self.role = role
+        self.name = name
+        self.typedText = typedText
+        self.detail = detail
+        self.expiresAt = expiresAt
+    }
 }
 
 /// The sole path from an external client to a page.
@@ -72,6 +91,11 @@ public final class AgentActionGate {
     /// browser is unlocked, and the profile exists. Defaults to false, so a
     /// gate that nobody wired can never act.
     @ObservationIgnored public var scopeIsAccessible: (UUID) -> Bool = { _ in false }
+
+    /// Whether the person turned the experimental WebMCP bridge on. Read on
+    /// every WebMCP call, so switching it off takes effect immediately. A gate
+    /// nobody wired refuses.
+    @ObservationIgnored public var webMCPEnabled: () -> Bool = { false }
 
     @ObservationIgnored private let actuator: any PageActuating
     @ObservationIgnored private let now: () -> Date
@@ -299,6 +323,94 @@ public final class AgentActionGate {
         try await interact("Type", client: client, tab: tab, reference: reference, text: text, requestID: requestID)
     }
 
+    // MARK: - WebMCP
+
+    /// Lists what the page registered. Names, descriptions and schemas are
+    /// page-authored; the caller must present them as untrusted.
+    public func pageToolList(client: UUID, tab: TabID, requestID: String) async throws -> [AgentPageTool] {
+        try await run("List page tools", client: client, capability: .webmcp, tab: tab, requestID: requestID) { op in
+            guard self.webMCPEnabled() else { throw AgentError.featureOff }
+            let origin = try self.requireOrigin(self.verify(op, tab: tab, requireOrigin: true))
+            let value = try await self.actuator.pageTools(in: tab)
+            let after = try self.requireOrigin(self.verify(op, tab: tab, requireOrigin: true))
+            guard after == origin else { throw AgentError.denied }
+            return Self.sanitize(value)
+        }
+    }
+
+    /// Runs a page-registered tool after the person confirms it. The page's
+    /// own code runs, so a tool's name, description and read-only hint prove
+    /// nothing; every call asks, whatever the page claims.
+    public func pageToolCall(
+        client: UUID,
+        tab: TabID,
+        name: String,
+        arguments: String,
+        requestID: String
+    ) async throws -> String {
+        try await run("Page tool", client: client, capability: .webmcp, tab: tab, requestID: requestID) { op in
+            guard self.webMCPEnabled() else { throw AgentError.featureOff }
+            guard AgentPageTool.isValidName(name),
+                  arguments.utf8.count <= AgentLimits.maxPageToolArgumentBytes,
+                  Self.isJSONObject(arguments) else { throw AgentError.invalidArguments }
+            let origin = try self.requireOrigin(self.verify(op, tab: tab, requireOrigin: true))
+            let live = Self.sanitize(try await self.actuator.pageTools(in: tab))
+            let afterList = try self.requireOrigin(self.verify(op, tab: tab, requireOrigin: true))
+            guard afterList == origin else { throw AgentError.denied }
+            guard let tool = live.first(where: { $0.name == name }) else { throw AgentError.staleElement }
+            // The page's own schema, checked before the person is asked.
+            guard PageToolSchema.accepts(arguments: arguments, schema: tool.inputSchema) else {
+                throw AgentError.invalidArguments
+            }
+
+            state = .waiting
+            let outcome = await self.requestApproval(
+                kind: .pageTool, role: "page tool", name: tool.name,
+                typedText: arguments, detail: tool.description, origin: origin, op: op
+            )
+            switch outcome {
+            case .approved: break
+            case .declined: throw AgentError.declined
+            case .cancelled: throw AgentError.denied
+            }
+            // Switching the feature off while the card is open ends the call.
+            guard self.webMCPEnabled() else { throw AgentError.featureOff }
+            let afterApproval = try self.requireOrigin(self.verify(op, tab: tab, requireOrigin: true))
+            guard afterApproval == origin else { throw AgentError.denied }
+
+            state = .acting
+            // The actuator compares `tool` with the live registration in the
+            // same page turn that runs it, so a tool the page rewrote while
+            // the card was open is refused as stale.
+            let result = try await self.actuator.callPageTool(tool, arguments: arguments, in: tab)
+            let afterCall = try self.requireOrigin(self.verify(op, tab: tab, requireOrigin: true))
+            // A result from a page that has since left the grant is dropped.
+            guard afterCall == origin else { throw AgentError.denied }
+            return String(result.prefix(AgentLimits.maxPageToolResultCharacters))
+        }
+    }
+
+    /// Re-applies the limits to whatever an actuator returned. Anything out of
+    /// bounds is dropped, never truncated, so the fingerprint still describes
+    /// exactly what a client was shown.
+    nonisolated private static func sanitize(_ tools: [AgentPageTool]) -> [AgentPageTool] {
+        var seen = Set<String>()
+        var kept: [AgentPageTool] = []
+        for tool in tools {
+            guard AgentPageTool.isValidName(tool.name), seen.insert(tool.name).inserted,
+                  tool.description.count <= AgentLimits.maxPageToolDescription,
+                  tool.inputSchema.utf8.count <= AgentLimits.maxPageToolSchemaBytes else { continue }
+            kept.append(tool)
+            if kept.count == AgentLimits.maxPageTools { break }
+        }
+        return kept
+    }
+
+    nonisolated private static func isJSONObject(_ text: String) -> Bool {
+        guard let object = try? JSONSerialization.jsonObject(with: Data(text.utf8), options: []) else { return false }
+        return object is [String: Any]
+    }
+
     // MARK: - Interaction
 
     private func interact(
@@ -356,14 +468,30 @@ public final class AgentActionGate {
         case .click: kind = .click; typed = nil
         case .type(_, let text): kind = .type; typed = text
         }
+        return await requestApproval(
+            kind: kind, role: element.role, name: element.name,
+            typedText: typed, detail: nil, origin: origin, op: op
+        )
+    }
+
+    private func requestApproval(
+        kind: AgentApprovalRequest.Kind,
+        role: String,
+        name: String,
+        typedText: String?,
+        detail: String?,
+        origin: AgentOrigin,
+        op: Operation
+    ) async -> ApprovalOutcome {
         let request = AgentApprovalRequest(
             id: UUID(),
             taskID: op.taskID,
             kind: kind,
             origin: origin,
-            role: String(element.role.prefix(60)),
-            name: String(element.name.prefix(200)),
-            typedText: typed,
+            role: String(role.prefix(60)),
+            name: String(name.prefix(200)),
+            typedText: typedText,
+            detail: detail.map { String($0.prefix(AgentLimits.maxPageToolDescription)) },
             expiresAt: now().addingTimeInterval(TimeInterval(approvalTimeout.components.seconds))
         )
         let limit = approvalTimeout
@@ -421,6 +549,8 @@ public final class AgentActionGate {
         guard let task, task.clientID == client, task.capabilities.contains(capability) else {
             throw AgentError.denied
         }
+        // Checked before the budget is spent: a refused call costs nothing.
+        if capability == .webmcp, !webMCPEnabled() { throw AgentError.featureOff }
         guard state.hasAuthority else { throw state == .finished ? AgentError.expired : AgentError.denied }
         guard enforceDeadline() else { throw state == .finished ? AgentError.expired : AgentError.denied }
         if let tab, !tabs.contains(tab) { throw AgentError.denied }
@@ -544,7 +674,7 @@ public final class AgentActionGate {
 
     nonisolated private static func auditResult(for error: AgentError) -> String {
         switch error {
-        case .denied, .sensitiveField, .invalidOrigin: "Denied"
+        case .denied, .sensitiveField, .invalidOrigin, .featureOff: "Denied"
         case .declined: "Declined"
         case .expired: "Expired"
         default: "Failed"

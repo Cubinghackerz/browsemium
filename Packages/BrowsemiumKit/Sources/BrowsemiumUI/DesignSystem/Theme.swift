@@ -1,4 +1,5 @@
 import AppKit
+import BrowsemiumCore
 import CoreText
 import SwiftUI
 import BrowsemiumEngineKit
@@ -13,10 +14,99 @@ import BrowsemiumEngineKit
 ///
 /// Every token is a dynamic `NSColor`, so light and dark follow the system
 /// appearance automatically instead of being chosen at launch.
+/// The chrome's motion. Every animation in the chrome comes from here so
+/// Reduce Motion is honoured in one place: with it on, nothing animates.
+public enum BrowserMotion {
+    /// Panels and layout changes.
+    public static func standard(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .smooth(duration: 0.22)
+    }
+
+    /// Things that appear over the page: palette, peek, banners.
+    public static func overlay(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.86)
+    }
+
+    /// Hover and press feedback.
+    public static func quick(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .easeOut(duration: 0.12)
+    }
+}
+
+/// The chrome's type scale. Three text steps replace the seven near-identical
+/// sizes (10 to 13.5 pt) that had accumulated, and nothing in the chrome sets
+/// text below 11 pt. Icon glyph sizes are not text and stay local.
+public enum BrowserType {
+    public enum Step {
+        /// Metadata, hints, badges.
+        case caption
+        /// Row titles, secondary labels, notes.
+        case small
+        /// Primary body text and controls.
+        case body
+        /// Section and panel titles.
+        case title
+
+        public var size: CGFloat {
+            switch self {
+            case .caption: 11
+            case .small: 12
+            case .body: 13
+            case .title: 15
+            }
+        }
+    }
+
+    public static func font(_ step: Step, weight: Font.Weight = .regular, design: Font.Design = .default) -> Font {
+        .system(size: step.size, weight: weight, design: design)
+    }
+
+    /// Maps a legacy point size onto its step, or nil for sizes that are not
+    /// chrome text (icon glyphs below 10, display sizes above 16).
+    public static func step(forLegacySize size: Double) -> Step? {
+        switch size {
+        case 10..<11.25: .caption
+        case 11.25..<12.25: .small
+        case 12.25..<14: .body
+        case 14...16: .title
+        default: nil
+        }
+    }
+}
+
 public enum BrowserPalette {
     public static func adaptive(light: NSColor, dark: NSColor) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
             appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+        })
+    }
+
+    /// One token's values: the standard pair and the pair macOS uses when
+    /// Increase Contrast is on.
+    public struct Tone: Sendable {
+        public let light: NSColor
+        public let dark: NSColor
+        public let highLight: NSColor
+        public let highDark: NSColor
+
+        public init(light: NSColor, dark: NSColor, highLight: NSColor, highDark: NSColor) {
+            self.light = light
+            self.dark = dark
+            self.highLight = highLight
+            self.highDark = highDark
+        }
+
+        /// The value for an appearance name, as AppKit reports it.
+        public func value(for name: NSAppearance.Name?) -> NSColor {
+            if name == .accessibilityHighContrastAqua { return highLight }
+            if name == .accessibilityHighContrastDarkAqua { return highDark }
+            return name == .darkAqua ? dark : light
+        }
+    }
+
+    public static func adaptive(_ tone: Tone) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            tone.value(for: appearance.bestMatch(from: [.aqua, .darkAqua, .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua]))
         })
     }
 
@@ -25,50 +115,89 @@ public enum BrowserPalette {
     }
 }
 
+/// Alpha tones behind the chrome's foreground and border tokens. Each has a
+/// standard pair and an Increase Contrast pair; `ContrastTests` measures both.
+public extension BrowserPalette {
+    public static var borderTone: Tone {
+        Tone(
+            light: alpha(NSColor(white: 0, alpha: 1), 0.10),
+            dark: alpha(NSColor(white: 1, alpha: 1), 0.09),
+            highLight: alpha(NSColor(white: 0, alpha: 1), 0.34),
+            highDark: alpha(NSColor(white: 1, alpha: 1), 0.40)
+        )
+    }
+
+    public static var borderStrongTone: Tone {
+        Tone(
+            light: alpha(NSColor(white: 0, alpha: 1), 0.18),
+            dark: alpha(NSColor(white: 1, alpha: 1), 0.16),
+            highLight: alpha(NSColor(white: 0, alpha: 1), 0.60),
+            highDark: alpha(NSColor(white: 1, alpha: 1), 0.62)
+        )
+    }
+
+    public static var primaryTone: Tone {
+        Tone(
+            light: alpha(NSColor(white: 0, alpha: 1), 0.88),
+            dark: alpha(NSColor(white: 1, alpha: 1), 0.90),
+            highLight: alpha(NSColor(white: 0, alpha: 1), 0.96),
+            highDark: alpha(NSColor(white: 1, alpha: 1), 0.98)
+        )
+    }
+
+    public static var secondaryTone: Tone {
+        Tone(
+            light: alpha(NSColor(white: 0, alpha: 1), 0.70),
+            dark: alpha(NSColor(white: 1, alpha: 1), 0.70),
+            highLight: alpha(NSColor(white: 0, alpha: 1), 0.86),
+            highDark: alpha(NSColor(white: 1, alpha: 1), 0.86)
+        )
+    }
+
+    public static var tertiaryTone: Tone {
+        Tone(
+            light: alpha(NSColor(white: 0, alpha: 1), 0.58),
+            dark: alpha(NSColor(white: 1, alpha: 1), 0.58),
+            highLight: alpha(NSColor(white: 0, alpha: 1), 0.76),
+            highDark: alpha(NSColor(white: 1, alpha: 1), 0.76)
+        )
+    }
+}
+
 public extension Color {
     /// The window backdrop behind the floating panels.
     static let browsemiumCanvas = BrowserPalette.adaptive(
         light: NSColor(white: 0.902, alpha: 1),
-        dark: NSColor(white: 0.106, alpha: 1)
+        dark: NSColor(white: 0.075, alpha: 1)
     )
 
     /// The sidebar, assistant dock, and other side panels.
     static let browsemiumSurface = BrowserPalette.adaptive(
         light: NSColor(white: 0.949, alpha: 1),
-        dark: NSColor(white: 0.110, alpha: 1)
+        dark: NSColor(white: 0.125, alpha: 1)
     )
 
     /// The content panel and anything sitting on top of a surface.
     static let browsemiumRaised = BrowserPalette.adaptive(
         light: NSColor(white: 0.976, alpha: 1),
-        dark: NSColor(white: 0.137, alpha: 1)
+        dark: NSColor(white: 0.155, alpha: 1)
     )
 
     /// Hairline separation. Deliberately close to the background.
-    static let browsemiumBorder = BrowserPalette.adaptive(
-        light: BrowserPalette.alpha(NSColor(white: 0, alpha: 1), 0.10),
-        dark: BrowserPalette.alpha(NSColor(white: 1, alpha: 1), 0.09)
-    )
+    static let browsemiumBorder = BrowserPalette.adaptive(BrowserPalette.borderTone)
 
-    static let browsemiumBorderStrong = BrowserPalette.adaptive(
-        light: BrowserPalette.alpha(NSColor(white: 0, alpha: 1), 0.18),
-        dark: BrowserPalette.alpha(NSColor(white: 1, alpha: 1), 0.16)
-    )
+    static let browsemiumBorderStrong = BrowserPalette.adaptive(BrowserPalette.borderStrongTone)
 
-    static let browsemiumPrimary = BrowserPalette.adaptive(
-        light: BrowserPalette.alpha(NSColor(white: 0, alpha: 1), 0.88),
-        dark: BrowserPalette.alpha(NSColor(white: 1, alpha: 1), 0.90)
-    )
+    static let browsemiumPrimary = BrowserPalette.adaptive(BrowserPalette.primaryTone)
 
-    static let browsemiumSecondary = BrowserPalette.adaptive(
-        light: BrowserPalette.alpha(NSColor(white: 0, alpha: 1), 0.56),
-        dark: BrowserPalette.alpha(NSColor(white: 1, alpha: 1), 0.56)
-    )
+    /// Supporting text. Strong enough for WCAG AA (4.5:1) on every surface,
+    /// including under hover and selection tints; `ContrastTests` measures it.
+    static let browsemiumSecondary = BrowserPalette.adaptive(BrowserPalette.secondaryTone)
 
-    static let browsemiumTertiary = BrowserPalette.adaptive(
-        light: BrowserPalette.alpha(NSColor(white: 0, alpha: 1), 0.38),
-        dark: BrowserPalette.alpha(NSColor(white: 1, alpha: 1), 0.36)
-    )
+    /// The quietest text and glyph tone. It still meets 4.5:1: "quiet" here
+    /// means smaller and lighter in weight, never too faint to read. The old
+    /// values (0.38 / 0.36) measured about 2.6:1 and 3.3:1.
+    static let browsemiumTertiary = BrowserPalette.adaptive(BrowserPalette.tertiaryTone)
 
     /// Interactive foreground: links, primary buttons, active tab titles.
     /// Monochrome on purpose — the accent is emphasis, not a hue.
@@ -112,7 +241,7 @@ public extension Color {
     )
 
     static let browsemiumWarning = BrowserPalette.adaptive(
-        light: NSColor(red: 0.60, green: 0.40, blue: 0.02, alpha: 1),
+        light: NSColor(red: 0.50, green: 0.32, blue: 0.0, alpha: 1),
         dark: NSColor(red: 0.88, green: 0.68, blue: 0.30, alpha: 1)
     )
 
@@ -132,6 +261,33 @@ public enum BrowserMetrics {
     /// Zen uses 42pt on macOS; a compact single toolbar keeps chrome quiet.
     public static let toolbarHeight: CGFloat = 42
     public static let tabStripHeight: CGFloat = 40
+    /// Compact rows. Together they save 14 pt of height per row pair (and the
+    /// divider between them), before the bookmarks bar is hidden on pages.
+    public static let compactToolbarHeight: CGFloat = 36
+    public static let compactTabStripHeight: CGFloat = 32
+
+    public static func toolbarHeight(for style: ChromeStyle) -> CGFloat {
+        style == .compact ? compactToolbarHeight : toolbarHeight
+    }
+
+    public static func tabStripHeight(for style: ChromeStyle) -> CGFloat {
+        style == .compact ? compactTabStripHeight : tabStripHeight
+    }
+
+    /// Vertical chrome above the page for a layout, counting the one-point
+    /// dividers and (when shown) the bookmarks bar. Used by layout tests.
+    public static func verticalChrome(
+        style: ChromeStyle,
+        layout: TabLayout,
+        bookmarksBarVisible: Bool,
+        bookmarksBarHeight: CGFloat = 30
+    ) -> CGFloat {
+        var total = toolbarHeight(for: style) + 1
+        if layout == .top, style == .standard { total += tabStripHeight(for: style) + 1 }
+        if layout == .top, style == .compact { total += tabStripHeight(for: style) }
+        if bookmarksBarVisible { total += bookmarksBarHeight + 1 }
+        return total
+    }
     public static let aiDockWidth: CGFloat = 420
     /// Provider sites are desktop layouts; below this they start to break.
     public static let aiDockMinimumWidth: CGFloat = 360
@@ -302,7 +458,9 @@ public struct BrowsemiumIconButton: View {
     public var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 13, weight: .regular))
+                .font(BrowserType.font(.body, weight: .regular))
+                // Glyph swaps (reload/stop, bookmark/unbookmark) morph.
+                .contentTransition(.symbolEffect(.replace))
                 .frame(width: 26, height: 26)
                 .contentShape(Rectangle())
         }
@@ -339,7 +497,7 @@ public struct BrowsemiumPrimaryButton: View {
     public var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 12, weight: .medium))
+                .font(BrowserType.font(.small, weight: .medium))
                 .foregroundStyle(isDisabled ? Color.browsemiumTertiary : Color.browsemiumAccentFillText)
                 .padding(.horizontal, 12)
                 .frame(height: 26)
@@ -399,7 +557,7 @@ private struct TabButton: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 12, weight: isSelected ? .medium : .regular))
+                .font(BrowserType.font(.small, weight: isSelected ? .medium : .regular))
                 .foregroundStyle(isSelected ? Color.browsemiumPrimary : Color.browsemiumSecondary)
                 .padding(.horizontal, 10)
                 .frame(height: 22)
@@ -436,7 +594,7 @@ public struct BrowsemiumTextButton: View {
     public var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 12))
+                .font(BrowserType.font(.small))
                 .foregroundStyle(role == .destructive ? Color.browsemiumDestructive : Color.browsemiumSecondary)
                 .contentShape(Rectangle())
         }
@@ -454,7 +612,7 @@ public struct BrowsemiumSectionHeader: View {
 
     public var body: some View {
         Text(title)
-            .font(.system(size: 11, weight: .semibold))
+            .font(BrowserType.font(.caption, weight: .semibold))
             .foregroundStyle(Color.browsemiumTertiary)
             .padding(.horizontal, 14)
             .padding(.top, 14)
@@ -482,10 +640,10 @@ public struct BrowsemiumEmptyState: View {
                 .foregroundStyle(Color.browsemiumTertiary)
                 .padding(.bottom, 4)
             Text(title)
-                .font(.system(size: 13, weight: .medium))
+                .font(BrowserType.font(.body, weight: .medium))
                 .foregroundStyle(Color.browsemiumPrimary)
             Text(message)
-                .font(.system(size: 12))
+                .font(BrowserType.font(.small))
                 .foregroundStyle(Color.browsemiumSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 300)
@@ -512,7 +670,66 @@ public struct BrowsemiumPanel: ViewModifier {
     }
 }
 
+/// The surface of anything that floats above the page: menus, the command
+/// palette, suggestions, banners and toasts. On macOS 26 and later it is
+/// Liquid Glass, which keeps the page visible behind it; with Reduce
+/// Transparency on, or before macOS 26, it is the solid raised surface with
+/// a hairline and a shadow. The palette stays monochrome either way, and
+/// glass is never used for page content or the main canvas.
+private struct FlatOverlaysKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+public extension EnvironmentValues {
+    /// Forces overlays to their solid surface. Offscreen renders (snapshots)
+    /// have no compositor to draw glass through, so they set this; live
+    /// windows leave it off.
+    var browsemiumFlatOverlays: Bool {
+        get { self[FlatOverlaysKey.self] }
+        set { self[FlatOverlaysKey.self] = newValue }
+    }
+}
+
+public struct BrowsemiumOverlaySurface: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.browsemiumFlatOverlays) private var flatOverlays
+    let radius: CGFloat
+    let strongBorder: Bool
+    let shadowOpacity: Double
+    let shadowRadius: CGFloat
+    let shadowY: CGFloat
+
+    public func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        if #available(macOS 26.0, *), !reduceTransparency, !flatOverlays {
+            content
+                .clipShape(shape)
+                .glassEffect(.regular, in: shape)
+                .shadow(color: .black.opacity(shadowOpacity * 0.6), radius: shadowRadius, y: shadowY)
+        } else {
+            content
+                .background(shape.fill(Color.browsemiumRaised))
+                .clipShape(shape)
+                .overlay { shape.stroke(strongBorder ? Color.browsemiumBorderStrong : Color.browsemiumBorder, lineWidth: 1) }
+                .shadow(color: .black.opacity(shadowOpacity), radius: shadowRadius, y: shadowY)
+        }
+    }
+}
+
 public extension View {
+    func browsemiumOverlaySurface(
+        radius: CGFloat = BrowserMetrics.overlayRadius,
+        strongBorder: Bool = false,
+        shadowOpacity: Double = 0.18,
+        shadowRadius: CGFloat = 14,
+        shadowY: CGFloat = 5
+    ) -> some View {
+        modifier(BrowsemiumOverlaySurface(
+            radius: radius, strongBorder: strongBorder,
+            shadowOpacity: shadowOpacity, shadowRadius: shadowRadius, shadowY: shadowY
+        ))
+    }
+
     func browsemiumPanel(
         background: Color = .browsemiumSurface,
         radius: CGFloat = BrowserMetrics.panelRadius

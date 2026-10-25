@@ -12,10 +12,14 @@ var products: [Product] = [
     .library(name: "BrowsemiumEngine", targets: ["BrowsemiumEngine"]),
     .library(name: "BrowsemiumExtensions", targets: ["BrowsemiumExtensions"]),
     .library(name: "BrowsemiumAI", targets: ["BrowsemiumAI"]),
-    .library(name: "BrowsemiumAgent", targets: ["BrowsemiumAgent"])
+    .library(name: "BrowsemiumAgent", targets: ["BrowsemiumAgent"]),
+    // A navigation-only command-line tool. Depends on Core alone: no WebKit,
+    // no network, no database.
+    .executable(name: "browsemium-ctl", targets: ["BrowsemiumCtl"])
 ]
 
 var targets: [Target] = [
+    .executableTarget(name: "BrowsemiumCtl", dependencies: ["BrowsemiumCore"], swiftSettings: [.swiftLanguageMode(.v6)]),
     .target(name: "BrowsemiumAgent", dependencies: ["BrowsemiumCore", "BrowsemiumEngineKit"], swiftSettings: [.swiftLanguageMode(.v6)]),
     .target(
         name: "BrowsemiumCore",

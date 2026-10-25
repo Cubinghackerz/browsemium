@@ -46,7 +46,11 @@ final class StubEngine: BrowserEngine {
 
     func attach(tabID: TabID, to host: NSView) {}
     func detach(tabID: TabID) {}
-    func discard(tabID: TabID) { liveTabs.remove(tabID) }
+    private(set) var discardedTabs: [TabID] = []
+    func discard(tabID: TabID) {
+        liveTabs.remove(tabID)
+        discardedTabs.append(tabID)
+    }
     func activate(tabID: TabID, in pane: PaneID) async {}
     func deactivate(tabID: TabID) async {}
     func teardownForProfileSwitch() { liveTabs.removeAll() }
@@ -94,7 +98,12 @@ final class StubEngine: BrowserEngine {
         throw BrowsemiumError.webContentUnavailable
     }
     func fillCredential(tabID: TabID, username: String, password: String) async throws -> Bool { false }
-    func evaluateJavaScript(tabID: TabID, script: String) async throws -> Any? { nil }
+    var javaScriptResult: Any?
+    private(set) var evaluatedScripts: [String] = []
+    func evaluateJavaScript(tabID: TabID, script: String) async throws -> Any? {
+        evaluatedScripts.append(script)
+        return javaScriptResult
+    }
 
     func setMuted(tabID: TabID, muted: Bool) {}
     func audioState(tabID: TabID) -> TabAudioState? { nil }
@@ -138,9 +147,26 @@ final class StubEngine: BrowserEngine {
     var hasWarmTab: Bool { false }
     func setWarmTabPreloading(_ enabled: Bool) {}
 
-    func clearSiteData(dataStoreIdentifier: UUID, includeCache: Bool, modifiedSince: Date) async {}
-    func clearCache(dataStoreIdentifier: UUID) async {}
-    func removeAllData(dataStoreIdentifier: UUID) async {}
+    private(set) var clearedSiteDataStores: [UUID] = []
+    private(set) var clearedCacheStores: [UUID] = []
+    private(set) var wipedDataStores: [UUID] = []
+    func clearSiteData(dataStoreIdentifier: UUID, includeCache: Bool, modifiedSince: Date) async {
+        clearedSiteDataStores.append(dataStoreIdentifier)
+    }
+    func clearCache(dataStoreIdentifier: UUID) async { clearedCacheStores.append(dataStoreIdentifier) }
+    func removeAllData(dataStoreIdentifier: UUID) async { wipedDataStores.append(dataStoreIdentifier) }
+
+    private var dataStoreResolvers: [UUID: @MainActor (TabID) -> UUID?] = [:]
+    func addDataStoreResolver(_ resolver: @escaping @MainActor (TabID) -> UUID?) -> UUID {
+        let token = UUID()
+        dataStoreResolvers[token] = resolver
+        return token
+    }
+    func removeDataStoreResolver(_ token: UUID) { dataStoreResolvers[token] = nil }
+    /// What the engine would be told for a tab when it first builds its view.
+    func resolvedDataStore(for tabID: TabID) -> UUID? {
+        dataStoreResolvers.values.lazy.compactMap { $0(tabID) }.first
+    }
     func removeProfileDataStore(dataStoreIdentifier: UUID) async throws {
         if let profileDataStoreRemovalError { throw profileDataStoreRemovalError }
         removedProfileDataStores.append(dataStoreIdentifier)

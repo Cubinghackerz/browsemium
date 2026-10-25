@@ -59,6 +59,9 @@ public enum TabRuntimeEvent: Sendable {
     case elementPickCancelled
     /// The clicked element had no durable selector, so nothing was picked.
     case elementPickFailed
+    /// A form that looks like a plain sign-in was just submitted. Only the
+    /// window may act on it, and only to offer to remember the password.
+    case signInFormSubmitted(SignInCandidate)
 }
 
 /// One element the user chose to hide. `selector` round-trips to the element

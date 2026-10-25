@@ -52,6 +52,11 @@ final class FakeActuator: PageActuating {
     var latches: [String: Latch] = [:]
     var failures: [String: any Error] = [:]
     var resolveHook: (@MainActor (Int) -> Void)?
+    /// What the page currently has registered through WebMCP.
+    var tools: [AgentPageTool] = []
+    var toolResult = "{\"ok\":true}"
+    private(set) var calledTools: [(name: String, arguments: String)] = []
+    var toolCallHook: (@MainActor () -> Void)?
     /// Navigations that redirect: requested host -> final URL.
     var redirects: [String: URL] = [:]
 
@@ -122,6 +127,21 @@ final class FakeActuator: PageActuating {
         return element
     }
 
+    func pageTools(in id: TabID) async throws -> [AgentPageTool] {
+        try await enter("pageTools")
+        return tools
+    }
+
+    /// Mirrors the real actuator: the call runs only if the expected tool is
+    /// still exactly what the page has registered.
+    func callPageTool(_ expected: AgentPageTool, arguments: String, in id: TabID) async throws -> String {
+        try await enter("callPageTool")
+        guard tools.contains(expected) else { throw AgentError.staleElement }
+        calledTools.append((expected.name, arguments))
+        toolCallHook?()
+        return toolResult
+    }
+
     func perform(_ action: AgentPageAction, in id: TabID) async throws {
         try await enter("perform")
         performed.append(action)
@@ -141,6 +161,9 @@ final class GateHarness {
     var task: AgentTask
     var tab: TabID?
     var scopeOpen = true
+    /// The Settings switch for WebMCP. On by default in tests; the tests that
+    /// care flip it.
+    var webMCP = true
     private var counter = 0
 
     init(
@@ -161,6 +184,7 @@ final class GateHarness {
             capabilities: capabilities
         )
         gate.scopeIsAccessible = { [weak self] _ in self?.scopeOpen ?? false }
+        gate.webMCPEnabled = { [weak self] in self?.webMCP ?? false }
         if grant { try start() }
     }
 
@@ -187,6 +211,23 @@ final class GateHarness {
     var requestID: String {
         counter += 1
         return "request-\(counter)"
+    }
+
+    @discardableResult
+    func pageTool(
+        name: String = "lookup_order",
+        description: String = "Looks up an order by number.",
+        schema: String = "{\"type\":\"object\"}",
+        generation: Int = 1,
+        readOnly: Bool = false
+    ) -> AgentPageTool {
+        let tool = AgentPageTool(
+            name: name, description: description, inputSchema: schema,
+            fingerprint: "\(name)|\(description)|\(schema)|\(generation)", readOnlyHint: readOnly
+        )
+        actuator.tools.removeAll { $0.name == name }
+        actuator.tools.append(tool)
+        return tool
     }
 
     @discardableResult

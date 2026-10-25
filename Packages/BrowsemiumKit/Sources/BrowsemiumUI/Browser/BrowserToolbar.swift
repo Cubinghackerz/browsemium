@@ -9,6 +9,7 @@ struct BrowserToolbar: View {
     @Bindable var model: BrowserWindowModel
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @FocusState private var addressFocused: Bool
     @State private var isFieldHovering = false
@@ -76,7 +77,7 @@ struct BrowserToolbar: View {
             overflowMenu
         }
         .padding(.horizontal, 8)
-        .frame(height: BrowserMetrics.toolbarHeight)
+        .frame(height: BrowserMetrics.toolbarHeight(for: model.chromeStyle))
         .frame(maxWidth: .infinity)
         .onAppear {
             if #available(macOS 15.4, *) {
@@ -151,7 +152,7 @@ struct BrowserToolbar: View {
             Image(systemName: "theatermasks.fill")
                 .font(.system(size: 9, weight: .semibold))
             Text("Private")
-                .font(.system(size: 10, weight: .semibold))
+                .font(BrowserType.font(.caption, weight: .semibold))
         }
         .foregroundStyle(Self.privateTint)
         .padding(.horizontal, 7)
@@ -183,7 +184,7 @@ struct BrowserToolbar: View {
                 model.toggleBookmark()
             } label: {
                 Image(systemName: model.isBookmarked ? "bookmark.fill" : "bookmark")
-                    .font(.system(size: 11))
+                    .font(BrowserType.font(.caption))
                     .foregroundStyle(model.isBookmarked ? Color.browsemiumPrimary : Color.browsemiumTertiary)
                     .contentShape(Rectangle())
             }
@@ -192,7 +193,7 @@ struct BrowserToolbar: View {
 
             TextField("Search or enter address", text: $model.addressText)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12.5))
+                .font(BrowserType.font(.body))
                 .focused($addressFocused)
                 .onSubmit { model.acceptHighlightedSuggestion() }
                 .onChange(of: model.addressText) { model.updateAddressSuggestions() }
@@ -229,7 +230,7 @@ struct BrowserToolbar: View {
                             height: 1.5
                         )
                         .frame(maxWidth: .infinity, alignment: .bottomLeading)
-                        .animation(.easeOut(duration: 0.25), value: model.loadingProgress)
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: model.loadingProgress)
                 }
                 .frame(height: 1.5)
                 .padding(.horizontal, 13)
@@ -243,7 +244,7 @@ struct BrowserToolbar: View {
                 .stroke(addressFocused ? Color.browsemiumFocus : Color.browsemiumBorder, lineWidth: addressFocused ? 1.5 : 1)
         }
         .onHover { isFieldHovering = $0 }
-        .animation(.easeOut(duration: 0.2), value: model.isLoading)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: model.isLoading)
         .onChange(of: model.focusAddressToken) {
             addressFocused = true
         }
@@ -274,7 +275,7 @@ struct BrowserToolbar: View {
             } label: {
                 ZStack {
                     Image(systemName: model.hasActiveDownloads ? "arrow.down.circle.fill" : "arrow.down.circle")
-                        .font(.system(size: 12, weight: .regular))
+                        .font(BrowserType.font(.small, weight: .regular))
                         .foregroundStyle(
                             model.hasActiveDownloads ? Color.browsemiumPrimary : Color.browsemiumSecondary
                         )
@@ -285,7 +286,7 @@ struct BrowserToolbar: View {
                             .stroke(Color.browsemiumPrimary, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
                             .rotationEffect(.degrees(-90))
                             .frame(width: 20, height: 20)
-                            .animation(.easeOut(duration: 0.2), value: fraction)
+                            .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: fraction)
                     }
                 }
                 .frame(width: 26, height: 26)
@@ -336,7 +337,7 @@ struct BrowserToolbar: View {
             isCredentialPanelPresented = true
         } label: {
             Image(systemName: "key")
-                .font(.system(size: 12, weight: .regular))
+                .font(BrowserType.font(.small, weight: .regular))
                 .foregroundStyle(
                     model.credentialsForActiveSite().isEmpty
                         ? Color.browsemiumTertiary
@@ -362,7 +363,7 @@ struct BrowserToolbar: View {
             isOverflowPanelPresented = true
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: 13, weight: .regular))
+                .font(BrowserType.font(.body, weight: .regular))
                 .foregroundStyle(Color.browsemiumSecondary)
                 .frame(width: 26, height: 26)
                 .contentShape(Rectangle())
@@ -402,7 +403,7 @@ private struct ExtensionActionButtonView: View {
                             .aspectRatio(contentMode: .fit)
                     } else {
                         Image(systemName: "puzzlepiece.extension")
-                            .font(.system(size: 12))
+                            .font(BrowserType.font(.small))
                             .foregroundStyle(Color.browsemiumSecondary)
                     }
                 }

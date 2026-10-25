@@ -110,6 +110,60 @@ public final class HistoryRepository: @unchecked Sendable {
         )
     }
 
+    /// Address-bar suggestions: one row per page, best first. Relevance
+    /// (FTS5 bm25) is combined with how often and how recently the page was
+    /// visited, so the page you open every day outranks a one-off from last
+    /// year that happens to match the same words.
+    public func suggest(_ query: String, limit: Int = 12, now: Date = Date()) throws -> [HistoryVisit] {
+        guard let match = Self.fullTextQuery(query) else { return try recent(limit: limit) }
+        struct Candidate { var visit: HistoryVisit; var relevance: Double; var visits: Int }
+        let rows: [Row]
+        do {
+            rows = try database.databaseQueue.read { db in
+                try Row.fetchAll(
+                    db,
+                    sql: """
+                        SELECT h.id, h.url, h.title, h.visited_at, bm25(history_visits_fts, 4.0, 1.0) AS rank
+                        FROM history_visits h
+                        JOIN history_visits_fts f ON f.rowid = h.id
+                        WHERE history_visits_fts MATCH ?
+                        ORDER BY rank
+                        LIMIT 400
+                        """,
+                    arguments: [match]
+                )
+            }
+        } catch {
+            throw BrowsemiumError.databaseFailure(error.localizedDescription)
+        }
+        var byURL: [String: Candidate] = [:]
+        for row in rows {
+            guard let urlString = row["url"] as String?, let url = URL(string: urlString) else { continue }
+            let visit = HistoryVisit(id: row["id"], url: url, title: row["title"] ?? "", visitedAt: row["visited_at"] ?? Date())
+            // bm25 is negative; closer to zero is a weaker match.
+            let relevance = -(row["rank"] as Double? ?? 0)
+            if var existing = byURL[urlString] {
+                existing.visits += 1
+                if visit.visitedAt > existing.visit.visitedAt { existing.visit = visit }
+                existing.relevance = max(existing.relevance, relevance)
+                byURL[urlString] = existing
+            } else {
+                byURL[urlString] = Candidate(visit: visit, relevance: relevance, visits: 1)
+            }
+        }
+        func score(_ candidate: Candidate) -> Double {
+            let ageDays = max(0, now.timeIntervalSince(candidate.visit.visitedAt)) / 86_400
+            return candidate.relevance + 0.8 * log(1 + Double(candidate.visits)) + 1.2 * exp(-ageDays / 30)
+        }
+        return byURL.values
+            .sorted { lhs, rhs in
+                let (a, b) = (score(lhs), score(rhs))
+                return a != b ? a > b : lhs.visit.visitedAt > rhs.visit.visitedAt
+            }
+            .prefix(limit)
+            .map(\.visit)
+    }
+
     /// URLs already present in history, so an import does not duplicate them.
     public func existingURLs(among urls: [URL]) throws -> Set<String> {
         guard !urls.isEmpty else { return [] }

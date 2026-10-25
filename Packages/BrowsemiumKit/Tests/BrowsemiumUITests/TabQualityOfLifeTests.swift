@@ -156,7 +156,7 @@ func cyclingWrapsAroundBothEnds() {
 /// for its first slot. Allow scheduler contention without relaxing the 700 ms
 /// product debounce; the deadline is wall-clock.
 @MainActor
-private func waitForPeek(in model: BrowserWindowModel, matching url: URL? = nil, timeout: Duration = .seconds(20)) async throws -> BrowserWindowModel.PeekState? {
+private func waitForPeek(in model: BrowserWindowModel, matching url: URL? = nil, timeout: Duration = .seconds(60)) async throws -> BrowserWindowModel.PeekState? {
     let deadline = ContinuousClock.now + timeout
     while ContinuousClock.now < deadline {
         if let peek = model.peek, url == nil || peek.url == url { return peek }

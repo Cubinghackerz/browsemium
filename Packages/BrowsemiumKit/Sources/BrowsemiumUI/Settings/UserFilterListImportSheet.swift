@@ -30,17 +30,17 @@ import UniformTypeIdentifiers
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Import filter list").font(.system(size: 16, weight: .semibold)).accessibilityAddTraits(.isHeader)
-            Text("Save into \(destinationName)").font(.system(size: 12)).foregroundStyle(Color.browsemiumSecondary)
+            Text("Import filter list").font(BrowserType.font(.title, weight: .semibold)).accessibilityAddTraits(.isHeader)
+            Text("Save into \(destinationName)").font(BrowserType.font(.small)).foregroundStyle(Color.browsemiumSecondary)
             VStack(alignment: .leading, spacing: 6) {
-                Text("List name").font(.system(size: 12, weight: .medium))
+                Text("List name").font(BrowserType.font(.small, weight: .medium))
                 TextField("Name (up to 80 characters)", text: $name)
                     .browsemiumField().padding(.horizontal, 8).frame(height: 30)
                     .focused($nameFocused).accessibilityLabel("Filter list name")
             }
             .disabled(busy)
             HStack(spacing: 12) {
-                Text("Source").font(.system(size: 12, weight: .medium))
+                Text("Source").font(BrowserType.font(.small, weight: .medium))
                 BrowsemiumTabPicker(values: [UserFilterList.Source.localFile, .https], selection: $source) {
                     $0 == .localFile ? "File" : "HTTPS address"
                 }
@@ -50,7 +50,7 @@ import UniformTypeIdentifiers
             if source == .localFile {
                 HStack(spacing: 12) {
                     Text(file?.lastPathComponent ?? "No file selected")
-                        .font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
+                        .font(BrowserType.font(.small)).lineLimit(1).truncationMode(.middle)
                     Spacer()
                     BrowsemiumTextButton("Choose file…", action: chooseFile)
                         .disabled(busy)
@@ -61,18 +61,18 @@ import UniformTypeIdentifiers
                     .accessibilityLabel("HTTPS filter list address")
                     .disabled(busy)
                 Text("Import contacts this source server without browser cookies or saved credentials. The address is not stored and will not be refreshed automatically.")
-                    .font(.system(size: 11)).foregroundStyle(Color.browsemiumSecondary)
+                    .font(BrowserType.font(.caption)).foregroundStyle(Color.browsemiumSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Text("UTF-8 text, up to 4 MiB. Only the supported hostname subset is converted. Unsupported syntax is skipped or rejected; failed imports keep the working rules.")
-                .font(.system(size: 11)).foregroundStyle(Color.browsemiumSecondary)
+                .font(BrowserType.font(.caption)).foregroundStyle(Color.browsemiumSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             if case .failed(let message, _) = state {
-                Text(message).font(.system(size: 11)).foregroundStyle(Color.browsemiumDestructive)
+                Text(message).font(BrowserType.font(.caption)).foregroundStyle(Color.browsemiumDestructive)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if busy {
-                HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Reading, converting, or compiling…").font(.system(size: 11)) }
+                HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Reading, converting, or compiling…").font(BrowserType.font(.caption)) }
             }
             HStack {
                 BrowsemiumTextButton(busy ? "Cancel import" : "Cancel", action: onCancel).keyboardShortcut(.cancelAction)

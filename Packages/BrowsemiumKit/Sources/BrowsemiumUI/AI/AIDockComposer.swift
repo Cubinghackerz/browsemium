@@ -27,7 +27,7 @@ struct AIDockComposer<Actions: View, Attachments: View>: View {
                     Button("Key points") { quickAction(.keyPoints) }
                     Button("Explain") { quickAction(.explainSelection) }
                 }
-                .font(.system(size: 11, weight: .medium))
+                .font(BrowserType.font(.caption, weight: .medium))
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.browsemiumSecondary)
                 .disabled(ai.isWorking || ai.isStreaming || !canUsePage)
@@ -36,7 +36,7 @@ struct AIDockComposer<Actions: View, Attachments: View>: View {
             VStack(alignment: .leading, spacing: 12) {
                 TextField("", text: $ai.draft,
                     prompt: Text(AIDockPresentation.prompt(canUsePage: canUsePage)).foregroundColor(.browsemiumSecondary), axis: .vertical)
-                    .font(.system(size: 14))
+                    .font(BrowserType.font(.title))
                     .lineLimit(2...6)
                     .textFieldStyle(.plain)
                     .focused(focus)
@@ -57,7 +57,7 @@ struct AIDockComposer<Actions: View, Attachments: View>: View {
                         }
                         .disabled(!canUsePage)
                     } label: {
-                        Image(systemName: "plus").font(.system(size: 16, weight: .regular)).frame(width: 28, height: 28)
+                        Image(systemName: "plus").font(BrowserType.font(.title, weight: .regular)).frame(width: 28, height: 28)
                     }
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
@@ -78,7 +78,7 @@ struct AIDockComposer<Actions: View, Attachments: View>: View {
                             Text(ai.isStreaming ? "Stop" : "Review")
                             Image(systemName: ai.isStreaming ? "stop.fill" : "arrow.up")
                         }
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(BrowserType.font(.small, weight: .semibold))
                         .padding(.horizontal, 12)
                         .frame(height: 32)
                     }
@@ -97,7 +97,7 @@ struct AIDockComposer<Actions: View, Attachments: View>: View {
 
             HStack(alignment: .center, spacing: 8) {
                 Text("Review before sending")
-                    .font(.system(size: 10.5))
+                    .font(BrowserType.font(.caption))
                     .foregroundStyle(Color.browsemiumSecondary)
                 Spacer(minLength: 4)
                 Toggle("Auto page", isOn: Binding(
@@ -105,7 +105,7 @@ struct AIDockComposer<Actions: View, Attachments: View>: View {
                     set: { value in model.updateSettings { $0.includePageContextInAPIAI = value } }
                 ))
                 .toggleStyle(.checkbox)
-                .font(.system(size: 11))
+                .font(BrowserType.font(.caption))
                 .foregroundStyle(Color.browsemiumSecondary)
                 .help("Attach page text automatically; the review still shows it first")
                 .accessibilityLabel("Attach page text to every message")
@@ -122,7 +122,7 @@ struct AIDockComposer<Actions: View, Attachments: View>: View {
                             .accessibilityLabel("Retry the failed message")
                     }
                 }
-                .font(.system(size: 11))
+                .font(BrowserType.font(.caption))
                 .foregroundStyle(Color.browsemiumDestructive)
             }
         }

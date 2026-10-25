@@ -33,7 +33,7 @@ struct DownloadsListView: View {
 
     private func sectionTitle(_ title: String) -> some View {
         Text(title.uppercased())
-            .font(.system(size: 10, weight: .semibold))
+            .font(BrowserType.font(.caption, weight: .semibold))
             .tracking(0.5)
             .foregroundStyle(Color.browsemiumTertiary)
             .padding(.horizontal, 4)
@@ -56,7 +56,7 @@ private struct ActiveDownloadRow: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(download.filename)
-                    .font(.system(size: 12.5, weight: .medium))
+                    .font(BrowserType.font(.body, weight: .medium))
                     .foregroundStyle(Color.browsemiumPrimary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -81,7 +81,7 @@ private struct ActiveDownloadRow: View {
                         Text("Saving to \(folder)")
                     }
                 }
-                .font(.system(size: 10.5))
+                .font(BrowserType.font(.caption))
                 .foregroundStyle(Color.browsemiumTertiary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -123,12 +123,12 @@ private struct DownloadHistoryRow: View {
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(download.suggestedFilename)
-                        .font(.system(size: 12.5, weight: .medium))
+                        .font(BrowserType.font(.body, weight: .medium))
                         .foregroundStyle(Color.browsemiumPrimary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Text(detailText)
-                        .font(.system(size: 10.5))
+                        .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumTertiary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -137,10 +137,10 @@ private struct DownloadHistoryRow: View {
 
                 VStack(alignment: .trailing, spacing: 3) {
                     Text(statusText)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(BrowserType.font(.caption, weight: .medium))
                         .foregroundStyle(statusColor)
                     Text(download.updatedAt.formatted(date: .abbreviated, time: .shortened))
-                        .font(.system(size: 10))
+                        .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumTertiary)
                 }
                 .fixedSize()

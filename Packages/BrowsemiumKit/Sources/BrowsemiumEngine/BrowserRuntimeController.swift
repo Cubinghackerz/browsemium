@@ -53,6 +53,8 @@ public final class BrowserRuntimeController: BrowserRuntime, BrowserEngine {
     private let factory = WebViewFactory()
     private let warmPool: WarmWebViewPool
     private var runtimes: [TabID: TabRuntime] = [:]
+    private var dataStoreResolvers: [UUID: @MainActor (TabID) -> UUID?] = [:]
+    private var appliedDeveloperTools = false
     private var activePanes: [TabID: PaneID] = [:]
 
     public init(
@@ -103,6 +105,19 @@ public final class BrowserRuntimeController: BrowserRuntime, BrowserEngine {
 
         warmPool.setEnabled(settings.warmTabPreloading)
         WebViewFactory.protectionLevel = settings.protectionLevel
+
+        if appliedDeveloperTools != settings.developerToolsEnabled {
+            appliedDeveloperTools = settings.developerToolsEnabled
+            WebViewFactory.developerToolsEnabled = settings.developerToolsEnabled
+            // A pre-built spare was made under the old setting.
+            warmPool.release()
+            if settings.warmTabPreloading {
+                warmPool.prepare()
+            }
+            for runtime in runtimes.values {
+                runtime.applyDeveloperTools(settings.developerToolsEnabled)
+            }
+        }
 
         if protectionLevel != settings.protectionLevel {
             protectionLevel = settings.protectionLevel
@@ -196,6 +211,11 @@ public final class BrowserRuntimeController: BrowserRuntime, BrowserEngine {
             downloadCoordinator: downloadCoordinator
         )
         runtime.permissionPrompter = permissionPrompter
+        // Private browsing wins over a container: it must never touch a
+        // persistent store of any kind.
+        if !runtime.isPrivate {
+            runtime.containerID = dataStoreResolvers.values.lazy.compactMap { $0(tabID) }.first
+        }
         runtime.onEvent = { [weak self] event in
             guard let self else { return }
             for observer in self.eventObservers.values {
@@ -250,6 +270,21 @@ public final class BrowserRuntimeController: BrowserRuntime, BrowserEngine {
 
     public func beginElementPicking(tabID: TabID) {
         runtimes[tabID]?.beginElementPicking()
+    }
+
+    @discardableResult
+    public func addDataStoreResolver(_ resolver: @escaping @MainActor (TabID) -> UUID?) -> UUID {
+        let token = UUID()
+        dataStoreResolvers[token] = resolver
+        return token
+    }
+
+    public func removeDataStoreResolver(_ token: UUID) {
+        dataStoreResolvers[token] = nil
+    }
+
+    public func showWebInspector(tabID: TabID) -> Bool {
+        runtimes[tabID]?.showWebInspector() ?? false
     }
 
     public func cancelElementPicking(tabID: TabID) {

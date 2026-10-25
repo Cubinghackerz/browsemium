@@ -104,7 +104,21 @@ public struct ProviderPanelDescriptor: Sendable, Identifiable {
         privacyURL: URL(string: "https://vercel.com/legal/privacy-policy")!
     )
 
-    public static let all: [ProviderPanelDescriptor] = [.chatGPT, .claude, .gemini, .grok, .ollama, .v0]
+    /// Never shown as a website: the dock keeps local providers in API mode.
+    /// The URLs only satisfy the descriptor shape and the "terms" links.
+    public static let appleIntelligence = ProviderPanelDescriptor(
+        id: .appleIntelligence,
+        displayName: "Apple Intelligence (on this Mac)",
+        baseURL: URL(string: "https://www.apple.com/apple-intelligence/")!,
+        newConversationURL: URL(string: "https://www.apple.com/apple-intelligence/")!,
+        queryParameter: nil,
+        maximumQueryCharacters: 0,
+        prefillReliability: .unsupported,
+        termsURL: URL(string: "https://www.apple.com/legal/")!,
+        privacyURL: URL(string: "https://www.apple.com/legal/privacy/")!
+    )
+
+    public static let all: [ProviderPanelDescriptor] = [.chatGPT, .claude, .gemini, .grok, .ollama, .appleIntelligence, .v0]
 
     public static func descriptor(for provider: AIProviderID) -> ProviderPanelDescriptor {
         all.first { $0.id == provider } ?? .chatGPT

@@ -13,15 +13,15 @@ struct ExtensionPermissionCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "puzzlepiece.extension")
-                    .font(.system(size: 13))
+                    .font(BrowserType.font(.body))
                     .foregroundStyle(Color.browsemiumSecondary)
                 Text("“\(request.extensionName)” is asking for access")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(BrowserType.font(.body, weight: .semibold))
                     .foregroundStyle(Color.browsemiumPrimary)
             }
 
             Text(explanation)
-                .font(.system(size: 11.5))
+                .font(BrowserType.font(.small))
                 .foregroundStyle(Color.browsemiumSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -33,7 +33,7 @@ struct ExtensionPermissionCard: View {
                                 .font(.system(size: 3))
                                 .foregroundStyle(Color.browsemiumTertiary)
                             Text(item)
-                                .font(.system(size: 11, design: .monospaced))
+                                .font(BrowserType.font(.caption, design: .monospaced))
                                 .foregroundStyle(Color.browsemiumSecondary)
                                 .lineLimit(1)
                                 .truncationMode(.middle)

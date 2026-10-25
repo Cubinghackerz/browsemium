@@ -23,15 +23,16 @@ struct ImportPreviewSheet: View {
             || (options.includesCookies && preview.cookieCount > 0)
             || (options.includesExtensions && !preview.extensionIDs.isEmpty)
             || (options.includesSearchEngine && preview.searchEngine != nil)
+            || (options.includesSessionTabs && preview.sessionTabCount > 0)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Import from \(preview.source.displayName)")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(BrowserType.font(.title, weight: .semibold))
                 Text("Review what was found. Nothing has been added yet.")
-                    .font(.system(size: 11.5))
+                    .font(BrowserType.font(.small))
                     .foregroundStyle(Color.browsemiumSecondary)
             }
 
@@ -45,7 +46,7 @@ struct ImportPreviewSheet: View {
 
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.system(size: 11.5))
+                    .font(BrowserType.font(.small))
                     .foregroundStyle(Color.browsemiumWarning)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -81,7 +82,7 @@ struct ImportPreviewSheet: View {
             if preview.credentialCount > 0 {
                 scopeRow(
                     title: "Passwords",
-                    detail: "\(preview.credentialCount) saved logins. Direct import uses only an already-accessible encryption key, without asking macOS to unlock it. If access is unavailable, use a password CSV instead.",
+                    detail: passwordDetail,
                     isOn: $options.includesPasswords
                 )
             }
@@ -92,7 +93,7 @@ struct ImportPreviewSheet: View {
                 Text(preview.source == .safari
                      ? "Export passwords from Apple Passwords, then choose the CSV. Your selected destination is kept."
                      : "Export passwords as CSV from \(preview.source.displayName)'s password manager, then choose the file. Your selected destination is kept.")
-                    .font(.system(size: 10.5))
+                    .font(BrowserType.font(.caption))
                     .foregroundStyle(Color.browsemiumSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -105,7 +106,7 @@ struct ImportPreviewSheet: View {
                 )
                 if options.includesCookies, preview.source.safeStorageService != nil {
                     Text("Encrypted cookies need an already-accessible browser key. If it is unavailable, turn off cookies and sign in again. A password CSV does not transfer cookies.")
-                        .font(.system(size: 10.5))
+                        .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumWarning)
                 }
             }
@@ -126,9 +127,17 @@ struct ImportPreviewSheet: View {
                 )
             }
 
+            if preview.sessionTabCount > 0 {
+                scopeRow(
+                    title: "Open tabs",
+                    detail: sessionTabDetail,
+                    isOn: $options.includesSessionTabs
+                )
+            }
+
             if preview.isEmpty {
                 Text("No supported data was found in this profile.")
-                    .font(.system(size: 12))
+                    .font(BrowserType.font(.small))
                     .foregroundStyle(Color.browsemiumWarning)
             }
 
@@ -136,7 +145,7 @@ struct ImportPreviewSheet: View {
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(preview.notImportable, id: \.self) { note in
                         Text("• \(note)")
-                            .font(.system(size: 10.5))
+                            .font(BrowserType.font(.caption))
                             .foregroundStyle(Color.browsemiumTertiary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -172,7 +181,7 @@ struct ImportPreviewSheet: View {
     private var destinationPicker: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Import into")
-                .font(.system(size: 11, weight: .semibold))
+                .font(BrowserType.font(.caption, weight: .semibold))
                 .foregroundStyle(Color.browsemiumTertiary)
 
             Picker("Import into", selection: $destination) {
@@ -185,13 +194,13 @@ struct ImportPreviewSheet: View {
 
             if destination == .newProfile {
                 TextField("Profile name", text: $newProfileName)
-                    .font(.system(size: 12))
+                    .font(BrowserType.font(.small))
                     .browsemiumField()
                     .frame(height: 24)
                     .padding(.horizontal, 8)
                     .accessibilityLabel("New profile name")
                 Text("Creates a profile with its own logins and browsing data, then imports into it.")
-                    .font(.system(size: 10.5))
+                    .font(BrowserType.font(.caption))
                     .foregroundStyle(Color.browsemiumTertiary)
             }
         }
@@ -208,6 +217,7 @@ struct ImportPreviewSheet: View {
             summaryTile("\(preview.folders.count)", "Folders")
             summaryTile("\(preview.credentialCount)", "Passwords")
             summaryTile("\(preview.cookieCount)", "Cookies")
+            if preview.sessionTabCount > 0 { summaryTile("\(preview.sessionTabCount)", "Open tabs") }
             if !preview.extensionIDs.isEmpty { summaryTile("\(preview.extensionIDs.count)", "Extensions") }
         }
     }
@@ -217,7 +227,7 @@ struct ImportPreviewSheet: View {
             Text(value)
                 .font(.system(size: 17, weight: .semibold))
             Text(label)
-                .font(.system(size: 10.5))
+                .font(BrowserType.font(.caption))
                 .foregroundStyle(Color.browsemiumTertiary)
         }
         .frame(maxWidth: .infinity)
@@ -232,9 +242,9 @@ struct ImportPreviewSheet: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(size: 12.5))
+                    .font(BrowserType.font(.body))
                 Text(detail)
-                    .font(.system(size: 11))
+                    .font(BrowserType.font(.caption))
                     .foregroundStyle(Color.browsemiumTertiary)
             }
             Spacer()
@@ -253,8 +263,21 @@ struct ImportPreviewSheet: View {
             : "Folders preserved: \(preview.folders.prefix(4).joined(separator: ", "))\(preview.folders.count > 4 ? "…" : "")"
     }
 
-    private var historyDetail: String {
-        guard let earliest = preview.earliestVisit, let latest = preview.latestVisit else {
+    private var sessionTabDetail: String {
+        let pinned = preview.sessionTabs.filter(\.isPinned).count
+        var detail = "\(preview.sessionTabCount) pages reopen as tabs in the destination profile"
+        if pinned > 0 { detail += ", \(pinned) pinned" }
+        return detail + ". Already-open pages are skipped; private windows open nothing."
+    }
+
+        private var passwordDetail: String {
+        if preview.source.family == .firefox {
+            return "\(preview.credentialCount) saved logins. Imports only without a Firefox Primary Password — protected logins stay in Firefox, and Browsemium never asks for the password. Use a password CSV for those instead."
+        }
+        return "\(preview.credentialCount) saved logins. Direct import uses only an already-accessible encryption key, without asking macOS to unlock it. If access is unavailable, use a password CSV instead."
+    }
+
+    private var historyDetail: String {        guard let earliest = preview.earliestVisit, let latest = preview.latestVisit else {
             return "No dated history found."
         }
         let formatter = DateFormatter()

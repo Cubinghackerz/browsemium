@@ -61,8 +61,17 @@ public final class WebKitPageActuator: PageActuating {
         /// name a provisional URL that never loaded (for example a redirect the
         /// policy refused), so it is never used to decide scope.
         var committedOrigin: AgentOrigin?
+        /// Set only when the WebMCP shim was installed on this tab.
+        let webMCPNonce: String?
 
-        init(id: TabID, webView: WKWebView, delegate: AgentWebDelegate, authorize: @escaping @MainActor (URL) -> Bool) {
+        init(
+            id: TabID,
+            webView: WKWebView,
+            delegate: AgentWebDelegate,
+            webMCPNonce: String? = nil,
+            authorize: @escaping @MainActor (URL) -> Bool
+        ) {
+            self.webMCPNonce = webMCPNonce
             self.id = id
             self.webView = webView
             self.delegate = delegate
@@ -73,6 +82,10 @@ public final class WebKitPageActuator: PageActuating {
     private(set) var tabs: [TabID: Tab] = [:]
     private(set) var agentAccess = false
     private let world = WKContentWorld.world(name: "BrowsemiumAgent")
+    /// Whether new task tabs get the experimental WebMCP shim. Read when a tab
+    /// is created, so turning it off never reaches a tab already open, and the
+    /// default (no closure wired) is off.
+    public var webMCPEnabled: @MainActor () -> Bool = { false }
 
     public init() {}
 
@@ -93,12 +106,19 @@ public final class WebKitPageActuator: PageActuating {
         if #available(macOS 15.4, *) { configuration.webExtensionController = nil }
         configuration.mediaTypesRequiringUserActionForPlayback = [.all]
 
+        var nonce: String?
+        if webMCPEnabled() {
+            let value = WebMCPBridge.makeNonce()
+            configuration.userContentController.addUserScript(WebMCPBridge.makeUserScript(nonce: value))
+            nonce = value
+        }
+
         let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1280, height: 800), configuration: configuration)
         webView.allowsBackForwardNavigationGestures = false
         let delegate = AgentWebDelegate(actuator: self, tabID: id)
         webView.navigationDelegate = delegate
         webView.uiDelegate = delegate
-        tabs[id] = Tab(id: id, webView: webView, delegate: delegate, authorize: authorizeNavigation)
+        tabs[id] = Tab(id: id, webView: webView, delegate: delegate, webMCPNonce: nonce, authorize: authorizeNavigation)
     }
 
     /// Turns the agent's ability to act on or off without touching the pages.
@@ -223,6 +243,35 @@ public final class WebKitPageActuator: PageActuating {
         }
     }
 
+    // MARK: - WebMCP
+
+    public func pageTools(in id: TabID) async throws -> [AgentPageTool] {
+        let tab = try activeTab(id)
+        guard let nonce = tab.webMCPNonce else { return [] }
+        let raw = try await evaluate(
+            "const api = window[name]; return api ? api.list() : '[]';",
+            ["name": WebMCPBridge.accessorName(nonce: nonce)],
+            in: tab, world: .page
+        )
+        return try WebMCPBridge.decodeTools(raw)
+    }
+
+    public func callPageTool(_ expected: AgentPageTool, arguments: String, in id: TabID) async throws -> String {
+        let tab = try activeTab(id)
+        guard let nonce = tab.webMCPNonce else { throw AgentError.unavailable }
+        let raw = try await evaluate(
+            "const api = window[accessor]; if (!api) { return JSON.stringify({ status: 'error' }); } return await api.call(name, fingerprint, input);",
+            [
+                "accessor": WebMCPBridge.accessorName(nonce: nonce),
+                "name": expected.name,
+                "fingerprint": expected.fingerprint,
+                "input": arguments
+            ],
+            in: tab, world: .page
+        )
+        return try WebMCPBridge.decodeCall(raw)
+    }
+
     // MARK: - Internals
 
     private func activeTab(_ id: TabID) throws -> Tab {
@@ -247,8 +296,13 @@ public final class WebKitPageActuator: PageActuating {
 
     /// Runs a browser-owned script with a deadline, so a page that never yields
     /// the main thread cannot hold the task's single operation slot forever.
-    private func evaluate(_ body: String, _ arguments: [String: Any], in tab: Tab) async throws -> String {
-        let world = world
+    private func evaluate(
+        _ body: String,
+        _ arguments: [String: Any],
+        in tab: Tab,
+        world requested: WKContentWorld? = nil
+    ) async throws -> String {
+        let world = requested ?? world
         let deadline = scriptTimeout
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, any Error>) in
             let once = SingleResume<String>(continuation)

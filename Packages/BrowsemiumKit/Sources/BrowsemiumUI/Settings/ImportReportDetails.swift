@@ -8,7 +8,7 @@ struct ImportReportDetails: View {
     var body: some View {
         DisclosureGroup("Item report") {
             Text("Item numbers refer to source order. “Ready for transfer” does not mean saved. No passwords, cookie values, or site addresses appear here.")
-                .font(.system(size: 11.5))
+                .font(BrowserType.font(.small))
                 .foregroundStyle(Color.browsemiumSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             List(report.items.indices, id: \.self) { index in
@@ -17,9 +17,9 @@ struct ImportReportDetails: View {
                     Text(item.ordinal == 0
                          ? "\(category(item.category)) source"
                          : "\(category(item.category)) item \(item.ordinal.formatted())")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(BrowserType.font(.small, weight: .medium))
                     Text("\(stage(item.stage)): \(reason(item.reason))")
-                        .font(.system(size: 11.5))
+                        .font(BrowserType.font(.small))
                         .foregroundStyle(item.outcome == .failed ? Color.browsemiumDestructive : Color.browsemiumSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -39,6 +39,7 @@ struct ImportReportDetails: View {
         case .cookie: "Cookie"
         case .searchEngine: "Search engine"
         case .extension: "Extension"
+        case .sessionTab: "Open tab"
         }
     }
 
@@ -64,7 +65,11 @@ struct ImportReportDetails: View {
         case .notSelected: "Not selected"
         case .outsideSelection: "Outside the selected date range or item limit"
         case .preparedForTransfer: "Ready for transfer; not yet saved"
-        case .limitExceeded: "Source exceeds the 50,000-item reader limit"
+        case .limitExceeded: "Source exceeds the reader limit"
+        case .destinationNotOpen: "The destination profile is not open; import this profile singly to open its tabs"
+        case .primaryPasswordRequired: "Firefox protects these logins with a Primary Password, which Browsemium never asks for"
+        case .unsupportedFormat: "This item uses a format Browsemium cannot read"
+        case .privateWindow: "Private windows do not keep imported tabs"
         }
     }
 }

@@ -46,6 +46,114 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate {
     private var tabAdapters: [TabID: ExtensionTabAdapter] = [:]
     private var didReportWindow = false
 
+    // MARK: - Site policies
+
+    /// Stored per-site choices, mirrored from the profile database.
+    /// Keyed extensionID -> lower-cased host -> mode. The database stays
+    /// authoritative; this mirror lets the permission-prompt delegates answer
+    /// synchronously (deny wins without prompting) and re-check a user's
+    /// answer before it reaches WebKit.
+    private var sitePolicies: [String: [String: ExtensionSiteAccessMode]] = [:]
+
+    /// Records the profile's stored choices for one extension without touching
+    /// WebKit. Call `applyStoredSitePolicies(for:)` once its context loads.
+    public func rememberSitePolicies(_ policies: [ExtensionSitePolicy], for extensionID: String) {
+        var map: [String: ExtensionSiteAccessMode] = [:]
+        for policy in policies where policy.extensionID == extensionID {
+            map[policy.host] = policy.mode
+        }
+        sitePolicies[extensionID] = map
+    }
+
+    /// The stored choice for one host, if any. Nil means WebKit's default
+    /// (ask on first use).
+    public func siteMode(for extensionID: String, host: String) -> ExtensionSiteAccessMode? {
+        guard let normalized = ExtensionSitePolicy.normalizeHost(host) else { return nil }
+        return sitePolicies[extensionID]?[normalized]
+    }
+
+    /// Applies the remembered choices for one extension to its live context.
+    /// Deny wins over broader grants by WebKit's own precedence (verified by
+    /// the 2.4 spike); allow grants without prompting; ask clears any
+    /// explicit state back to WebKit's default.
+    public func applyStoredSitePolicies(for extensionID: String) {
+        guard let context = contexts[extensionID], let map = sitePolicies[extensionID] else { return }
+        for (host, mode) in map {
+            applySiteMode(mode, host: host, context: context)
+        }
+    }
+
+    /// Stores one choice and applies it to the live context immediately.
+    /// Already-injected page code keeps running until the page reloads; the
+    /// caller surfaces that honestly.
+    public func setSitePolicy(_ policy: ExtensionSitePolicy) {
+        sitePolicies[policy.extensionID, default: [:]][policy.host] = policy.mode
+        guard let context = contexts[policy.extensionID] else { return }
+        applySiteMode(policy.mode, host: policy.host, context: context)
+    }
+
+    /// Clears one host back to WebKit's default (ask).
+    public func removeSitePolicy(extensionID: String, host: String) {
+        guard let normalized = ExtensionSitePolicy.normalizeHost(host) else { return }
+        sitePolicies[extensionID]?[normalized] = nil
+        guard let context = contexts[extensionID] else { return }
+        for pattern in matchPatterns(for: normalized) {
+            context.setPermissionStatus(.unknown, for: pattern)
+        }
+    }
+
+    public func forgetSitePolicies(for extensionID: String) {
+        sitePolicies[extensionID] = nil
+    }
+
+    private func applySiteMode(
+        _ mode: ExtensionSiteAccessMode, host: String, context: WKWebExtensionContext
+    ) {
+        let patterns = matchPatterns(for: host)
+        guard !patterns.isEmpty else { return }
+        for pattern in patterns {
+            switch mode {
+            case .deny:
+                context.setPermissionStatus(.deniedExplicitly, for: pattern)
+            case .allow:
+                context.setPermissionStatus(.grantedExplicitly, for: pattern)
+            case .ask:
+                context.setPermissionStatus(.unknown, for: pattern)
+            }
+        }
+    }
+
+    private func matchPatterns(for host: String) -> [WKWebExtension.MatchPattern] {
+        // One pattern per scheme: `*://` is not a documented WebKit match
+        // shape, and a page on either scheme must follow the same choice.
+        ["https://\(host)/*", "http://\(host)/*"].compactMap {
+            try? WKWebExtension.MatchPattern(string: $0)
+        }
+    }
+
+    /// Hosts from a prompt request that the stored policy already answers.
+    /// Deny wins: those URLs are removed before any prompt is shown, and a
+    /// stored allow grants without prompting. Returns the URLs still needing
+    /// a user answer, plus whether any were auto-granted.
+    func partitionPromptURLs(_ urls: Set<URL>, for extensionID: String) -> (denied: Set<URL>, granted: Set<URL>, pending: Set<URL>) {
+        var denied: Set<URL> = []
+        var granted: Set<URL> = []
+        var pending: Set<URL> = []
+        for url in urls {
+            guard let host = url.host?.lowercased(),
+                  let mode = sitePolicies[extensionID]?[host] else {
+                pending.insert(url)
+                continue
+            }
+            switch mode {
+            case .deny: denied.insert(url)
+            case .allow: granted.insert(url)
+            case .ask: pending.insert(url)
+            }
+        }
+        return (denied, granted, pending)
+    }
+
     public init(profileIdentifier: UUID) {
         controller = WKWebExtensionController(
             configuration: WKWebExtensionController.Configuration(identifier: profileIdentifier)
@@ -74,6 +182,9 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate {
             try controller.load(context)
             contexts[item.id] = context
             loadErrors[item.id] = nil
+            // Stored site choices are enforced before anything runs: denial
+            // wins over the manifest's own host list from the first load.
+            applyStoredSitePolicies(for: item.id)
             // Popup pages message the background the moment they open. If the
             // service worker has not been started, Chrome extensions show their
             // own "menu had trouble loading" page. Wake it now, and again
@@ -341,15 +452,40 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate {
         completionHandler: @escaping (Set<URL>, Date?) -> Void
     ) {
         let extensionID = contexts.first { $0.value === extensionContext }?.key ?? ""
+        // Stored choices answer first: denied hosts never prompt, allowed
+        // hosts grant without prompting. Denial wins over any later answer.
+        let (_, autoGranted, pending) = partitionPromptURLs(urls, for: extensionID)
+        guard !pending.isEmpty else {
+            completionHandler(autoGranted, nil)
+            return
+        }
         let name = displayNames[extensionID] ?? extensionID
         let request = ExtensionPermissionRequest(
             extensionID: extensionID,
             extensionName: name,
-            kind: .hostAccess(urls.map(\.host).compactMap { $0 }.sorted())
+            kind: .hostAccess(pending.map(\.host).compactMap { $0 }.sorted())
         )
+        // The tab may have moved while the prompt was on screen. Resolve the
+        // site again before applying the answer, so a stale prompt cannot
+        // grant a site the user already denied or already left.
+        let requestedTab = tab
         Task { @MainActor in
-            let granted = await permissionPrompter?.promptForExtensionPermissions(request) ?? false
-            completionHandler(granted ? urls : [], nil)
+            let grantedByUser = await permissionPrompter?.promptForExtensionPermissions(request) ?? false
+            var result = autoGranted
+            if grantedByUser {
+                // Re-resolve: a denial stored while prompting wins, and a tab
+                // that navigated to another host cannot grant the site it left.
+                // (The host object is per-profile, so the re-read answers for
+                // the profile that asked, even across a profile switch.)
+                let currentHost = requestedTab?.url?(for: extensionContext)?.host?.lowercased()
+                for url in pending {
+                    guard let host = url.host?.lowercased() else { continue }
+                    if sitePolicies[extensionID]?[host] == .deny { continue }
+                    if requestedTab != nil, let now = currentHost, now != host { continue }
+                    result.insert(url)
+                }
+            }
+            completionHandler(result, nil)
         }
     }
 
@@ -361,15 +497,58 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate {
         completionHandler: @escaping (Set<WKWebExtension.MatchPattern>, Date?) -> Void
     ) {
         let extensionID = contexts.first { $0.value === extensionContext }?.key ?? ""
+        // Match-pattern prompts carry the same stored-choice precedence: any
+        // pattern naming a denied host is withheld without prompting.
+        let deniedHosts = Set(
+            (sitePolicies[extensionID] ?? [:]).compactMap { $0.value == .deny ? $0.key : nil }
+        )
+        let allowedHosts = Set(
+            (sitePolicies[extensionID] ?? [:]).compactMap { $0.value == .allow ? $0.key : nil }
+        )
+        var autoGranted: Set<WKWebExtension.MatchPattern> = []
+        var pending = Set<WKWebExtension.MatchPattern>()
+        for pattern in matchPatterns {
+            let text = pattern.description.lowercased()
+            if deniedHosts.contains(where: { text.contains($0) }) { continue }
+            if allowedHosts.contains(where: { text.contains($0) }) {
+                autoGranted.insert(pattern)
+            } else {
+                pending.insert(pattern)
+            }
+        }
+        guard !pending.isEmpty else {
+            completionHandler(autoGranted, nil)
+            return
+        }
         let name = displayNames[extensionID] ?? extensionID
         let request = ExtensionPermissionRequest(
             extensionID: extensionID,
             extensionName: name,
-            kind: .hostAccess(matchPatterns.map(\.description).sorted())
+            kind: .hostAccess(pending.map(\.description).sorted())
         )
+        let requestedTab = tab
+        let promptHost = tab?.url?(for: extensionContext)?.host?.lowercased()
         Task { @MainActor in
-            let granted = await permissionPrompter?.promptForExtensionPermissions(request) ?? false
-            completionHandler(granted ? matchPatterns : [], nil)
+            let grantedByUser = await permissionPrompter?.promptForExtensionPermissions(request) ?? false
+            var result = autoGranted
+            if grantedByUser {
+                // Re-resolve before applying: a denial stored while the card
+                // was open wins over the user's tap, and a tab that has since
+                // navigated elsewhere cannot grant the patterns it left behind.
+                let nowHost = requestedTab?.url?(for: extensionContext)?.host?.lowercased()
+                let tabMoved = promptHost != nil && nowHost != promptHost
+                if !tabMoved {
+                    let freshDenied = Set(
+                        (sitePolicies[extensionID] ?? [:]).compactMap { $0.value == .deny ? $0.key : nil }
+                    )
+                    for pattern in pending {
+                        let text = pattern.description.lowercased()
+                        if freshDenied.contains(where: { text.contains($0) }) { continue }
+                        result.insert(pattern)
+                    }
+                }
+            }
+            completionHandler(result, nil)
         }
     }
 }

@@ -38,7 +38,7 @@ struct AIDockView: View {
                             ProgressView()
                                 .controlSize(.small)
                             Text("Preparing page context…")
-                                .font(.system(size: 11.5, weight: .medium))
+                                .font(BrowserType.font(.small, weight: .medium))
                                 .foregroundStyle(Color.browsemiumPrimary)
                         }
                         .padding(.horizontal, 11)
@@ -175,7 +175,7 @@ struct AIDockView: View {
                     HStack(spacing: 6) {
                         ProviderMark(provider: ai.provider, size: 20)
                         Text(ai.descriptor.displayName)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(BrowserType.font(.body, weight: .semibold))
                             .foregroundStyle(Color.browsemiumPrimary)
                         Image(systemName: "chevron.up.chevron.down")
                             .font(.system(size: 8, weight: .semibold))
@@ -260,9 +260,9 @@ struct AIDockView: View {
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: ai.attachments.isEmpty ? "sparkles" : "sparkles.circle.fill")
-                    .font(.system(size: 11))
+                    .font(BrowserType.font(.caption))
                 Text(ai.attachments.isEmpty ? "Context" : "Context · \(ai.attachments.count)")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(BrowserType.font(.caption, weight: .medium))
             }
             .foregroundStyle(Color.browsemiumSecondary)
             .padding(.horizontal, 7)
@@ -281,7 +281,7 @@ struct AIDockView: View {
             if ai.provider.isLocal {
                 HStack(spacing: 8) {
                     if ai.models.isEmpty {
-                        BrowsemiumPrimaryButton("Look for Ollama", isDisabled: ai.isWorking) {
+                        BrowsemiumPrimaryButton(ai.provider == .appleIntelligence ? "Check Apple Intelligence" : "Look for Ollama", isDisabled: ai.isWorking) {
                             Task { await ai.connect() }
                         }
                     } else {
@@ -298,8 +298,10 @@ struct AIDockView: View {
                         }
                     }
                 }
-                Text("Runs on this Mac through Ollama at localhost:11434. No key, no account, and nothing you send leaves the machine.")
-                    .font(.system(size: 10.5))
+                Text(ai.provider == .appleIntelligence
+                     ? "Runs on Apple's on-device model. No key, no account, and nothing you send leaves this Mac. Long pages are read in sections, which is slower."
+                     : "Runs on this Mac through Ollama at localhost:11434. No key, no account, and nothing you send leaves the machine.")
+                    .font(BrowserType.font(.caption))
                     .foregroundStyle(Color.browsemiumTertiary)
                     .fixedSize(horizontal: false, vertical: true)
             } else if ai.hasStoredCredential {
@@ -332,7 +334,7 @@ struct AIDockView: View {
 
             if let status = ai.credentialStatus {
                 Text(status)
-                    .font(.system(size: 11))
+                    .font(BrowserType.font(.caption))
                     .foregroundStyle(Color.browsemiumSuccess)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -385,7 +387,7 @@ struct AIDockView: View {
             }
         } label: {
             Image(systemName: "wand.and.stars")
-                .font(.system(size: 13, weight: .medium))
+                .font(BrowserType.font(.body, weight: .medium))
                 .foregroundStyle(Color.browsemiumSecondary)
                 .frame(width: 28, height: 28)
         }
@@ -476,6 +478,7 @@ struct AIDockView: View {
 @MainActor
 struct CurrentPageBar: View {
     let model: BrowserWindowModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var tab: BrowserTab? {
         guard let tab = model.activeTab, tab.lastCommittedURL != nil,
@@ -494,13 +497,13 @@ struct CurrentPageBar: View {
                         .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
                 } else {
                     Image(systemName: "globe")
-                        .font(.system(size: 10))
+                        .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumTertiary)
                         .frame(width: 13, height: 13)
                 }
 
                 Text(tab.title)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(BrowserType.font(.caption, weight: .medium))
                     .foregroundStyle(Color.browsemiumPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -521,7 +524,7 @@ struct CurrentPageBar: View {
             )
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Context will be captured from \(tab.title)")
-            .animation(.easeOut(duration: 0.15), value: tab.id)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: tab.id)
         }
     }
 }
@@ -550,7 +553,7 @@ private struct AttachmentChip: View {
                     .foregroundStyle(Color.browsemiumTertiary)
             }
             Text(label)
-                .font(.system(size: 10.5))
+                .font(BrowserType.font(.caption))
                 .foregroundStyle(Color.browsemiumSecondary)
                 .lineLimit(1)
             Button(action: onRemove) {
@@ -598,6 +601,7 @@ private struct ProviderMark: View {
         case .xAI: "bolt.fill"
         case .ollama: "desktopcomputer"
         case .vercelV0: "square.and.pencil"
+        case .appleIntelligence: "apple.intelligence"
         }
     }
 
@@ -609,6 +613,7 @@ private struct ProviderMark: View {
         case .xAI: Color(red: 0.15, green: 0.15, blue: 0.16)
         case .ollama: Color(red: 0.20, green: 0.20, blue: 0.22)
         case .vercelV0: Color(red: 0.12, green: 0.12, blue: 0.13)
+        case .appleIntelligence: Color(red: 0.36, green: 0.34, blue: 0.84)
         }
     }
 }
@@ -714,7 +719,7 @@ private struct MessageBubble: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(message.role == .user ? "You" : "Assistant")
-                .font(.system(size: 11, weight: .medium))
+                .font(BrowserType.font(.caption, weight: .medium))
                 .foregroundStyle(Color.browsemiumSecondary)
             messageBody
                 .lineSpacing(3)
@@ -733,12 +738,12 @@ private struct MessageBubble: View {
                         HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
                             Text("Waiting for an answer…")
-                                .font(.system(size: 12))
+                                .font(BrowserType.font(.small))
                                 .foregroundStyle(Color.browsemiumSecondary)
                         }
                     } else {
                         Text("No answer was returned.")
-                            .font(.system(size: 12))
+                            .font(BrowserType.font(.small))
                             .foregroundStyle(Color.browsemiumSecondary)
                     }
                 }
@@ -750,7 +755,7 @@ private struct MessageBubble: View {
                         ForEach(document.links, id: \.url) { link in
                             Link(destination: link.url) {
                                 Text(link.text.isEmpty ? link.url.absoluteString : link.text)
-                                    .font(.system(size: 11.5))
+                                    .font(BrowserType.font(.small))
                                     .foregroundStyle(Color.browsemiumAccent)
                                     .lineLimit(1)
                             }
@@ -760,7 +765,7 @@ private struct MessageBubble: View {
             }
         } else {
             Text(message.content)
-                .font(.system(size: 12.5))
+                .font(BrowserType.font(.body))
                 .foregroundStyle(Color.browsemiumPrimary)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
@@ -778,11 +783,11 @@ private struct MessageBubble: View {
         switch block {
         case .heading(_, let text):
             Text(attributed(text))
-                .font(.system(size: 13, weight: .semibold))
+                .font(BrowserType.font(.body, weight: .semibold))
                 .foregroundStyle(Color.browsemiumPrimary)
         case .paragraph(let inlines):
             Text(attributed(inlines))
-                .font(.system(size: 12.5))
+                .font(BrowserType.font(.body))
                 .foregroundStyle(Color.browsemiumPrimary)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
@@ -792,7 +797,7 @@ private struct MessageBubble: View {
                     .fill(Color.browsemiumBorderStrong)
                     .frame(width: 2)
                 Text(attributed(inlines))
-                    .font(.system(size: 12.5))
+                    .font(BrowserType.font(.body))
                     .foregroundStyle(Color.browsemiumSecondary)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
@@ -822,7 +827,7 @@ private struct MessageBubble: View {
                 .padding(.bottom, 4)
 
                 Text(code)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(BrowserType.font(.caption, design: .monospaced))
                     .foregroundStyle(Color.browsemiumPrimary)
                     .textSelection(.enabled)
                     .padding(.horizontal, 8)
@@ -841,7 +846,7 @@ private struct MessageBubble: View {
                             .foregroundStyle(Color.browsemiumPrimary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    .font(.system(size: 12.5))
+                    .font(BrowserType.font(.body))
                 }
             }
         case .orderedList(let items):
@@ -854,7 +859,7 @@ private struct MessageBubble: View {
                             .foregroundStyle(Color.browsemiumPrimary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    .font(.system(size: 12.5))
+                    .font(BrowserType.font(.body))
                 }
             }
         case .rule:
@@ -945,31 +950,31 @@ struct AIContextReviewSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(ai.mode == .web ? "Send to \(ai.descriptor.displayName)?" : "Send to \(ai.descriptor.displayName) API?")
-                .font(.system(size: 15, weight: .semibold))
+            Text(reviewTitle)
+                .font(BrowserType.font(.title, weight: .semibold))
 
             Text(destinationDescription)
-                .font(.system(size: 12))
+                .font(BrowserType.font(.small))
                 .foregroundStyle(Color.browsemiumSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             if ai.attachmentLabels.isEmpty {
                 Text("No page context attached. Only your message will be sent.")
-                    .font(.system(size: 12))
+                    .font(BrowserType.font(.small))
                     .foregroundStyle(Color.browsemiumTertiary)
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Attached context")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(BrowserType.font(.caption, weight: .semibold))
                         .foregroundStyle(Color.browsemiumTertiary)
                     ForEach(Array(ai.attachmentLabels.enumerated()), id: \.offset) { index, label in
                         HStack(spacing: 6) {
                             Text(label)
-                                .font(.system(size: 12))
+                                .font(BrowserType.font(.small))
                             Spacer()
                             Button("Remove") { ai.removeAttachment(at: index) }
                                 .buttonStyle(.plain)
-                                .font(.system(size: 11))
+                                .font(BrowserType.font(.caption))
                                 .foregroundStyle(Color.browsemiumDestructive)
                         }
                     }
@@ -981,7 +986,7 @@ struct AIContextReviewSheet: View {
 
             if let note = ai.handoff?.note {
                 Text(note)
-                    .font(.system(size: 11.5))
+                    .font(BrowserType.font(.small))
                     .foregroundStyle(Color.browsemiumWarning)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -1021,7 +1026,13 @@ struct AIContextReviewSheet: View {
         .foregroundStyle(Color.browsemiumPrimary)
     }
 
+    private var reviewTitle: String {
+        if ai.provider == .appleIntelligence { return "Ask Apple Intelligence?" }
+        return ai.mode == .web ? "Send to \(ai.descriptor.displayName)?" : "Send to \(ai.descriptor.displayName) API?"
+    }
+
     private var confirmButtonTitle: String {
+        if ai.provider == .appleIntelligence { return "Ask on this Mac" }
         guard ai.mode == .web else { return "Send to API" }
         if ai.handoff?.method == .clipboardOnly {
             return "Copy & open \(ai.descriptor.displayName)"
@@ -1035,6 +1046,8 @@ struct AIContextReviewSheet: View {
             let descriptor = ai.descriptor
             let host = descriptor.baseURL.host ?? descriptor.displayName
             return "This opens \(descriptor.displayName) at \(host) inside Browsemium. Your existing subscription and that site's policies apply."
+        case .api where ai.provider == .appleIntelligence:
+            return "This runs on Apple's on-device model on this Mac. Your message and the attached context are not sent to any server."
         case .api:
             let modelName = ai.selectedModel?.name ?? "the selected model"
             return "This sends your message and the attached context to the \(ai.descriptor.displayName) API using \(modelName). Browsemium never stores your key outside the macOS keychain."

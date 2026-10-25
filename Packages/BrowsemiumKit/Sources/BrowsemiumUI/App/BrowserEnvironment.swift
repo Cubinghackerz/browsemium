@@ -28,9 +28,15 @@ public final class BrowserEnvironment {
     public private(set) var savedCredentialRepository: SavedCredentialRepository
     public private(set) var sitePreferenceRepository: SitePreferenceRepository
     public private(set) var cosmeticRuleRepository: CosmeticRuleRepository
+    public private(set) var spaceRouteRepository: SpaceRouteRepository
+    public private(set) var siteTweakRepository: SiteTweakRepository
+    public private(set) var archivedTabRepository: ArchivedTabRepository
+    public private(set) var pageWatchRepository: PageWatchRepository
     public private(set) var conversationRepository: AIConversationRepository
     public private(set) var aiSkillRepository: AISkillRepository
     public private(set) var extensionRepository: ExtensionRepository
+    public private(set) var extensionSitePolicyRepository: ExtensionSitePolicyRepository
+    public private(set) var pageTextRepository: PageTextRepository
     public private(set) var privacyDataManager: PrivacyDataManager
     public private(set) var maintenance: DatabaseMaintenance
     /// The on-disk extension store. Files are shared between profiles; what
@@ -46,6 +52,31 @@ public final class BrowserEnvironment {
     public let userDefaults: UserDefaults
     private var temporaryPreferences: TemporaryPreferences?
     private var agentStorage: AgentCoordinator?
+    private var pageWatchStorage: PageWatchController?
+    private var spotlightStorage: SpotlightBookmarkIndexer?
+
+    /// Watches for pages the person asked to be told about. Created on first
+    /// use; nothing runs until a watch exists.
+    public var pageWatches: PageWatchController {
+        if let pageWatchStorage { return pageWatchStorage }
+        let controller = PageWatchController(environment: self)
+        pageWatchStorage = controller
+        return controller
+    }
+
+    /// Keeps Spotlight's copy of the bookmarks equal to what Settings allows.
+    /// Does nothing while the setting is off beyond clearing its own domain.
+    public var spotlight: SpotlightBookmarkIndexer {
+        if let spotlightStorage { return spotlightStorage }
+        // A temporary-preferences environment is a test or preview: it must
+        // not reach the machine-wide Spotlight index.
+        let indexer = SpotlightBookmarkIndexer(
+            environment: self,
+            index: temporaryPreferences == nil ? SystemSearchableIndex() : NullSearchableIndex()
+        )
+        spotlightStorage = indexer
+        return indexer
+    }
 
     /// The external-agent coordinator. Created on first use; nothing listens
     /// until the person turns the endpoint on in Settings.
@@ -91,9 +122,15 @@ public final class BrowserEnvironment {
         savedCredentialRepository = SavedCredentialRepository(database: database)
         sitePreferenceRepository = SitePreferenceRepository(database: database)
         cosmeticRuleRepository = CosmeticRuleRepository(database: database)
+        spaceRouteRepository = SpaceRouteRepository(database: database)
+        siteTweakRepository = SiteTweakRepository(database: database)
+        archivedTabRepository = ArchivedTabRepository(database: database)
+        pageWatchRepository = PageWatchRepository(database: database)
         conversationRepository = AIConversationRepository(database: database)
         aiSkillRepository = AISkillRepository(database: database)
         extensionRepository = ExtensionRepository(database: database)
+        extensionSitePolicyRepository = ExtensionSitePolicyRepository(database: database)
+        pageTextRepository = PageTextRepository(database: database)
         privacyDataManager = PrivacyDataManager(database: database)
         maintenance = DatabaseMaintenance(database: database)
         if let extensionStore {
@@ -229,15 +266,23 @@ public final class BrowserEnvironment {
         savedCredentialRepository = SavedCredentialRepository(database: database)
         sitePreferenceRepository = SitePreferenceRepository(database: database)
         cosmeticRuleRepository = CosmeticRuleRepository(database: database)
+        spaceRouteRepository = SpaceRouteRepository(database: database)
+        siteTweakRepository = SiteTweakRepository(database: database)
+        archivedTabRepository = ArchivedTabRepository(database: database)
+        pageWatchRepository = PageWatchRepository(database: database)
         conversationRepository = AIConversationRepository(database: database)
         aiSkillRepository = AISkillRepository(database: database)
         extensionRepository = ExtensionRepository(database: database)
+        extensionSitePolicyRepository = ExtensionSitePolicyRepository(database: database)
+        pageTextRepository = PageTextRepository(database: database)
         privacyDataManager = PrivacyDataManager(database: database)
         maintenance = DatabaseMaintenance(database: database)
         WebViewFactory.dataStoreIdentifier = profile.dataStoreUUID
         rebuildExtensionHost()
         userFilterLists?.bind(UserFilterListRepository(database: database, profileID: profile.id))
         try? profileStore.touch(id: profile.id)
+        // Spotlight shows only the active profile's bookmarks, if it allows it.
+        spotlightStorage?.reconcile()
     }
 
     // MARK: - Extensions
@@ -278,6 +323,10 @@ public final class BrowserEnvironment {
                 try? extensionRepository.setLastError(id: record.id, message: "The extension's files are missing.")
                 continue
             }
+            // Stored site choices travel with the load: the host enforces
+            // them before anything runs, so denial wins from the first page.
+            let stored = (try? extensionSitePolicyRepository.policies(for: record.id)) ?? []
+            host.rememberSitePolicies(stored, for: record.id)
             await host.load(item)
             if let error = host.loadErrors[record.id] {
                 try? extensionRepository.setLastError(id: record.id, message: error)

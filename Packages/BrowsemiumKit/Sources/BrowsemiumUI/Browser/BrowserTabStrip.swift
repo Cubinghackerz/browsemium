@@ -10,10 +10,13 @@ import BrowsemiumEngineKit
 struct BrowserTabStrip: View {
     @Bindable var model: BrowserWindowModel
     @State private var isNamingGroup = false
+    @State private var newGroupIsSeparate = false
     @State private var newGroupName = ""
     @State private var isRenamingGroup = false
     @State private var groupRenameText = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The selected tab's pill is one shape that slides between tabs.
+    @Namespace private var selectionPill
 
     private var pinnedTabs: [BrowserTab] {
         model.visibleTabs.filter(\.isPinned)
@@ -69,7 +72,7 @@ struct BrowserTabStrip: View {
                 groupPicker
 
                 ForEach(pinnedTabs) { tab in
-                    TabItem(model: model, tab: tab, width: 30, inFolder: false)
+                    TabItem(model: model, tab: tab, width: 30, inFolder: false, pill: selectionPill)
                 }
 
                 let regularWidth = width(for: geometry.size.width)
@@ -82,19 +85,21 @@ struct BrowserTabStrip: View {
                                 case .collapsedFolder(let folder, let count):
                                     FolderChip(model: model, folder: folder, count: count)
                                 case .tab(let tab, let inFolder):
-                                    TabItem(model: model, tab: tab, width: regularWidth, inFolder: inFolder)
+                                    TabItem(model: model, tab: tab, width: regularWidth, inFolder: inFolder, pill: selectionPill)
                                         .id(tab.id)
                                 }
                             }
                         }
                         .padding(.horizontal, 1)
+                        .animation(BrowserMotion.standard(reduceMotion: reduceMotion), value: stripEntries.map(\.id))
                     }
-                    .onChange(of: model.session.activeTabID) {
-                        guard let active = model.session.activeTabID else { return }
-                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
-                            proxy.scrollTo(active, anchor: .center)
-                        }
-                    }
+                    // The active tab is always brought into view: when it
+                    // changes, when tabs come or go, and when the strip appears.
+                    .onChange(of: model.session.activeTabID) { scrollToActive(proxy, animated: true) }
+                    .onChange(of: stripEntries.count) { scrollToActive(proxy, animated: true) }
+                    // One turn later on appear: the strip has to lay out before
+                    // a restored session's active tab has a position to scroll to.
+                    .onAppear { Task { @MainActor in scrollToActive(proxy, animated: false) } }
                 }
 
                 NewTabButton {
@@ -103,20 +108,25 @@ struct BrowserTabStrip: View {
                 }
             }
             .padding(.trailing, 8)
-            .padding(.top, BrowserMetrics.tabStripTopInset)
+            .padding(.top, model.chromeStyle == .compact ? 2 : BrowserMetrics.tabStripTopInset)
         }
-        .frame(height: BrowserMetrics.tabStripHeight)
+        .frame(height: BrowserMetrics.tabStripHeight(for: model.chromeStyle))
         .background(WindowDragView())
-        .alert("New Tab Group", isPresented: $isNamingGroup) {
+        .alert(newGroupIsSeparate ? "New Separate Group" : "New Tab Group", isPresented: $isNamingGroup) {
             TextField("Name", text: $newGroupName)
             Button("Create") {
                 let name = newGroupName
                 newGroupName = ""
-                model.createGroup(named: name.isEmpty ? "Group \(model.session.spaces.count)" : name)
+                model.createGroup(
+                    named: name.isEmpty ? "Group \(model.session.spaces.count)" : name,
+                    separateData: newGroupIsSeparate
+                )
             }
             Button("Cancel", role: .cancel) { newGroupName = "" }
         } message: {
-            Text("Groups keep related tabs together and switch as a set.")
+            Text(newGroupIsSeparate
+                 ? "Cookies, logins and site data in this group are kept apart from your other groups, so you can sign in to two accounts on one site. History, bookmarks and passwords are still shared. This cannot be changed later."
+                 : "Groups keep related tabs together and switch as a set.")
         }
         .alert("Rename Group", isPresented: $isRenamingGroup) {
             TextField("Name", text: $groupRenameText)
@@ -140,6 +150,8 @@ struct BrowserTabStrip: View {
                         Label(space.name, systemImage: "checkmark")
                     } else if space.isLocked {
                         Label(space.name, systemImage: "lock.fill")
+                    } else if space.hasSeparateData {
+                        Label(space.name, systemImage: "person.crop.square")
                     } else {
                         Text(space.name)
                     }
@@ -148,8 +160,17 @@ struct BrowserTabStrip: View {
             Divider()
             Button("New Group…") {
                 newGroupName = ""
+                newGroupIsSeparate = false
                 isNamingGroup = true
             }
+            .disabled(model.session.isPrivate)
+            Button("New Separate Group…") {
+                newGroupName = ""
+                newGroupIsSeparate = true
+                isNamingGroup = true
+            }
+            .disabled(model.session.isPrivate)
+            .help("A group with its own cookies and logins")
             if model.session.spaces.count > 1, let group = model.activeGroup {
                 Button("Rename “\(group.name)”…") {
                     groupRenameText = group.name
@@ -177,8 +198,15 @@ struct BrowserTabStrip: View {
                 Circle()
                     .fill(groupColor)
                     .frame(width: 7, height: 7)
+                if model.activeGroup?.hasSeparateData == true {
+                    Image(systemName: "person.crop.square")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(Color.browsemiumTertiary)
+                        .help("This group keeps its own cookies and logins")
+                        .accessibilityLabel("Separate cookies and logins")
+                }
                 Text(model.activeGroup?.name ?? "Tabs")
-                    .font(.system(size: 10.5, weight: .medium))
+                    .font(BrowserType.font(.caption, weight: .medium))
                     .foregroundStyle(Color.browsemiumSecondary)
                     .lineLimit(1)
                 Image(systemName: "chevron.down")
@@ -206,6 +234,17 @@ struct BrowserTabStrip: View {
         return Color(browsemiumHex: hex) ?? Color.browsemiumTertiary
     }
 
+    private func scrollToActive(_ proxy: ScrollViewProxy, animated: Bool) {
+        guard let active = model.session.activeTabID else { return }
+        if animated {
+            withAnimation(BrowserMotion.standard(reduceMotion: reduceMotion)) {
+                proxy.scrollTo(active, anchor: .center)
+            }
+        } else {
+            proxy.scrollTo(active, anchor: .center)
+        }
+    }
+
     private func width(for available: CGFloat) -> CGFloat {
         let collapsedFolders = stripEntries.count { entry in
             if case .collapsedFolder = entry { return true }
@@ -229,7 +268,7 @@ private struct NewTabButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "plus")
-                .font(.system(size: 12, weight: .semibold))
+                .font(BrowserType.font(.small, weight: .semibold))
                 .foregroundStyle(isHovering ? Color.browsemiumPrimary : Color.browsemiumSecondary)
                 .frame(width: 30, height: 28)
                 .background(
@@ -251,11 +290,13 @@ private struct NewTabButton: View {
 
 @MainActor
 private struct TabItem: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var model: BrowserWindowModel
     let tab: BrowserTab
     let width: CGFloat
     /// Members of an expanded folder get a small folder glyph.
     let inFolder: Bool
+    let pill: Namespace.ID
 
     @State private var isHovering = false
     @State private var isShowingStats = false
@@ -285,7 +326,7 @@ private struct TabItem: View {
                     .accessibilityHidden(true)
             }
 
-            icon
+            TabFaviconView(model: model, tab: tab, size: 16, isActive: isActive)
 
             if model.isTabInSplit(tab.id), !isCompact {
                 Image(systemName: "rectangle.split.2x1")
@@ -296,7 +337,7 @@ private struct TabItem: View {
 
             if !isCompact {
                 Text(tab.title)
-                    .font(.system(size: 12))
+                    .font(BrowserType.font(.small))
                     .foregroundStyle(isActive ? Color.browsemiumPrimary : Color.browsemiumSecondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -308,14 +349,22 @@ private struct TabItem: View {
         }
         .padding(.horizontal, isCompact ? 0 : 9)
         .frame(width: width, height: 28)
-        .background(
-            RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous)
-                .fill(isActive ? Color.browsemiumSelection : (isHovering ? Color.browsemiumHover : Color.clear))
-        )
-        .overlay {
-            if isActive {
-                RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous)
-                    .stroke(Color.browsemiumBorder, lineWidth: 1)
+        .background {
+            // One pill shared by every tab: selecting another tab slides it
+            // there instead of redrawing it.
+            ZStack {
+                if isActive {
+                    RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous)
+                        .fill(Color.browsemiumSelection)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous)
+                                .stroke(Color.browsemiumBorderStrong, lineWidth: 1)
+                        }
+                        .matchedGeometryEffect(id: "selection-pill", in: pill)
+                } else if isHovering {
+                    RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous)
+                        .fill(Color.browsemiumHover)
+                }
             }
         }
         .opacity(isAsleep && !isActive ? 0.55 : 1)
@@ -371,7 +420,10 @@ private struct TabItem: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(isActive ? [.isSelected] : [])
-        .transition(.opacity)
+        // The close button below appears only while the pointer is over the
+        // tab. This action gives VoiceOver and the rotor the same command.
+        .accessibilityAction(named: "Close tab") { model.closeTab(tab.id) }
+        .transition(.opacity.combined(with: .scale(scale: 0.92)))
     }
 
     @ViewBuilder
@@ -397,6 +449,9 @@ private struct TabItem: View {
             } label: {
                 Image(systemName: audio.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                     .font(.system(size: 9))
+                    .contentTransition(.symbolEffect(.replace))
+                    // The waves move while the page is actually making sound.
+                    .symbolEffect(.variableColor.iterative, isActive: audio.isPlaying && !audio.isMuted && !reduceMotion)
                     .foregroundStyle(audio.isMuted ? Color.browsemiumTertiary : Color.browsemiumSecondary)
                     .frame(width: 16, height: 16)
                     .contentShape(Rectangle())
@@ -408,45 +463,6 @@ private struct TabItem: View {
         }
     }
 
-    @ViewBuilder
-    private var icon: some View {
-        if tab.lifecycle == .loading {
-            ProgressView()
-                .controlSize(.mini)
-                .scaleEffect(0.7)
-                .frame(width: 14, height: 14)
-        } else if let favicon = model.favicons.image(for: tab.lastCommittedURL) {
-            Image(nsImage: favicon)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 14, height: 14)
-                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-        } else if tab.lifecycle == .crashed {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 10))
-                .foregroundStyle(Color.browsemiumWarning)
-                .frame(width: 14, height: 14)
-        } else {
-            monogram
-        }
-    }
-
-    @ViewBuilder
-    private var monogram: some View {
-        if let letter = tab.lastCommittedURL?.host?.first.map({ String($0).uppercased() }) {
-            Text(letter)
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(isActive ? Color.browsemiumPrimary : Color.browsemiumTertiary)
-                .frame(width: 14, height: 14)
-                .accessibilityHidden(true)
-        } else {
-            Image(systemName: "sparkle")
-                .font(.system(size: 10))
-                .foregroundStyle(Color.browsemiumTertiary)
-                .frame(width: 14, height: 14)
-                .accessibilityHidden(true)
-        }
-    }
 
     private var accessibilityLabel: String {
         var label = "Tab, \(tab.title)"
@@ -488,7 +504,7 @@ private struct FolderChip: View {
                 .font(.system(size: 9))
                 .foregroundStyle(accent)
             Text(folder.name)
-                .font(.system(size: 11, weight: .medium))
+                .font(BrowserType.font(.caption, weight: .medium))
                 .foregroundStyle(Color.browsemiumSecondary)
                 .lineLimit(1)
                 .truncationMode(.tail)

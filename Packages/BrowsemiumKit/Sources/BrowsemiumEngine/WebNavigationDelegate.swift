@@ -85,7 +85,27 @@ final class WebNavigationDelegate: NSObject, WKNavigationDelegate {
             return .replace(localized)
         }
 
+        if navigationAction.targetFrame?.isMainFrame == true,
+           protectionLevel.stripsTrackingParameters,
+           Self.mayStripTrackingParameters(navigationAction),
+           runtime?.isBlockingPaused(forHost: url.host?.lowercased() ?? "") != true,
+           let cleaned = TrackingParameterStripper.stripped(url) {
+            return .replace(cleaned)
+        }
+
         return .allow
+    }
+
+    /// Only a plain GET that the person (or the page's own load) started is
+    /// rewritten. Form posts, reloads and history moves keep the exact URL
+    /// they were made with.
+    static func mayStripTrackingParameters(_ action: WKNavigationAction) -> Bool {
+        let method = action.request.httpMethod?.uppercased() ?? "GET"
+        guard method == "GET" else { return false }
+        switch action.navigationType {
+        case .linkActivated, .other: return true
+        default: return false
+        }
     }
 
     private func applyPrivacy(to preferences: WKWebpagePreferences) {

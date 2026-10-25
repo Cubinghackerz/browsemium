@@ -14,6 +14,14 @@ public enum AgentLimits {
     public static let maxScreenshotBytes = 3_500_000
     public static let maxSnapshotElements = 200
     public static let maxAuditEntries = 200
+    /// WebMCP: what a page may register and what one call may return.
+    public static let maxPageTools = 50
+    public static let maxPageToolDescription = 2_000
+    public static let maxPageToolSchemaBytes = 8_000
+    public static let maxPageToolResultCharacters = 60_000
+    /// Arguments are shown to the person in full on the confirmation card, so
+    /// they are capped at what the card can display without truncating.
+    public static let maxPageToolArgumentBytes = 1_500
     /// An unanswered native confirmation declines itself after this long.
     public static let approvalTimeout: TimeInterval = 120
 }
@@ -86,6 +94,10 @@ public struct AgentOrigin: Hashable, Codable, Sendable, CustomStringConvertible 
 
 public enum AgentCapability: String, Codable, CaseIterable, Sendable {
     case read, navigate, interact, screenshot
+    /// Listing and calling tools a page registered through WebMCP. Separate
+    /// from `interact`: a page tool is page-authored code, not a browser-owned
+    /// click, so it needs its own grant, and every call still asks the person.
+    case webmcp
 }
 
 /// What the person approved in the native grant. Everything that decides which
@@ -219,6 +231,47 @@ public enum AgentPageAction: Equatable, Sendable {
     }
 }
 
+/// A tool a page registered through WebMCP. Every string is page-authored, so
+/// it is data to display and to pass to a client inside an untrusted envelope,
+/// never a statement of what the tool does. `fingerprint` binds the name,
+/// description and schema, so a page that rewrites a tool after the person
+/// approved a call cannot get the new tool run under the old approval.
+public struct AgentPageTool: Codable, Equatable, Sendable {
+    public let name: String
+    public let description: String
+    /// The input schema as compact JSON text, or `{}` when the page gave none.
+    public let inputSchema: String
+    public let fingerprint: String
+    /// Hints the page gave about itself. Advisory only: nothing in the gate
+    /// trusts them, and the person is asked before every call regardless.
+    public let readOnlyHint: Bool
+    public let consequentialHint: Bool
+
+    public init(
+        name: String,
+        description: String,
+        inputSchema: String,
+        fingerprint: String,
+        readOnlyHint: Bool = false,
+        consequentialHint: Bool = false
+    ) {
+        self.name = name
+        self.description = description
+        self.inputSchema = inputSchema
+        self.fingerprint = fingerprint
+        self.readOnlyHint = readOnlyHint
+        self.consequentialHint = consequentialHint
+    }
+
+    /// WebMCP tool names: 1-128 characters of letters, digits, `_`, `-`, `.`.
+    public static func isValidName(_ name: String) -> Bool {
+        guard (1...128).contains(name.utf8.count) else { return false }
+        return name.unicodeScalars.allSatisfy {
+            ($0.isASCII && ($0.properties.isAlphabetic || ("0"..."9").contains(Character($0)))) || "_-.".unicodeScalars.contains($0)
+        }
+    }
+}
+
 public struct AgentTabInfo: Codable, Equatable, Sendable {
     public let id: UUID
     public let origin: String?
@@ -275,6 +328,8 @@ public enum AgentError: Error, LocalizedError, Sendable, Equatable {
     case sensitiveField
     case tabLimit
     case unavailable
+    /// The capability exists but the person has not turned it on in Settings.
+    case featureOff
 
     public var errorDescription: String? {
         switch self {
@@ -288,6 +343,7 @@ public enum AgentError: Error, LocalizedError, Sendable, Equatable {
         case .sensitiveField: "Password, payment, one-time-code and file fields cannot be used."
         case .tabLimit: "A task can own at most four tabs."
         case .unavailable: "The task page is not available."
+        case .featureOff: "This feature is turned off in Browsemium Settings."
         }
     }
 }

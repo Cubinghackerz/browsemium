@@ -153,6 +153,63 @@ struct AgentGateConcurrencyTests {
         #expect(harness.gate.state == .finished)
     }
 
+    @Test func stopDuringATakeoverEndsTheTaskKeepsPagesAndRefusesHandBack() throws {
+        let harness = try GateHarness()
+        let tab = try #require(harness.tab)
+        harness.gate.pause()
+        #expect(harness.gate.state == .paused)
+
+        harness.gate.stop()
+
+        #expect(harness.gate.state == .stopped)
+        #expect(harness.gate.tabs == [tab], "The person's workspace stays")
+        #expect(harness.actuator.closed.isEmpty)
+        #expect(!harness.actuator.accessEnabled)
+        #expect(throws: AgentError.denied) { try harness.gate.resume() }
+        #expect(harness.gate.audit.map(\.action).suffix(2) == ["Take over", "Stopped"])
+    }
+
+    @Test func aCallInFlightWhenThePersonTakesOverThenStopsNeverRevivesTheTask() async throws {
+        let harness = try GateHarness()
+        let tab = try #require(harness.tab)
+        let latch = Latch()
+        harness.actuator.latches["readText"] = latch
+        let running = Task { try await harness.gate.readText(client: harness.client, tab: tab, requestID: "r") }
+        #expect(await harness.waitUntil { latch.isWaiting })
+
+        harness.gate.pause()
+        harness.gate.stop()
+        latch.release()
+
+        if case .success = await running.result { Issue.record("Content was returned after takeover and stop") }
+        #expect(harness.gate.state == .stopped, "A late completion must not change the ended task's state")
+        #expect(harness.actuator.violations.isEmpty)
+    }
+
+    @Test func expiryDuringATakeoverFinishesTheTaskWithoutClosingPages() throws {
+        let harness = try GateHarness()
+        let tab = try #require(harness.tab)
+        harness.gate.pause()
+
+        harness.clock.advance(15 * 60 + 1)
+        #expect(!harness.gate.enforceDeadline())
+
+        #expect(harness.gate.state == .finished)
+        #expect(harness.gate.tabs == [tab])
+        #expect(harness.actuator.closed.isEmpty)
+        // The task is over, so there is nothing left to hand back.
+        #expect(throws: AgentError.denied) { try harness.gate.resume() }
+    }
+
+    @Test func leavingTheProfileDuringATakeoverEndsTheTask() throws {
+        let harness = try GateHarness()
+        harness.gate.pause()
+        harness.scopeOpen = false
+        #expect(!harness.gate.enforceDeadline())
+        #expect(harness.gate.state == .stopped)
+        #expect(throws: AgentError.denied) { try harness.gate.resume() }
+    }
+
     @Test func resumeIsRefusedWhenTheTaskIsNotPaused() throws {
         let harness = try GateHarness()
         #expect(throws: AgentError.denied) { try harness.gate.resume() }

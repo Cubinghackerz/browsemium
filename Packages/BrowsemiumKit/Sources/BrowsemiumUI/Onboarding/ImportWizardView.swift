@@ -46,7 +46,7 @@ struct ImportBatchSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
             Text(report.isEmpty ? "Move every profile" : "Import summary")
-                .font(.system(size: 16, weight: .semibold))
+                .font(BrowserType.font(.title, weight: .semibold))
             if isImporting {
                 ProgressView(value: Double(completedCount), total: Double(max(entries.count, 1))) {
                     Text(currentProfile.map { "Importing \($0)…" } ?? "Preparing import…")
@@ -55,19 +55,19 @@ struct ImportBatchSheet: View {
             }
             if report.isEmpty {
                 Text("Each source profile gets its own Browsemium profile and separate site data. Review the totals before importing.")
-                    .font(.system(size: 11.5))
+                    .font(BrowserType.font(.small))
                     .foregroundStyle(Color.browsemiumSecondary)
                 ForEach(entries, id: \.candidate.id) { entry in
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(entry.candidate.label).font(.system(size: 12, weight: .medium))
+                            Text(entry.candidate.label).font(BrowserType.font(.small, weight: .medium))
                             if let email = entry.candidate.email {
-                                Text(email).font(.system(size: 10.5)).foregroundStyle(Color.browsemiumTertiary)
+                                Text(email).font(BrowserType.font(.caption)).foregroundStyle(Color.browsemiumTertiary)
                             }
                         }
                         Spacer()
                         Text("\(entry.preview.bookmarkCount) bookmarks · \(entry.preview.historyCount) visits")
-                            .font(.system(size: 10.5))
+                            .font(BrowserType.font(.caption))
                             .foregroundStyle(Color.browsemiumSecondary)
                     }
                     ImportReportDetails(report: entry.preview.report)
@@ -77,24 +77,24 @@ struct ImportBatchSheet: View {
                 if passwordCount > 0 {
                     Toggle("Passwords (\(passwordCount))", isOn: $options.includesPasswords)
                     Text("Direct import does not request access to locked browser keys. If passwords are inaccessible, use the password CSV option in the import guide for each destination profile.")
-                        .font(.system(size: 10.5))
+                        .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumSecondary)
                 }
                 if cookieCount > 0 {
                     Toggle("Cookies and sign-ins (\(cookieCount))", isOn: $options.includesCookies)
                     Text("Cookies can grant account access and are off by default. Encrypted cookies need an already-accessible browser key; otherwise sign in again.")
-                        .font(.system(size: 10.5))
+                        .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumWarning)
                 }
                 if searchCount > 0 {
                     Toggle("Default search engines (\(searchCount))", isOn: $options.includesSearchEngine)
                 }
                 Text("Unsupported items are reported per profile after import. Extension reinstall is offered for one profile at a time.")
-                    .font(.system(size: 10.5))
+                    .font(BrowserType.font(.caption))
                     .foregroundStyle(Color.browsemiumTertiary)
             } else {
                 ForEach(report, id: \.self) { line in
-                    Text(line).font(.system(size: 11.5)).textSelection(.enabled)
+                    Text(line).font(BrowserType.font(.small)).textSelection(.enabled)
                 }
                 ForEach(detailedReports.indices, id: \.self) { index in
                     ImportReportDetails(report: detailedReports[index])

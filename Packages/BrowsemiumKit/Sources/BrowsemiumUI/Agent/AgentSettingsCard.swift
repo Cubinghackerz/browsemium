@@ -9,6 +9,7 @@ import SwiftUI
 struct AgentSettingsCard: View {
     let environment: BrowserEnvironment
     @State private var isEnabled = false
+    @State private var webMCPEnabled = false
     @State private var copiedMessage: String?
 
     private var coordinator: AgentCoordinator { environment.agent }
@@ -35,7 +36,7 @@ struct AgentSettingsCard: View {
 
                 SettingsRow("Status") {
                     Text(statusText)
-                        .font(.system(size: 11.5))
+                        .font(BrowserType.font(.small))
                         .foregroundStyle(statusColor)
                         .multilineTextAlignment(.trailing)
                         .accessibilityIdentifier("agent-endpoint-status")
@@ -45,7 +46,7 @@ struct AgentSettingsCard: View {
                     SettingsRow("Access token") {
                         HStack(spacing: 12) {
                             Text(coordinator.tokenExists ? "Saved in your keychain" : "Not created yet")
-                                .font(.system(size: 11.5))
+                                .font(BrowserType.font(.small))
                                 .foregroundStyle(Color.browsemiumSecondary)
                             if coordinator.tokenExists {
                                 BrowsemiumTextButton("Copy token") { copyToken(.token) }
@@ -66,9 +67,24 @@ struct AgentSettingsCard: View {
                     }
                 }
 
+                SettingsRow("Page tools (WebMCP, experimental)") {
+                    Toggle("", isOn: Binding(
+                        get: { webMCPEnabled },
+                        set: { value in
+                            webMCPEnabled = value
+                            coordinator.setWebMCPEnabled(value)
+                        }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .tint(Color.browsemiumAccentFill)
+                    .accessibilityLabel("Page tools, WebMCP, experimental")
+                }
+
                 if let message = copiedMessage ?? coordinator.notice {
                     Text(message)
-                        .font(.system(size: 11.5))
+                        .font(BrowserType.font(.small))
                         .foregroundStyle(Color.browsemiumSecondary)
                         .padding(.horizontal, 14)
                         .padding(.bottom, 8)
@@ -83,11 +99,15 @@ struct AgentSettingsCard: View {
                         + "A task works with this profile's logins and cookies on the sites you approve, so an agent you "
                         + "allow can read what those sites show you. Anyone who has the token and is signed in to this Mac "
                         + "can ask for a task, though nothing happens until you approve it. "
-                        + "Works with clients that support HTTP MCP servers with custom headers."
+                        + "Works with clients that support HTTP MCP servers with custom headers. "
+                        + "Page tools lets a site that supports the draft WebMCP standard offer tools to an agent inside its task window. "
+                        + "The site writes those tools, so Browsemium cannot tell what one really does; it asks you before every call and shows the exact arguments. "
+                        + "WebMCP is not a finished standard and WebKit has formally opposed it. It is never enabled in your own tabs."
                 )
             }
             .onAppear {
                 isEnabled = coordinator.isEndpointEnabled
+                webMCPEnabled = coordinator.isWebMCPEnabled
                 coordinator.refreshTokenState()
             }
         }

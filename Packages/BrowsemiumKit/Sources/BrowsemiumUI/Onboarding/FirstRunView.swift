@@ -11,6 +11,7 @@ struct FirstRunView: View {
     @Bindable var model: BrowserWindowModel
     let onFinish: () -> Void
     let onImportBrowser: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var step = 0
     @State private var searchTemplate = SearchEnginePreset.google.template
@@ -46,7 +47,7 @@ struct FirstRunView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, 28)
-            .animation(.easeOut(duration: 0.18), value: step)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: step)
 
             Rectangle()
                 .fill(Color.browsemiumBorder)
@@ -65,13 +66,13 @@ struct FirstRunView: View {
                 Capsule()
                     .fill(index <= step ? Color.browsemiumPrimary : Color.browsemiumBorder)
                     .frame(width: index == step ? 18 : 6, height: 6)
-                    .animation(.easeOut(duration: 0.18), value: step)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: step)
             }
             Spacer()
             if step > 0 {
                 Button("Skip setup") { finish() }
                     .buttonStyle(.plain)
-                    .font(.system(size: 11.5))
+                    .font(BrowserType.font(.small))
                     .foregroundStyle(Color.browsemiumTertiary)
             }
         }
@@ -90,7 +91,7 @@ struct FirstRunView: View {
                 .font(.system(size: 22, weight: .semibold))
 
             Text("A fast, quiet browser for people who live in tabs and AI models.\nLocal-first. No account. No telemetry.")
-                .font(.system(size: 13))
+                .font(BrowserType.font(.body))
                 .foregroundStyle(Color.browsemiumSecondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -214,7 +215,7 @@ struct FirstRunView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text("Content protection")
-                        .font(.system(size: 12.5))
+                        .font(BrowserType.font(.body))
                     Spacer()
                     BrowsemiumTabPicker(
                         values: ProtectionLevel.allCases,
@@ -225,14 +226,14 @@ struct FirstRunView: View {
                 }
 
                 Text(protection.summary)
-                    .font(.system(size: 11))
+                    .font(BrowserType.font(.caption))
                     .foregroundStyle(Color.browsemiumTertiary)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 HStack {
                     Text("Keep history for")
-                        .font(.system(size: 12.5))
+                        .font(BrowserType.font(.body))
                     Spacer()
                     Picker("Keep history for", selection: $retentionDays) {
                         ForEach(retentionOptions, id: \.days) { option in
@@ -245,7 +246,7 @@ struct FirstRunView: View {
                 }
 
                 Toggle("Clear history when Browsemium quits", isOn: $clearOnQuit)
-                    .font(.system(size: 12.5))
+                    .font(BrowserType.font(.body))
                     .toggleStyle(.switch)
                     .controlSize(.small)
                     .tint(Color.browsemiumAccentFill)
@@ -268,7 +269,7 @@ struct FirstRunView: View {
             )
 
             Toggle("Show the assistant", isOn: $assistantEnabled)
-                .font(.system(size: 12.5))
+                .font(BrowserType.font(.body))
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .tint(Color.browsemiumAccentFill)
@@ -311,7 +312,7 @@ struct FirstRunView: View {
             Text(title)
                 .font(.system(size: 17, weight: .semibold))
             Text(detail)
-                .font(.system(size: 12.5))
+                .font(BrowserType.font(.body))
                 .foregroundStyle(Color.browsemiumSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -322,11 +323,11 @@ struct FirstRunView: View {
     private func assurance(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "checkmark.shield")
-                .font(.system(size: 11))
+                .font(BrowserType.font(.caption))
                 .foregroundStyle(Color.browsemiumSuccess)
                 .padding(.top, 1)
             Text(text)
-                .font(.system(size: 11.5))
+                .font(BrowserType.font(.small))
                 .foregroundStyle(Color.browsemiumSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -360,14 +361,14 @@ private struct OptionRow: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 Text(title)
-                    .font(.system(size: 12.5, weight: .medium))
+                    .font(BrowserType.font(.body, weight: .medium))
                     .foregroundStyle(Color.browsemiumPrimary)
                 Text(detail)
-                    .font(.system(size: 11.5))
+                    .font(BrowserType.font(.small))
                     .foregroundStyle(Color.browsemiumTertiary)
                 Spacer()
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 14))
+                    .font(BrowserType.font(.title))
                     .foregroundStyle(isSelected ? Color.browsemiumPrimary : Color.browsemiumTertiary)
             }
             .padding(.horizontal, 12)
@@ -416,10 +417,10 @@ private struct TabLayoutCard<Preview: View>: View {
 
                 VStack(spacing: 1) {
                     Text(title)
-                        .font(.system(size: 11.5, weight: isSelected ? .semibold : .regular))
+                        .font(BrowserType.font(.small, weight: isSelected ? .semibold : .regular))
                         .foregroundStyle(isSelected ? Color.browsemiumPrimary : Color.browsemiumSecondary)
                     Text(detail)
-                        .font(.system(size: 10))
+                        .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumTertiary)
                 }
             }
@@ -468,7 +469,7 @@ private struct AppearanceCard: View {
                 }
 
                 Text(option.title)
-                    .font(.system(size: 11.5, weight: isSelected ? .semibold : .regular))
+                    .font(BrowserType.font(.small, weight: isSelected ? .semibold : .regular))
                     .foregroundStyle(isSelected ? Color.browsemiumPrimary : Color.browsemiumSecondary)
             }
             .padding(8)

@@ -26,6 +26,7 @@ public final class TabRuntime {
     private var audioProxy: TabAudioMessageProxy?
     private var linkHoverProxy: LinkHoverMessageProxy?
     private var pickerProxy: ElementPickerMessageProxy?
+    private var signInProxy: SignInMessageProxy?
     /// Per-host cosmetic CSS, pushed by the runtime controller. Baked into a
     /// document-start script so saved rules apply before first paint.
     private var cosmeticRulesByHost: [String: String] = [:]
@@ -36,6 +37,9 @@ public final class TabRuntime {
     private var lastWindowRequest: (url: URL, isPeek: Bool, at: Date)?
     public private(set) var audioState = TabAudioState(isPlaying: false, isMuted: false)
     public private(set) var protectionLevel: ProtectionLevel = .standard
+    /// The data store this tab's space keeps to itself, if any. Read when the
+    /// web view is built, so it must be set before then.
+    var containerID: UUID?
     var blockingPausedHosts: () -> Set<String> = { [] }
     private var contentRulesSuppressed = false
 
@@ -94,10 +98,19 @@ public final class TabRuntime {
         if let webView {
             return webView
         }
-        let store: WebViewFactory.Store = isPrivate ? .ephemeral : .persistent
+        let store: WebViewFactory.Store
+        if isPrivate {
+            store = .ephemeral
+        } else if let containerID {
+            store = .container(containerID)
+        } else {
+            store = .persistent
+        }
         // Adopt the pre-warmed view when one is ready: its WebKit process is
-        // already running, so the first paint comes sooner.
-        let view = (isPrivate ? nil : warmPool?.take()) ?? factory.makeWebView(store: store)
+        // already running, so the first paint comes sooner. Spares are built
+        // on the profile's store, so only profile tabs may take one.
+        let spare = (isPrivate || containerID != nil) ? nil : warmPool?.take()
+        let view = spare ?? factory.makeWebView(store: store)
         view.navigationDelegate = navigationDelegate
         view.uiDelegate = uiDelegate
         // Audio state, link hover, and element picking are reported by
@@ -112,6 +125,11 @@ public final class TabRuntime {
         let picker = ElementPickerMessageProxy(runtime: self)
         view.configuration.userContentController.add(picker, name: ElementPicker.messageHandlerName)
         pickerProxy = picker
+        let signIn = SignInMessageProxy(runtime: self)
+        view.configuration.userContentController.add(
+            signIn, contentWorld: SignInFormMonitor.world, name: SignInFormMonitor.messageHandlerName
+        )
+        signInProxy = signIn
         installUserScripts(on: view)
         progressObservation = view.observe(\.estimatedProgress, options: [.new]) { [weak self] webView, _ in
             Task { @MainActor [weak self] in
@@ -144,6 +162,7 @@ public final class TabRuntime {
         controller.addUserScript(TabAudioMonitor.makeUserScript())
         controller.addUserScript(LinkHoverMonitor.makeUserScript())
         controller.addUserScript(ElementPicker.makeUserScript())
+        controller.addUserScript(SignInFormMonitor.makeUserScript())
         controller.addUserScript(CosmeticRulesScript.makeUserScript(rulesByHost: cosmeticRulesByHost))
     }
 
@@ -270,9 +289,27 @@ public final class TabRuntime {
         applyContentRules()
     }
 
+    /// True when the person paused blocking for this host. Private windows
+    /// never remember a pause, so they report false.
+    func isBlockingPaused(forHost host: String) -> Bool {
+        !isPrivate && blockingPausedHosts().contains(host.lowercased())
+    }
+
     func applyBlockingPause(forHost host: String) {
         let paused = !isPrivate && blockingPausedHosts().contains(host.lowercased())
         setContentRulesSuppressed(paused)
+    }
+
+    func applyDeveloperTools(_ enabled: Bool) {
+        guard let webView else { return }
+        WebInspectorBridge.apply(enabled, to: webView)
+    }
+
+    /// Opens the Web Inspector for this page. False when developer tools
+    /// are off, the page has no live web view, or WebKit has no inspector.
+    public func showWebInspector(console: Bool = false) -> Bool {
+        guard let webView else { return false }
+        return WebInspectorBridge.show(on: webView, console: console)
     }
 
     public func applyProtection(_ level: ProtectionLevel) {
@@ -440,7 +477,7 @@ public final class TabRuntime {
             break
         case .crashed:
             setLifecycle(.crashed)
-        case .progressChanged, .requestedExternalScheme, .blockedExternalScheme, .downloadStarted, .downloadFinished, .downloadFailed, .audioStateChanged, .requestedAISelection, .lifecycleChanged, .linkHovered, .elementPicked, .elementPickCancelled, .elementPickFailed:
+        case .progressChanged, .requestedExternalScheme, .blockedExternalScheme, .downloadStarted, .downloadFinished, .downloadFailed, .audioStateChanged, .requestedAISelection, .lifecycleChanged, .linkHovered, .elementPicked, .elementPickCancelled, .elementPickFailed, .signInFormSubmitted:
             break
         }
         onEvent?(event)

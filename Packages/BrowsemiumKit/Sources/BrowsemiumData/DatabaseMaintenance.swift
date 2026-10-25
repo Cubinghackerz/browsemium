@@ -5,6 +5,7 @@ import GRDB
 public struct MaintenanceReport: Hashable, Sendable {
     public let prunedHistoryVisits: Int
     public let trimmedClosedTabs: Int
+    public let prunedPageTexts: Int
 }
 
 public final class DatabaseMaintenance: @unchecked Sendable {
@@ -22,10 +23,15 @@ public final class DatabaseMaintenance: @unchecked Sendable {
         do {
             return try database.databaseQueue.write { db in
                 var prunedVisits = 0
+                var prunedPages = 0
                 if let days = settings.historyRetentionDays {
                     let cutoff = now.addingTimeInterval(-Double(days) * 86_400)
                     try db.execute(sql: "DELETE FROM history_visits WHERE visited_at < ?", arguments: [cutoff])
                     prunedVisits = db.changesCount
+                    // Page text is history content: it follows the same
+                    // retention window instead of lingering past it.
+                    try db.execute(sql: "DELETE FROM page_texts WHERE indexed_at < ?", arguments: [cutoff])
+                    prunedPages = db.changesCount
                 }
 
                 try db.execute(
@@ -40,7 +46,8 @@ public final class DatabaseMaintenance: @unchecked Sendable {
 
                 return MaintenanceReport(
                     prunedHistoryVisits: prunedVisits,
-                    trimmedClosedTabs: trimmedClosedTabs
+                    trimmedClosedTabs: trimmedClosedTabs,
+                    prunedPageTexts: prunedPages
                 )
             }
         } catch {

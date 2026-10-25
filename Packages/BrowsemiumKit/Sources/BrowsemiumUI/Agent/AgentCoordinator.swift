@@ -34,6 +34,8 @@ public final class AgentCoordinator {
     /// Fixed so client configuration keeps working across launches.
     public static let port: UInt16 = 47831
     public static let enabledDefaultsKey = "browsemium.agent.endpointEnabled"
+    /// Experimental WebMCP bridge. Off unless the person turns it on.
+    public static let webMCPDefaultsKey = "browsemium.agent.webMCPEnabled"
     static let tokenAccount = "agent.mcp.endpoint-token"
     private static let log = Logger(subsystem: "com.browsemium.agent", category: "coordinator")
     /// An unanswered grant declines itself.
@@ -76,6 +78,13 @@ public final class AgentCoordinator {
         gate.scopeIsAccessible = { [weak environment] profileID in
             environment?.activeProfile.id == profileID
         }
+        let enabled: @MainActor () -> Bool = { [weak environment] in
+            environment?.userDefaults.bool(forKey: AgentCoordinator.webMCPDefaultsKey) ?? false
+        }
+        actuator.webMCPEnabled = enabled
+        gate.webMCPEnabled = { [weak environment] in
+            environment?.userDefaults.bool(forKey: AgentCoordinator.webMCPDefaultsKey) ?? false
+        }
         refreshTokenState()
     }
 
@@ -86,6 +95,16 @@ public final class AgentCoordinator {
 
     public var isEndpointEnabled: Bool {
         environment?.userDefaults.bool(forKey: Self.enabledDefaultsKey) ?? false
+    }
+
+    public var isWebMCPEnabled: Bool {
+        environment?.userDefaults.bool(forKey: Self.webMCPDefaultsKey) ?? false
+    }
+
+    /// Affects task pages opened afterwards; the gate also checks it on every
+    /// WebMCP call, so turning it off stops calls on pages already open.
+    public func setWebMCPEnabled(_ enabled: Bool) {
+        environment?.userDefaults.set(enabled, forKey: Self.webMCPDefaultsKey)
     }
 
     /// Called once at launch. Does nothing unless the person turned the

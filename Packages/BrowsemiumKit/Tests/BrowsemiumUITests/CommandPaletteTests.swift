@@ -1,3 +1,4 @@
+import AppKit
 import BrowsemiumCore
 import BrowsemiumData
 import BrowsemiumUI
@@ -159,4 +160,36 @@ func paletteResultsCarryKindAndSubtitle() {
 
     let tabResult = results.first { $0.kind == .tab }
     #expect(tabResult?.subtitle == "github.com")
+}
+
+// MARK: - Quick answers in the address bar
+
+@Test @MainActor
+func aSumInTheAddressBarIsAnsweredAndCopiedOnAccept() {
+    let model = BrowserWindowModel(environment: .inMemory(engine: StubEngine()))
+    let tabs = model.session.tabs.count
+    model.addressText = "3.5*2"
+    model.updateAddressSuggestions()
+
+    #expect(model.addressSuggestions.map(\.kind) == [.answer])
+    #expect(model.addressSuggestions.first?.title == "= 7")
+    #expect(model.addressSuggestions.first?.value == "7")
+
+    model.acceptHighlightedSuggestion()
+    #expect(NSPasteboard.general.string(forType: .string) == "7")
+    #expect(model.statusMessage == "Copied 7")
+    #expect(model.session.tabs.count == tabs, "An answer must not navigate or open a tab")
+}
+
+@Test @MainActor
+func ordinaryTextAndAddressesAreNotTreatedAsSums() {
+    let model = BrowserWindowModel(environment: .inMemory(engine: StubEngine()))
+    for text in ["swift concurrency", "github.com", "192.168.1.1", "2024-10-04", "42"] {
+        model.addressText = text
+        model.updateAddressSuggestions()
+        #expect(!model.addressSuggestions.contains { $0.kind == .answer }, "\(text) is not a calculation")
+    }
+    model.addressText = "5 km to mi"
+    model.updateAddressSuggestions()
+    #expect(model.addressSuggestions.first?.title == "= 3.106855961 mi")
 }

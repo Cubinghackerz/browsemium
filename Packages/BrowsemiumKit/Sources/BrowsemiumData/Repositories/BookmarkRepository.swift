@@ -8,13 +8,20 @@ public struct Bookmark: Hashable, Codable, Sendable, Identifiable {
     public let title: String
     public let folder: String?
     public let createdAt: Date
+    /// False for a bookmark saved from a private window, a locked space or a
+    /// separate-data space. Such a bookmark is never offered to Spotlight.
+    public let isSpotlightEligible: Bool
 
-    public init(id: UUID = UUID(), url: URL, title: String, folder: String? = nil, createdAt: Date = Date()) {
+    public init(
+        id: UUID = UUID(), url: URL, title: String, folder: String? = nil,
+        createdAt: Date = Date(), isSpotlightEligible: Bool = true
+    ) {
         self.id = id
         self.url = url
         self.title = title
         self.folder = folder
         self.createdAt = createdAt
+        self.isSpotlightEligible = isSpotlightEligible
     }
 }
 
@@ -26,15 +33,15 @@ public final class BookmarkRepository: @unchecked Sendable {
     }
 
     @discardableResult
-    public func add(url: URL, title: String, folder: String? = nil) throws -> Bookmark {
-        let bookmark = Bookmark(url: url, title: title, folder: folder)
+    public func add(url: URL, title: String, folder: String? = nil, spotlightEligible: Bool = true) throws -> Bookmark {
+        let bookmark = Bookmark(url: url, title: title, folder: folder, isSpotlightEligible: spotlightEligible)
         do {
             try database.databaseQueue.write { db in
                 let order = try Int.fetchOne(db, sql: "SELECT COALESCE(MAX(sort_order), 0) + 1 FROM bookmarks") ?? 1
                 try db.execute(
                     sql: """
-                        INSERT INTO bookmarks (id, url, title, folder, sort_order, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                        INSERT INTO bookmarks (id, url, title, folder, sort_order, created_at, spotlight_eligible)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
                         """,
                     arguments: [
                         bookmark.id.uuidString,
@@ -42,7 +49,8 @@ public final class BookmarkRepository: @unchecked Sendable {
                         title,
                         folder,
                         order,
-                        bookmark.createdAt
+                        bookmark.createdAt,
+                        spotlightEligible
                     ]
                 )
             }
@@ -199,7 +207,8 @@ public final class BookmarkRepository: @unchecked Sendable {
                         url: url,
                         title: row["title"] ?? "",
                         folder: row["folder"],
-                        createdAt: row["created_at"] ?? Date()
+                        createdAt: row["created_at"] ?? Date(),
+                        isSpotlightEligible: row["spotlight_eligible"] ?? true
                     )
                 }
             }

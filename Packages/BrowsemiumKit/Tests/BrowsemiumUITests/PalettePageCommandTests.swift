@@ -76,8 +76,28 @@ struct PalettePageCommandTests {
     }
 
     @Test
-    func inspectorIsNotAdvertisedBeforeItsImplementation() {
+    func inspectorCommandExplainsHowToEnableItWhileDeveloperToolsAreOff() throws {
         let model = BrowserWindowModel(environment: .inMemory(engine: StubEngine()))
-        #expect(!model.paletteCommands.contains { $0.title.localizedCaseInsensitiveContains("inspect") })
+        let row = try #require(model.paletteCommands.first { $0.id == "web-inspector" })
+        #expect(row.shortcut == "⌥⌘I")
+
+        model.perform(row.command)
+
+        #expect(model.statusMessage?.contains("Developer tools") == true)
+    }
+
+    @Test
+    func inspectorCommandReportsAnEngineThatCannotInspect() throws {
+        let environment = BrowserEnvironment.inMemory(engine: StubEngine())
+        var settings = environment.loadSettings()
+        settings.developerToolsEnabled = true
+        environment.saveSettings(settings)
+        let model = BrowserWindowModel(environment: environment)
+
+        model.perform(.showWebInspector)
+
+        // The stub engine has no inspector, which is the same answer a
+        // page without a live web view gets.
+        #expect(model.statusMessage?.contains("can't be inspected") == true)
     }
 }

@@ -4,9 +4,15 @@ import WebKit
 
 @MainActor
 public struct WebViewFactory {
-    public enum Store: Sendable {
+    public enum Store: Sendable, Equatable {
+        /// The active profile's store.
         case persistent
         case ephemeral
+        /// A store of its own for one space, apart from the profile's. Runs
+        /// without extensions: the profile's extension controller is tied to
+        /// the profile's store, so attaching it here would inject extension
+        /// code into pages it cannot otherwise see.
+        case container(UUID)
     }
 
     public init() {}
@@ -27,6 +33,10 @@ public struct WebViewFactory {
     public static var extensionController: WKWebExtensionController?
 
     public static var protectionLevel: ProtectionLevel = .standard
+
+    /// Whether new web views are inspectable. Mirrors the developer-tools
+    /// setting; existing views are updated by the runtime controller.
+    public static var developerToolsEnabled = false
 
     public func makeConfiguration(store: Store) -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
@@ -49,9 +59,12 @@ public struct WebViewFactory {
             }
         case .ephemeral:
             configuration.websiteDataStore = .nonPersistent()
+        case .container(let identifier):
+            configuration.websiteDataStore = WKWebsiteDataStore(forIdentifier: identifier)
         }
         configuration.preferences.inactiveSchedulingPolicy = .suspend
         configuration.preferences.isElementFullscreenEnabled = true
+        WebInspectorBridge.configure(configuration.preferences, enabled: Self.developerToolsEnabled)
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         configuration.mediaTypesRequiringUserActionForPlayback = [.audio]
         configuration.suppressesIncrementalRendering = false
@@ -67,6 +80,7 @@ public struct WebViewFactory {
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsMagnification = true
+        webView.isInspectable = Self.developerToolsEnabled
         return webView
     }
 

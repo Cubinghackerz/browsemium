@@ -22,7 +22,7 @@ struct AIAPIKeyField: View {
 
     var body: some View {
         SecureField("\(providerName) API key", text: $value)
-            .font(.system(size: 13))
+            .font(BrowserType.font(.body))
             .textFieldStyle(.plain)
             .focused($isFocused)
             .padding(.horizontal, 12)
@@ -46,14 +46,14 @@ struct AIDockConnectionCard: View {
                 Image(systemName: "key.horizontal")
                     .foregroundStyle(Color.browsemiumSecondary)
                 Text("Connect \(ai.descriptor.displayName)")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(BrowserType.font(.body, weight: .semibold))
             }
             HStack(spacing: 8) {
                 AIAPIKeyField(providerName: ai.descriptor.displayName, value: $ai.credentialInput)
                 Button { Task { await ai.connect() } } label: {
                     Group {
                         if ai.isWorking { ProgressView().controlSize(.small) }
-                        else { Text("Connect").font(.system(size: 12, weight: .semibold)) }
+                        else { Text("Connect").font(BrowserType.font(.small, weight: .semibold)) }
                     }
                     .frame(width: 76, height: 40)
                 }
@@ -62,7 +62,7 @@ struct AIDockConnectionCard: View {
                 .accessibilityLabel(ai.isWorking ? "Connecting" : "Connect API key")
             }
             Text("Your key stays in Keychain and is sent only to \(ai.descriptor.displayName). A chat subscription does not include an API key.")
-                .font(.system(size: 11))
+                .font(BrowserType.font(.caption))
                 .foregroundStyle(Color.browsemiumPrimary.opacity(0.78))
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -93,7 +93,7 @@ struct AIDockWelcome: View {
                     .foregroundStyle(Color.browsemiumPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(canUsePage ? "Go from reading to understanding. Choose a starting point, or ask your own question." : "Ask a question or attach a file. Page context is available only for an accessible browsing page.")
-                    .font(.system(size: 13))
+                    .font(BrowserType.font(.body))
                     .foregroundStyle(Color.browsemiumPrimary.opacity(0.78))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -103,13 +103,13 @@ struct AIDockWelcome: View {
                     let item = actions[index]
                     Button { run(item.3) } label: {
                         HStack(spacing: 12) {
-                            Image(systemName: item.2).font(.system(size: 15, weight: .regular)).frame(width: 20)
+                            Image(systemName: item.2).font(BrowserType.font(.title, weight: .regular)).frame(width: 20)
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(item.0).font(.system(size: 13, weight: .medium))
-                                Text(item.1).font(.system(size: 11)).foregroundStyle(Color.browsemiumSecondary)
+                                Text(item.0).font(BrowserType.font(.body, weight: .medium))
+                                Text(item.1).font(BrowserType.font(.caption)).foregroundStyle(Color.browsemiumSecondary)
                             }
                             Spacer(minLength: 8)
-                            Image(systemName: "arrow.up.right").font(.system(size: 11))
+                            Image(systemName: "arrow.up.right").font(BrowserType.font(.caption))
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 12)
@@ -144,7 +144,7 @@ struct AIDockCompactWelcome: View {
                 .disabled(isWorking)
             } else {
                 Text("Ask a question or attach a file.")
-                    .font(.system(size: 12))
+                    .font(BrowserType.font(.small))
                     .foregroundStyle(Color.browsemiumPrimary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -156,8 +156,8 @@ struct AIDockCompactWelcome: View {
     private func action(_ title: String, symbol: String, kind: AIQuickAction) -> some View {
         Button { run(kind) } label: {
             VStack(spacing: 6) {
-                Image(systemName: symbol).font(.system(size: 14))
-                Text(title).font(.system(size: 11, weight: .medium))
+                Image(systemName: symbol).font(BrowserType.font(.title))
+                Text(title).font(BrowserType.font(.caption, weight: .medium))
             }
             .frame(maxWidth: .infinity)
             .frame(height: 52)

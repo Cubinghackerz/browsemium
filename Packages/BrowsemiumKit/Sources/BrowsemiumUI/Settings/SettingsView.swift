@@ -85,39 +85,26 @@ struct SettingsView: View {
             header
             Rectangle().fill(Color.browsemiumBorder).frame(height: 1)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    if importOnly {
-                        importSection
-                    } else {
-                        generalSection
-                        profilesSection
-                        browsingSection
-                        performanceSection
-                        SettingsCard("Move to Browsemium", systemImage: "square.and.arrow.down") {
-                            SettingsRow("From another browser") {
-                                BrowsemiumPrimaryButton("Open import guide") {
-                                    model.openPanel(.importWizard)
-                                }
-                            }
-                        }
-                        privacySection
-                        if let controller = model.environment.userFilterLists {
-                            UserFilterListSettingsView(model: model, controller: controller, settings: settings)
-                        }
-                        extensionsSection
-                        sitePermissionsSection
-                        passwordsSection
-                        assistantSection
-                        AgentSettingsCard(environment: model.environment)
-                        aboutSection
+            if importOnly {
+                page { importSection }
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    // Wide: a section list beside the cards.
+                    HStack(spacing: 0) {
+                        sectionSidebar
+                            .frame(width: 176)
+                        Rectangle().fill(Color.browsemiumBorder).frame(width: 1)
+                        page { cards }
+                    }
+                    .frame(minWidth: 700)
+
+                    // Narrow (for instance with the assistant open): the list
+                    // becomes a row of choices above the cards.
+                    VStack(spacing: 0) {
+                        sectionPicker
+                        page { cards }
                     }
                 }
-                .frame(maxWidth: 620, alignment: .leading)
-                .padding(.horizontal, 28)
-                .padding(.top, 22)
-                .padding(.bottom, 40)
-                .frame(maxWidth: .infinity)
             }
         }
         .background(Color.browsemiumRaised)
@@ -248,7 +235,9 @@ struct SettingsView: View {
                 set: { if !$0 { keyPromptProvider = nil } }
             )
         ) {
+            // The placeholder is an example key, so the field needs its own name for VoiceOver.
             SecureField("sk-…", text: $keyInput)
+                .accessibilityLabel("API key")
             Button("Save") { saveKey() }
             Button("Cancel", role: .cancel) { keyInput = "" }
         } message: {
@@ -306,6 +295,150 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Navigation
+
+    @State private var pane: SettingsPane = .general
+    @State private var searchText = ""
+
+    private var trimmedSearch: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The cards on screen: those matching the search, across every section,
+    /// or the selected section's cards.
+    private var visibleCards: [SettingsCardID] {
+        trimmedSearch.isEmpty ? SettingsCatalog.cards(in: pane) : SettingsCatalog.cards(matching: trimmedSearch)
+    }
+
+    private func page<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                content()
+            }
+            .frame(maxWidth: 620, alignment: .leading)
+            .padding(.horizontal, 28)
+            .padding(.top, 22)
+            .padding(.bottom, 40)
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private var cards: some View {
+        if visibleCards.isEmpty {
+            BrowsemiumEmptyState(
+                systemName: "magnifyingglass",
+                title: "No settings match",
+                message: "Try a different word, such as “tabs”, “privacy” or “password”."
+            )
+            .frame(maxWidth: .infinity)
+            .padding(.top, 40)
+        } else {
+            ForEach(visibleCards) { card(for: $0) }
+        }
+    }
+
+    private var searchField: some View {
+        TextField("Search settings", text: $searchText)
+            .font(BrowserType.font(.small))
+            .browsemiumField()
+            .frame(height: 26)
+            .accessibilityLabel("Search settings")
+    }
+
+    private var sectionSidebar: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            searchField
+                .padding(.bottom, 8)
+            ForEach(SettingsPane.allCases) { item in
+                Button {
+                    pane = item
+                    searchText = ""
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: item.systemImage)
+                            .font(BrowserType.font(.small))
+                            .frame(width: 18)
+                            .foregroundStyle(Color.browsemiumSecondary)
+                        Text(item.title)
+                            .font(BrowserType.font(.small, weight: pane == item && trimmedSearch.isEmpty ? .medium : .regular))
+                            .foregroundStyle(Color.browsemiumPrimary)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(height: 28)
+                    .background(
+                        RoundedRectangle(cornerRadius: BrowserMetrics.controlRadius, style: .continuous)
+                            .fill(pane == item && trimmedSearch.isEmpty ? Color.browsemiumSelection : Color.clear)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(item.title)
+                .accessibilityAddTraits(pane == item && trimmedSearch.isEmpty ? .isSelected : [])
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+    }
+
+    private var sectionPicker: some View {
+        VStack(spacing: 8) {
+            searchField
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    ForEach(SettingsPane.allCases) { item in
+                        Button(item.title) {
+                            pane = item
+                            searchText = ""
+                        }
+                        .buttonStyle(.plain)
+                        .font(BrowserType.font(.small, weight: pane == item ? .medium : .regular))
+                        .padding(.horizontal, 10)
+                        .frame(height: 24)
+                        .background(Capsule().fill(pane == item && trimmedSearch.isEmpty ? Color.browsemiumSelection : Color.clear))
+                        .accessibilityAddTraits(pane == item ? .isSelected : [])
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private func card(for id: SettingsCardID) -> some View {
+        switch id {
+        case .general: generalSection
+        case .profiles: profilesSection
+        case .importGuide:
+            SettingsCard("Move to Browsemium", systemImage: "square.and.arrow.down") {
+                SettingsRow("From another browser") {
+                    BrowsemiumPrimaryButton("Open import guide") {
+                        model.openPanel(.importWizard)
+                    }
+                }
+            }
+        case .browsing: browsingSection
+        case .performance: performanceSection
+        case .routing: SpaceRoutesSettingsView(model: model)
+        case .pageWatch: PageWatchSettingsView(model: model)
+        case .privacy: privacySection
+        case .filterLists:
+            if let controller = model.environment.userFilterLists {
+                UserFilterListSettingsView(model: model, controller: controller, settings: settings)
+            }
+        case .sitePermissions: sitePermissionsSection
+        case .pageIndex: pageIndexSection
+        case .systemIntegration: systemIntegrationSection
+        case .extensions: extensionsSection
+        case .passwords: passwordsSection
+        case .assistant: assistantSection
+        case .agent: AgentSettingsCard(environment: model.environment)
+        case .about: aboutSection
+        }
+    }
+
     // MARK: - Sections
 
     private var generalSection: some View {
@@ -334,11 +467,21 @@ struct SettingsView: View {
                 .accessibilityLabel("Tab layout")
             }
 
+            SettingsRow("Toolbar size") {
+                BrowsemiumTabPicker(
+                    values: ChromeStyle.allCases,
+                    selection: settingBinding(\.chromeStyle),
+                    label: \.title
+                )
+                .accessibilityLabel("Toolbar size")
+            }
+            SettingsNote("Compact trims the toolbar and tab strip and shows the bookmarks bar only on the start page, giving the page about 30 points more height.")
+
             SettingsRow("Default browser") {
                 HStack(spacing: 8) {
                     if isDefaultBrowser {
                         Text("Browsemium opens links from other apps")
-                            .font(.system(size: 11))
+                            .font(BrowserType.font(.caption))
                             .foregroundStyle(Color.browsemiumTertiary)
                     } else {
                         BrowsemiumTextButton("Make Default") {
@@ -377,7 +520,7 @@ struct SettingsView: View {
 
                         if profile.id == model.activeProfile.id {
                             Text("Active")
-                                .font(.system(size: 11))
+                                .font(BrowserType.font(.caption))
                                 .foregroundStyle(Color.browsemiumTertiary)
                         } else {
                             BrowsemiumTextButton("Switch") {
@@ -429,7 +572,7 @@ struct SettingsView: View {
                                 size: 16
                             )
                             Text(SearchEnginePreset.name(for: settings.searchEngineTemplate))
-                                .font(.system(size: 12, weight: .medium))
+                                .font(BrowserType.font(.small, weight: .medium))
                                 .foregroundStyle(Color.browsemiumPrimary)
                             Image(systemName: "chevron.up.chevron.down")
                                 .font(.system(size: 8, weight: .semibold))
@@ -454,9 +597,10 @@ struct SettingsView: View {
 
                     if searchEngineBinding.wrappedValue == Self.customEngineTag {
                         TextField("https://…", text: $settings.searchEngineTemplate)
-                            .font(.system(size: 12))
+                            .font(BrowserType.font(.small))
                             .browsemiumField()
                             .frame(width: 190, height: 24)
+                            .accessibilityLabel("Custom search engine address")
                             .padding(.horizontal, 8)
                             .onSubmit { save() }
                             .accessibilityLabel("Custom search engine URL template")
@@ -470,10 +614,10 @@ struct SettingsView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "clock")
-                            .font(.system(size: 11))
+                            .font(BrowserType.font(.caption))
                             .foregroundStyle(Color.browsemiumSecondary)
                         Text(retentionOptions.first { $0.days == settings.historyRetentionDays }?.label ?? "90 days")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(BrowserType.font(.small, weight: .medium))
                             .foregroundStyle(Color.browsemiumPrimary)
                         Image(systemName: "chevron.up.chevron.down")
                             .font(.system(size: 8, weight: .semibold))
@@ -500,7 +644,7 @@ struct SettingsView: View {
                                 isHistoryMenuPresented = false
                             } icon: {
                                 Image(systemName: "clock")
-                                    .font(.system(size: 11))
+                                    .font(BrowserType.font(.caption))
                                     .foregroundStyle(Color.browsemiumSecondary)
                             }
                         }
@@ -519,12 +663,30 @@ struct SettingsView: View {
                 isOn: settingBinding(\.linkPreviewOnHover)
             )
             SettingsNote("Off by default. Rest the pointer on a link to open a preview. The preview loads that page.")
+            SettingsToggleRow(
+                "Developer tools",
+                isOn: settingBinding(\.developerToolsEnabled)
+            )
+            SettingsNote("Off by default. Turns on the Web Inspector (⌥⌘I, or Inspect Element in a page's context menu) and lists open pages in Safari's Develop menu. The inspector uses WebKit internals that Apple does not document, so it may stop working after a macOS update; Safari's Develop menu is the supported route. Private windows are included.")
         }
     }
 
     private var performanceSection: some View {
         SettingsCard("Performance & Memory", systemImage: "gauge.with.needle") {
             SettingsToggleRow("Memory saver", isOn: settingBinding(\.memorySaverEnabled))
+
+            SettingsRow("Archive unused tabs after") {
+                Picker("Archive unused tabs after", selection: settingBinding(\.archiveStaleTabsAfterHours)) {
+                    Text("Never").tag(Int?.none)
+                    Text("12 hours").tag(Int?.some(12))
+                    Text("1 day").tag(Int?.some(24))
+                    Text("1 week").tag(Int?.some(24 * 7))
+                    Text("30 days").tag(Int?.some(24 * 30))
+                }
+                .labelsHidden()
+                .frame(maxWidth: 140)
+            }
+            SettingsNote("Off by default. A tab you have not looked at for that long moves to the Archive in the Library, which keeps its address so you can reopen it. Pinned tabs, tabs in folders, tabs in locked or separate groups, the tab on screen, and tabs that are playing audio or downloading are never archived. A group always keeps at least one tab.")
 
             if settings.memorySaverEnabled {
                 SettingsRow("Unload background tabs after") {
@@ -558,7 +720,7 @@ struct SettingsView: View {
             SettingsRow("Memory in use") {
                 HStack(spacing: 12) {
                     Text(model.currentMemoryFootprint)
-                        .font(.system(size: 11.5))
+                        .font(BrowserType.font(.small))
                         .foregroundStyle(Color.browsemiumSecondary)
                     BrowsemiumTextButton("Free memory now") { model.freeMemoryNow() }
                 }
@@ -566,7 +728,7 @@ struct SettingsView: View {
 
             SettingsRow("Tabs loaded") {
                 Text("\(model.liveWebViewCount) loaded · \(model.sleepingTabCount) sleeping")
-                    .font(.system(size: 11.5))
+                    .font(BrowserType.font(.small))
                     .foregroundStyle(Color.browsemiumSecondary)
             }
 
@@ -598,7 +760,7 @@ struct SettingsView: View {
                 SettingsRow(source.displayName) {
                     HStack(spacing: 10) {
                         Text("Installed")
-                            .font(.system(size: 11))
+                            .font(BrowserType.font(.caption))
                             .foregroundStyle(Color.browsemiumTertiary)
                         BrowsemiumTextButton("Find profiles…") {
                             beginImport(source: source)
@@ -613,12 +775,12 @@ struct SettingsView: View {
                     HStack(spacing: 10) {
                         if let email = candidate.email {
                             Text(email)
-                                .font(.system(size: 10.5))
+                                .font(BrowserType.font(.caption))
                                 .foregroundStyle(Color.browsemiumTertiary)
                                 .lineLimit(1)
                         }
                         Text("Ready")
-                            .font(.system(size: 11))
+                            .font(BrowserType.font(.caption))
                             .foregroundStyle(Color.browsemiumSuccess)
                         BrowsemiumTextButton(importingID == candidate.id ? "Reading…" : "Review") {
                             beginImport(candidate)
@@ -632,7 +794,7 @@ struct SettingsView: View {
                 SettingsRow(candidate.label) {
                     HStack(spacing: 10) {
                         Text("Access needed")
-                            .font(.system(size: 11))
+                            .font(BrowserType.font(.caption))
                             .foregroundStyle(Color.browsemiumTertiary)
                         BrowsemiumTextButton("Find profiles…") {
                             beginImport(candidate)
@@ -645,7 +807,7 @@ struct SettingsView: View {
             if installedImportSources.isEmpty && importCandidates.isEmpty {
                 SettingsRow("No supported browser app found") {
                     Text("You can still choose a saved profile folder or import a password CSV below.")
-                        .font(.system(size: 11.5))
+                        .font(BrowserType.font(.small))
                         .foregroundStyle(Color.browsemiumSecondary)
                 }
             }
@@ -661,7 +823,7 @@ struct SettingsView: View {
             if let importLastSummary {
                 SettingsRow("Last import") {
                     Text(importLastSummary)
-                        .font(.system(size: 11.5))
+                        .font(BrowserType.font(.small))
                         .foregroundStyle(Color.browsemiumPrimary)
                 }
             }
@@ -698,7 +860,7 @@ struct SettingsView: View {
 
             SettingsRow("Content rules") {
                 Text(contentRuleStatusText)
-                    .font(.system(size: 11.5))
+                    .font(BrowserType.font(.small))
                     .foregroundStyle(contentRuleStatusColor)
             }
 
@@ -721,7 +883,7 @@ struct SettingsView: View {
             if let reason = model.extensionsUnavailableReason {
                 SettingsRow("Not available") {
                     Text(reason)
-                        .font(.system(size: 11.5))
+                        .font(BrowserType.font(.small))
                         .foregroundStyle(Color.browsemiumSecondary)
                 }
             } else if model.installedExtensions.isEmpty {
@@ -734,11 +896,11 @@ struct SettingsView: View {
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(record.version.isEmpty ? "WebExtension" : "Version \(record.version)")
-                                    .font(.system(size: 11))
+                                    .font(BrowserType.font(.caption))
                                     .foregroundStyle(Color.browsemiumTertiary)
                                 if let error = record.lastError {
                                     Text(error)
-                                        .font(.system(size: 11))
+                                        .font(BrowserType.font(.caption))
                                         .foregroundStyle(Color.browsemiumWarning)
                                         .lineLimit(2)
                                 }
@@ -769,6 +931,11 @@ struct SettingsView: View {
                             }
                         }
                     }
+                    ExtensionSitePolicySection(
+                        model: model,
+                        extensionID: record.id,
+                        extensionName: record.name
+                    )
                 }
                 SettingsRow("Install another") {
                     BrowsemiumTextButton("Install extension…") { presentExtensionInstaller() }
@@ -830,7 +997,7 @@ struct SettingsView: View {
             if model.sitePermissions.isEmpty {
                 SettingsRow("Nothing allowed yet") {
                     Text("Sites that ask for your camera or microphone appear here.")
-                        .font(.system(size: 11.5))
+                        .font(BrowserType.font(.small))
                         .foregroundStyle(Color.browsemiumSecondary)
                 }
             } else {
@@ -838,7 +1005,7 @@ struct SettingsView: View {
                     SettingsRow(record.origin) {
                         HStack(spacing: 12) {
                             Text("\(record.kind.displayName) · \(record.decision == .allow ? "Allowed" : "Blocked")")
-                                .font(.system(size: 11.5))
+                                .font(BrowserType.font(.small))
                                 .foregroundStyle(record.decision == .allow ? Color.browsemiumSecondary : Color.browsemiumWarning)
                             BrowsemiumTextButton("Remove", role: .destructive) {
                                 model.removeSitePermission(record)
@@ -860,6 +1027,66 @@ struct SettingsView: View {
         }
     }
 
+    private var systemIntegrationSection: some View {
+        SettingsCard("Spotlight & Handoff", systemImage: "magnifyingglass.circle") {
+            SettingsToggleRow("Show bookmarks in Spotlight", isOn: settingBinding(\.indexBookmarksInSpotlight))
+            SettingsNote("Off by default. Adds each bookmark's title and address to Spotlight on this Mac, nothing else: no history, no page text. Bookmarks you saved from a private window, a locked space or a separate-data space are never added. Turning it off removes every item Browsemium added.")
+            SettingsToggleRow("Offer the open page to my other devices (Handoff)", isOn: settingBinding(\.handoffActiveTab))
+            SettingsNote("Off by default. Offers the address of the page in the active tab to your other Apple devices that are signed in to your Apple Account, so you can continue there. Only https pages. Private windows, locked spaces and separate-data spaces never offer anything. The address, including its query, is sent through Apple's Handoff service.")
+        }
+    }
+
+    @State private var pageIndexSizeText = "—"
+    @State private var pageIndexExcludedHosts: [String] = []
+
+    private var pageIndexSection: some View {
+        SettingsCard("Page Text Index", systemImage: "doc.text.magnifyingglass") {
+            SettingsToggleRow("Index page text on this Mac", isOn: settingBinding(\.indexPageTextOnMac))
+            SettingsNote("Off by default. When on, pages you open store up to 4 KB of readable text in a search index in this profile's database — unencrypted, on this Mac only. Private windows, locked spaces, separate-data spaces, and credentialed pages are never indexed. Turning off stops new pages; Clear removes what is stored.")
+            SettingsRow("Index size") {
+                Text(pageIndexSizeText)
+                    .font(BrowserType.font(.small))
+                    .foregroundStyle(Color.browsemiumSecondary)
+            }
+            SettingsRow("Stored index") {
+                BrowsemiumTextButton("Clear index", role: .destructive) {
+                    model.clearPageTextIndex()
+                    refreshPageIndexState()
+                }
+                .disabled(model.pageTextIndexSize() == nil)
+            }
+            if pageIndexExcludedHosts.isEmpty {
+                SettingsRow("Excluded sites") {
+                    Text("None — every visited site is indexed.")
+                        .font(BrowserType.font(.small))
+                        .foregroundStyle(Color.browsemiumTertiary)
+                }
+            } else {
+                ForEach(pageIndexExcludedHosts, id: \.self) { host in
+                    SettingsRow(host) {
+                        BrowsemiumTextButton("Include again") {
+                            model.setPageTextExcluded(false, host: host)
+                            refreshPageIndexState()
+                        }
+                    }
+                }
+            }
+            SettingsNote("Exclude a site from its site shield while the page is open.")
+        }
+        .onAppear { refreshPageIndexState() }
+    }
+
+    private func refreshPageIndexState() {
+        if let size = model.pageTextIndexSize() {
+            let formatter = ByteCountFormatter()
+            formatter.countStyle = .file
+            pageIndexSizeText = "\(size.pages) pages · \(formatter.string(fromByteCount: Int64(size.bytes)))"
+        } else {
+            pageIndexSizeText = "Unavailable in private windows"
+        }
+        pageIndexExcludedHosts = model.excludedPageTextHosts().sorted()
+    }
+
     private var passwordsSection: some View {
         SettingsCard("Passwords", systemImage: "key") {
             if model.savedCredentials.isEmpty {
@@ -871,7 +1098,7 @@ struct SettingsView: View {
                     SettingsRow(credential.host) {
                         HStack(spacing: 12) {
                             Text(credential.username)
-                                .font(.system(size: 11.5))
+                                .font(BrowserType.font(.small))
                                 .foregroundStyle(Color.browsemiumSecondary)
                             BrowsemiumTextButton("Remove", role: .destructive) {
                                 model.removeCredential(credential)
@@ -902,12 +1129,12 @@ struct SettingsView: View {
                 SettingsRow(ProviderPanelDescriptor.descriptor(for: provider).displayName) {
                     if provider.isLocal {
                         Text("Runs on this Mac — no key, nothing leaves it")
-                            .font(.system(size: 11.5))
+                            .font(BrowserType.font(.small))
                             .foregroundStyle(Color.browsemiumSecondary)
                     } else {
                         HStack(spacing: 12) {
                             Text(credentialStates[provider] == true ? "API key saved" : "No API key")
-                                .font(.system(size: 11.5))
+                                .font(BrowserType.font(.small))
                                 .foregroundStyle(
                                     credentialStates[provider] == true
                                         ? Color.browsemiumSecondary
@@ -940,7 +1167,7 @@ struct SettingsView: View {
         SettingsCard("About", systemImage: "info.circle") {
             SettingsRow("Browsemium") {
                 Text("WebKit · macOS 14+")
-                    .font(.system(size: 12))
+                    .font(BrowserType.font(.small))
                     .foregroundStyle(Color.browsemiumTertiary)
             }
             SettingsNote("No Browsemium account or product telemetry. Websites, enabled extensions, searches, and your chosen AI provider still make network requests.")
@@ -952,10 +1179,10 @@ struct SettingsView: View {
     private var header: some View {
         HStack(spacing: 10) {
             Text(importOnly ? "Move to Browsemium" : "Settings")
-                .font(.system(size: 13, weight: .semibold))
+                .font(BrowserType.font(.body, weight: .semibold))
             if let statusMessage {
                 Text(statusMessage)
-                    .font(.system(size: 11.5))
+                    .font(BrowserType.font(.small))
                     .foregroundStyle(Color.browsemiumSecondary)
                     .transition(.opacity)
             }
@@ -1414,7 +1641,12 @@ struct SettingsView: View {
                     let passwordOutcomes = storeCredentials(result.credentials, profile: destinationProfile)
                     let cookieOutcomes = await storeCookies(result.cookies, profile: destinationProfile)
                     let searchSaved = applyImportedSearchEngine(result.searchEngine, profile: destinationProfile)
-                    let finalReport = completedImportReport(result, passwords: passwordOutcomes, cookies: cookieOutcomes, searchSaved: searchSaved)
+                    // Batch imports land in profiles that are never opened, so
+                    // session tabs cannot reopen there. They are reported as
+                    // skipped with the reason pointing at a single import.
+                    let sessionSkips = result.sessionTabs.map { _ in BrowserImportReport.Outcome.skipped }
+                    let finalReport = completedImportReport(result, passwords: passwordOutcomes, cookies: cookieOutcomes, searchSaved: searchSaved,
+                                                            sessions: sessionSkips, sessionsUnopenedReason: .destinationNotOpen)
                     batchDetailedReports.append(finalReport)
                     if destinationProfile.id == model.activeProfile.id { model.refreshBookmarks() }
                     let summary = importSummary(entry.preview, options: options, result: result,
@@ -1512,12 +1744,14 @@ struct SettingsView: View {
                 let passwordOutcomes = storeCredentials(result.credentials, profile: destinationProfile)
                 let cookieOutcomes = await storeCookies(result.cookies, profile: destinationProfile)
                 let searchSaved = applyImportedSearchEngine(result.searchEngine, profile: destinationProfile)
-                let finalReport = completedImportReport(result, passwords: passwordOutcomes, cookies: cookieOutcomes, searchSaved: searchSaved)
+                let sessionOutcomes = openImportedSessionTabs(result.sessionTabs, destinationProfile: destinationProfile)
+                let finalReport = completedImportReport(result, passwords: passwordOutcomes, cookies: cookieOutcomes, searchSaved: searchSaved, sessions: sessionOutcomes)
                 importLastReport = finalReport
                 if destinationProfile.id == model.activeProfile.id { model.refreshBookmarks() }
                 importLastSummary = importSummary(preview, options: options, result: result,
                     storedCredentials: passwordOutcomes.filter { $0 == .accepted }.count,
                     storedCookies: cookieOutcomes.filter { $0 == .accepted }.count,
+                    storedTabs: sessionOutcomes.filter { $0 == .accepted }.count,
                     report: finalReport, searchSaved: searchSaved)
                 statusMessage = importLastSummary
                 if !result.extensionIDs.isEmpty {
@@ -1586,6 +1820,21 @@ struct SettingsView: View {
         }
     }
 
+    /// Reopens imported session tabs in the destination profile. Tabs can only
+    /// open in the window's live session, so a new-profile destination means
+    /// switching to it first; the switch is messaged, not silent.
+    private func openImportedSessionTabs(
+        _ tabs: [BrowserImportPreview.SessionTab],
+        destinationProfile: BrowserProfile
+    ) -> [BrowserImportReport.Outcome] {
+        guard !tabs.isEmpty else { return [] }
+        if destinationProfile.id != model.activeProfile.id {
+            model.switchProfile(to: destinationProfile)
+            statusMessage = "Switched to \(destinationProfile.name) to reopen its tabs."
+        }
+        return model.openImportedSessionTabs(tabs)
+    }
+
     private func applyImportedSearchEngine(_ engine: BrowserImportPreview.SearchEngine?, profile: BrowserProfile) -> Bool {
         guard let engine else { return false }
         do {
@@ -1605,19 +1854,38 @@ struct SettingsView: View {
     }
 
     private func completedImportReport(_ result: BrowserImportResult,
-                                      passwords: [BrowserImportReport.Outcome],
-                                      cookies: [BrowserImportReport.Outcome], searchSaved: Bool) -> BrowserImportReport {
+                                       passwords: [BrowserImportReport.Outcome],
+                                       cookies: [BrowserImportReport.Outcome], searchSaved: Bool,
+                                       sessions: [BrowserImportReport.Outcome] = [],
+                                       sessionsUnopenedReason: BrowserImportReport.Reason? = nil) -> BrowserImportReport {
         var report = result.report
         report.completeTransfer(.password, outcomes: passwords)
         report.completeTransfer(.cookie, outcomes: cookies)
         if result.searchEngine != nil {
             report.completeTransfer(.searchEngine, outcomes: [searchSaved ? .accepted : .failed])
         }
-        return report
+        // Count and double-persistence guards live inside completeTransfer;
+        // a mismatch records nothing rather than a partial story.
+        var mutable = report
+        _ = mutable.completeTransfer(.sessionTab, outcomes: sessions) { outcome in
+            switch outcome {
+            case .accepted:
+                return .imported
+            case .duplicate:
+                return .alreadyPresent
+            case .skipped:
+                return sessionsUnopenedReason
+                    ?? (model.session.isPrivate ? .privateWindow : .outsideSelection)
+            case .failed, .unsupported:
+                return .destinationWriteFailed
+            }
+        }
+        return mutable
     }
 
     private func importSummary(_ preview: BrowserImportPreview, options: BrowserImportOptions,
                                result: BrowserImportResult, storedCredentials: Int, storedCookies: Int,
+                               storedTabs: Int = 0,
                                report: BrowserImportReport, searchSaved: Bool) -> String {
         var moved: [String] = []
         var notes: [String] = []
@@ -1625,12 +1893,16 @@ struct SettingsView: View {
         if result.historyVisits > 0 { moved.append("\(result.historyVisits) history entries") }
         if storedCredentials > 0 { moved.append("\(storedCredentials) passwords") }
         if storedCookies > 0 { moved.append("\(storedCookies) cookies") }
+        if storedTabs > 0 { moved.append("\(storedTabs) tabs") }
         if searchSaved { moved.append("default search engine") }
         if options.includesPasswords && storedCredentials < preview.credentialCount {
             notes.append("\(preview.credentialCount - storedCredentials) passwords skipped or unreadable")
         }
         if options.includesCookies && storedCookies < preview.cookieCount {
             notes.append("\(preview.cookieCount - storedCookies) cookies skipped, expired, or unreadable")
+        }
+        if options.includesSessionTabs && storedTabs < preview.sessionTabCount {
+            notes.append("\(preview.sessionTabCount - storedTabs) tabs already open, over the limit, or not opened in a private window")
         }
         let failures = report.items.filter { $0.outcome == .failed }
         if !failures.isEmpty { notes.append("\(failures.count) read or save failures; see the item report") }
@@ -1788,18 +2060,20 @@ private struct PasswordEditorSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Save password")
-                .font(.system(size: 15, weight: .semibold))
+                .font(BrowserType.font(.title, weight: .semibold))
 
             VStack(spacing: 10) {
                 LabeledContent("Website") {
                     TextField("example.com", text: $host)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 260)
+                        .accessibilityLabel("Website")
                 }
                 LabeledContent("Username") {
                     TextField("name@example.com", text: $username)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 260)
+                        .accessibilityLabel("Username")
                 }
                 LabeledContent("Password") {
                     SecureField("Password", text: $password)
@@ -1809,7 +2083,7 @@ private struct PasswordEditorSheet: View {
             }
 
             Text("The password is stored in macOS Keychain. Browsemium stores only the website and username in its local database.")
-                .font(.system(size: 11))
+                .font(BrowserType.font(.caption))
                 .foregroundStyle(Color.browsemiumTertiary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -1844,10 +2118,10 @@ struct SettingsCard<Content: View>: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(BrowserType.font(.caption, weight: .medium))
                     .foregroundStyle(Color.browsemiumTertiary)
                 Text(title)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(BrowserType.font(.small, weight: .semibold))
                     .foregroundStyle(Color.browsemiumSecondary)
             }
             .padding(.leading, 4)
@@ -1900,7 +2174,7 @@ struct SettingsRow<Content: View>: View {
 
     private var labelText: some View {
         Text(label)
-            .font(.system(size: 12.5))
+            .font(BrowserType.font(.body))
             .foregroundStyle(Color.browsemiumPrimary)
             .fixedSize(horizontal: false, vertical: true)
             .layoutPriority(1)
@@ -1945,7 +2219,7 @@ struct SettingsNote: View {
                 .padding(.horizontal, 14)
 
             Text(text)
-                .font(.system(size: 11))
+                .font(BrowserType.font(.caption))
                 .foregroundStyle(Color.browsemiumTertiary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)

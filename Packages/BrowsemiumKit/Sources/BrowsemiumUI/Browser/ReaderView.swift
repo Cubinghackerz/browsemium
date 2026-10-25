@@ -39,7 +39,7 @@ struct ReaderView: View {
                             Text(note)
                         }
                     }
-                    .font(.system(size: 11.5))
+                    .font(BrowserType.font(.small))
                     .foregroundStyle(Color.browsemiumTertiary)
 
                     ForEach(Array(article.paragraphs.enumerated()), id: \.offset) { _, paragraph in
@@ -63,10 +63,10 @@ struct ReaderView: View {
     private var header: some View {
         HStack(spacing: 10) {
             Image(systemName: "doc.plaintext")
-                .font(.system(size: 12))
+                .font(BrowserType.font(.small))
                 .foregroundStyle(Color.browsemiumSecondary)
             Text("Reader")
-                .font(.system(size: 12, weight: .medium))
+                .font(BrowserType.font(.small, weight: .medium))
                 .foregroundStyle(Color.browsemiumPrimary)
 
             Spacer(minLength: 10)
@@ -86,7 +86,7 @@ struct ReaderView: View {
             Toggle("Always", isOn: alwaysBinding)
                 .toggleStyle(.switch)
                 .controlSize(.mini)
-                .font(.system(size: 10.5))
+                .font(BrowserType.font(.caption))
                 .foregroundStyle(Color.browsemiumSecondary)
                 .help("Always open this site in Reader")
 
