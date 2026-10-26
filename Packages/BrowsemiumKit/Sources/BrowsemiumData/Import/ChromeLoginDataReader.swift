@@ -26,12 +26,14 @@ public enum ChromeLoginDataReader {
     }
 
     static func summarize(database: Database, report: inout BrowserImportReport) throws -> [(url: URL, username: String)] {
+        // Rows without a username are read too, so they are counted and
+        // reported instead of vanishing from the totals.
         try Row.fetchAll(
             database,
             sql: """
                 SELECT origin_url, username_value
                 FROM logins
-                WHERE length(password_value) > 0 AND username_value <> ''
+                WHERE length(password_value) > 0
                 ORDER BY origin_url
                 LIMIT 50000
                 """
@@ -43,8 +45,13 @@ public enum ChromeLoginDataReader {
                 report.record(.password, ordinal: index + 1, outcome: .unsupported, reason: .unsupportedURL)
                 return nil
             }
+            let username = row["username_value"] as String? ?? ""
+            guard !username.isEmpty else {
+                report.record(.password, ordinal: index + 1, outcome: .skipped, reason: .missingUsername)
+                return nil
+            }
             report.record(.password, ordinal: index + 1, outcome: .accepted, reason: .parsed)
-            return (url, row["username_value"] as String? ?? "")
+            return (url, username)
         }
     }
 
@@ -61,7 +68,7 @@ public enum ChromeLoginDataReader {
             sql: """
                 SELECT origin_url, username_value, password_value
                 FROM logins
-                WHERE length(password_value) > 0 AND username_value <> ''
+                WHERE length(password_value) > 0
                 ORDER BY origin_url
                 LIMIT 50000
                 """
@@ -76,6 +83,12 @@ public enum ChromeLoginDataReader {
                               outcome: .unsupported, reason: .invalidItem)
                 continue
             }
+            let username = row["username_value"] as String? ?? ""
+            guard !username.isEmpty else {
+                report.record(.password, ordinal: index + 1, stage: .transfer,
+                              outcome: .skipped, reason: .missingUsername)
+                continue
+            }
             // One unreadable entry must not abort the whole import.
             guard let password = try? ChromeCredentialCrypto.decrypt(blob, key: key),
                   !password.isEmpty else {
@@ -83,7 +96,6 @@ public enum ChromeLoginDataReader {
                               outcome: .failed, reason: .decryptionFailed)
                 continue
             }
-            let username = row["username_value"] as String? ?? ""
             guard seen.insert("\(url.absoluteString)\u{0}\(username)").inserted else {
                 report.record(.password, ordinal: index + 1, stage: .transfer,
                               outcome: .duplicate, reason: .duplicateInSource)

@@ -3232,6 +3232,35 @@ public final class BrowserWindowModel: PermissionPrompting {
         }
     }
 
+    /// Saves a login that came from another browser or a CSV. Unlike
+    /// `saveCredential`, an existing host and username is never overwritten: the
+    /// password the person already saved wins and the item is reported as a
+    /// duplicate.
+    public func importCredential(
+        host: String,
+        username: String,
+        password: String,
+        profile targetProfile: BrowserProfile? = nil
+    ) -> BrowserImportReport.Outcome {
+        let targetProfile = targetProfile ?? environment.activeProfile
+        do {
+            let repository: SavedCredentialRepository
+            if targetProfile.id == environment.activeProfile.id {
+                repository = environment.savedCredentialRepository
+            } else {
+                repository = SavedCredentialRepository(database: try environment.profileStore.database(for: targetProfile))
+            }
+            let trimmed = username.trimmingCharacters(in: .whitespacesAndNewlines)
+            if try repository.credentials(for: host).contains(where: { $0.username == trimmed }) {
+                return .duplicate
+            }
+        } catch {
+            statusMessage = error.localizedDescription
+            return .failed
+        }
+        return saveCredential(host: host, username: username, password: password, profile: targetProfile) ? .accepted : .failed
+    }
+
     public func removeCredential(_ credential: SavedCredential) {
         do {
             try environment.keychain.deleteSecret(account: credential.keychainAccount)
@@ -3850,6 +3879,19 @@ public final class BrowserWindowModel: PermissionPrompting {
         }
     }
 
+    /// The Browsemium profile a batch import writes into for one source profile.
+    /// The first import creates it (without switching to it) and remembers which
+    /// source it came from; importing the same source again reuses it, so a
+    /// re-run adds nothing twice and never changes the active profile.
+    public func profileForImport(of candidate: BrowserProfileCandidate) -> (profile: BrowserProfile, reused: Bool)? {
+        if let linked = try? environment.profileStore.linkedProfile(forImportSource: candidate.linkKey) {
+            return (linked, true)
+        }
+        guard let created = createProfile(named: candidate.profileName, switchToIt: false) else { return nil }
+        try? environment.profileStore.setImportSource(candidate.linkKey, for: created.id)
+        return (created, false)
+    }
+
     public func renameProfile(_ profile: BrowserProfile, to name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -4185,32 +4227,47 @@ public final class BrowserWindowModel: PermissionPrompting {
 
     /// Only called after the import guide's separate reinstall confirmation.
     /// New items remain disabled until the user enables and grants permissions.
-    public func reinstallImportedExtensions(_ ids: [String]) async -> (installed: Int, skipped: Int) {
-        guard extensionsUnavailableReason == nil, !isInstallingFromWebStore else {
-            return (0, ids.count)
+    public func reinstallImportedExtensions(
+        _ ids: [String],
+        chromeVersion: String? = nil
+    ) async -> [ExtensionReinstallResult] {
+        if let reason = extensionsUnavailableReason {
+            return ids.map { ExtensionReinstallResult(id: $0, name: nil, failure: reason) }
+        }
+        guard !isInstallingFromWebStore else {
+            return ids.map {
+                ExtensionReinstallResult(id: $0, name: nil, failure: "Another Chrome Web Store install is still running.")
+            }
         }
         isInstallingFromWebStore = true
         defer { isInstallingFromWebStore = false }
-        var installed = 0
+        var results: [ExtensionReinstallResult] = []
         for id in ids {
-            guard let reference = try? ChromeWebStoreReference(extensionID: id) else { continue }
+            guard let reference = try? ChromeWebStoreReference(extensionID: id) else {
+                results.append(ExtensionReinstallResult(id: id, name: nil, failure: "That is not a valid extension id."))
+                continue
+            }
             do {
-                let package = try await environment.chromeWebStore.downloadPackage(for: reference.extensionID)
+                let package = try await environment.chromeWebStore.downloadPackage(
+                    for: reference.extensionID, chromeVersion: chromeVersion
+                )
                 defer { try? FileManager.default.removeItem(at: package) }
                 let item = try environment.extensionStore.install(from: package, identifier: reference.extensionID)
                 try environment.extensionRepository.upsert(
                     id: item.id, name: item.name, version: item.version,
                     enabledByDefault: false, installedAt: item.installedAt
                 )
-                installed += 1
+                results.append(ExtensionReinstallResult(id: id, name: item.name, failure: nil))
             } catch {
-                // The caller reports the skipped count. Never log a source
-                // profile path or reveal an extension's private data.
-                continue
+                // Reasons are closed wording. Never log a source profile path
+                // or reveal an extension's private data.
+                let reason = (error as? ChromeWebStoreDownloader.DownloadError)?.errorDescription
+                    ?? "The extension package could not be installed."
+                results.append(ExtensionReinstallResult(id: id, name: nil, failure: reason))
             }
         }
         refreshExtensions()
-        return (installed, ids.count - installed)
+        return results
     }
 
     /// Installs an extension from a folder, .zip, .crx, or .appex. New

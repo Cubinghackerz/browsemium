@@ -84,6 +84,12 @@ public final class AppDatabase: @unchecked Sendable {
         migrator.registerMigration("v4-closed-tabs-no-space-fk") { database in
             try rebuildClosedTabsWithoutSpaceFK(database)
         }
+        // Which source profile (for example "chrome/Profile 1") a profile was
+        // created from, so importing again reuses it. Null for every profile
+        // that did not come from an import.
+        migrator.registerMigration("v5-profile-import-source") { database in
+            try database.execute(sql: "ALTER TABLE profiles ADD COLUMN import_source TEXT")
+        }
         return migrator
     }
 

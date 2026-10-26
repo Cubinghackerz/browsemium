@@ -82,6 +82,32 @@ func theUpdateURLTargetsGooglesCRXService() throws {
     #expect(query["x"] == "id=\(exampleID)&uc")
 }
 
+@Test
+func theUpdateURLAsksForTheSourceBrowsersVersionWhenItIsKnown() throws {
+    func prodversion(_ chromeVersion: String?) throws -> String? {
+        let url = ChromeWebStoreDownloader.updateURL(for: exampleID, chromeVersion: chromeVersion)
+        let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        return components.queryItems?.first { $0.name == "prodversion" }?.value
+    }
+    #expect(try prodversion("145.0.7632.46") == "145.0.7632.46")
+    #expect(try prodversion(nil) == ChromeWebStoreDownloader.fallbackChromeVersion)
+}
+
+@Test(arguments: ["", "abc", "145", "145.0.7632.46&x=1", "../145.0", "145.0.7632.46.9", " 145.0.1.2"])
+func aMalformedVersionNeverReachesTheRequest(_ version: String) throws {
+    #expect(ChromeWebStoreDownloader.normalizedChromeVersion(version) == nil)
+    let url = ChromeWebStoreDownloader.updateURL(for: exampleID, chromeVersion: version)
+    let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+    #expect(components.queryItems?.first { $0.name == "prodversion" }?.value == ChromeWebStoreDownloader.fallbackChromeVersion)
+}
+
+@Test
+func wellFormedVersionsAreKept() {
+    #expect(ChromeWebStoreDownloader.normalizedChromeVersion("145.0.7632.46") == "145.0.7632.46")
+    #expect(ChromeWebStoreDownloader.normalizedChromeVersion("120.0.1") == "120.0.1")
+    #expect(ChromeWebStoreDownloader.normalizedChromeVersion("99.0") == "99.0")
+}
+
 // MARK: - Downloader
 
 private func makeCRX(zipMarker: UInt8 = 0x03) -> Data {

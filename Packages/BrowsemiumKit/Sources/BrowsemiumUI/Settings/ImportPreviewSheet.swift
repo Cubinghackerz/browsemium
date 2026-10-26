@@ -1,3 +1,4 @@
+import AppKit
 import BrowsemiumData
 import SwiftUI
 import BrowsemiumEngineKit
@@ -15,12 +16,16 @@ struct ImportPreviewSheet: View {
     let onCancel: () -> Void
     let onImport: () -> Void
     let onImportPasswordCSV: () -> Void
+    var offersCookies = true
+    var keyConsentSources: [BrowserImportSource] = []
+    var onKeyConsent: (_ allow: Bool) -> Void = { _ in }
+    @State private var sourceIsRunning = false
 
     private var hasSelectedData: Bool {
         (options.includesBookmarks && preview.bookmarkCount > 0)
             || (options.includesHistory && preview.historyCount > 0)
             || (options.includesPasswords && preview.credentialCount > 0)
-            || (options.includesCookies && preview.cookieCount > 0)
+            || (options.includesCookies && offersCookies && preview.cookieCount > 0)
             || (options.includesExtensions && !preview.extensionIDs.isEmpty)
             || (options.includesSearchEngine && preview.searchEngine != nil)
             || (options.includesSessionTabs && preview.sessionTabCount > 0)
@@ -34,6 +39,14 @@ struct ImportPreviewSheet: View {
                 Text("Review what was found. Nothing has been added yet.")
                     .font(BrowserType.font(.small))
                     .foregroundStyle(Color.browsemiumSecondary)
+            }
+
+            if sourceIsRunning {
+                Text(preview.source.runningWarning)
+                    .font(BrowserType.font(.small))
+                    .foregroundStyle(Color.browsemiumWarning)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel(preview.source.runningWarning)
             }
 
             summary
@@ -98,14 +111,14 @@ struct ImportPreviewSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if preview.cookieCount > 0 {
+            if preview.cookieCount > 0 && offersCookies {
                 scopeRow(
                     title: "Cookies and sign-ins",
                     detail: "\(preview.cookieCount) cookies. They can grant account access. Import only into a profile you control; some sites may still ask you to sign in.",
                     isOn: $options.includesCookies
                 )
                 if options.includesCookies, preview.source.safeStorageService != nil {
-                    Text("Encrypted cookies need an already-accessible browser key. If it is unavailable, turn off cookies and sign in again. A password CSV does not transfer cookies.")
+                    Text("Encrypted cookies use the same browser key as passwords. You will be asked before it is read. If you decline, turn off cookies and sign in again; a password CSV does not transfer cookies.")
                         .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumWarning)
                 }
@@ -157,6 +170,10 @@ struct ImportPreviewSheet: View {
                     .controlSize(.small)
             }
 
+            if !keyConsentSources.isEmpty {
+                ImportKeyConsentCard(sources: keyConsentSources, onChoice: onKeyConsent)
+            }
+
             HStack {
                 BrowsemiumTextButton("Cancel", action: onCancel)
                     .disabled(isImporting)
@@ -164,7 +181,7 @@ struct ImportPreviewSheet: View {
                 Spacer()
                 BrowsemiumPrimaryButton(
                     isImporting ? "Importing…" : importButtonTitle,
-                    isDisabled: isImporting || !hasSelectedData,
+                    isDisabled: isImporting || !hasSelectedData || !keyConsentSources.isEmpty,
                     action: onImport
                 )
                 .keyboardShortcut(.defaultAction)
@@ -172,6 +189,11 @@ struct ImportPreviewSheet: View {
         }
         .padding(20)
         .frame(width: 460)
+        .onAppear {
+            sourceIsRunning = !NSRunningApplication.runningApplications(
+                withBundleIdentifier: preview.source.bundleIdentifier
+            ).isEmpty
+        }
         .background(Color.browsemiumSurface)
         .foregroundStyle(Color.browsemiumPrimary)
     }
@@ -216,7 +238,7 @@ struct ImportPreviewSheet: View {
             summaryTile("\(preview.historyCount)", "History entries")
             summaryTile("\(preview.folders.count)", "Folders")
             summaryTile("\(preview.credentialCount)", "Passwords")
-            summaryTile("\(preview.cookieCount)", "Cookies")
+            if offersCookies { summaryTile("\(preview.cookieCount)", "Cookies") }
             if preview.sessionTabCount > 0 { summaryTile("\(preview.sessionTabCount)", "Open tabs") }
             if !preview.extensionIDs.isEmpty { summaryTile("\(preview.extensionIDs.count)", "Extensions") }
         }
@@ -274,7 +296,7 @@ struct ImportPreviewSheet: View {
         if preview.source.family == .firefox {
             return "\(preview.credentialCount) saved logins. Imports only without a Firefox Primary Password — protected logins stay in Firefox, and Browsemium never asks for the password. Use a password CSV for those instead."
         }
-        return "\(preview.credentialCount) saved logins. Direct import uses only an already-accessible encryption key, without asking macOS to unlock it. If access is unavailable, use a password CSV instead."
+        return "\(preview.credentialCount) saved logins. When you press Import, you will be asked before Browsemium reads the browser's encryption key; macOS shows its own prompt. If you decline, everything else still imports and a password CSV can add the passwords."
     }
 
     private var historyDetail: String {        guard let earliest = preview.earliestVisit, let latest = preview.latestVisit else {

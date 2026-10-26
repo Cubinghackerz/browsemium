@@ -1,4 +1,5 @@
 import BrowsemiumCore
+import CryptoKit
 @testable import BrowsemiumData
 import Foundation
 import GRDB
@@ -595,6 +596,98 @@ func encryptedCookiesRequireConsentAndTheSourceKeyBeforeAnyWrite() throws {
     #expect(result.cookies.first?.value == "session-token")
     #expect(result.cookies.first?.isSecure == true)
     #expect(result.cookies.first?.isHTTPOnly == true)
+}
+
+@Test
+func theSourceChromeVersionComesFromThePreferencesInsideTheProfile() throws {
+    let profile = try FakeChromeProfile(bookmarks: [], visits: [])
+    defer { profile.cleanUp() }
+    try Data(#"{"extensions":{"last_chrome_version":"145.0.7632.46"}}"#.utf8)
+        .write(to: profile.folder.appendingPathComponent("Preferences"))
+    let (importer, _, _, _) = try makeImporter()
+    let preview = try importer.preview(at: profile.folder, source: .chrome)
+    #expect(preview.sourceBrowserVersion == "145.0.7632.46")
+    let result = try importer.apply(preview, options: BrowserImportOptions(), profile: profile.folder)
+    #expect(result.sourceBrowserVersion == "145.0.7632.46")
+}
+
+@Test
+func aMissingOrMalformedSourceVersionIsNilNotGuessed() throws {
+    let profile = try FakeChromeProfile(bookmarks: [], visits: [])
+    defer { profile.cleanUp() }
+    let (importer, _, _, _) = try makeImporter()
+    #expect(try importer.preview(at: profile.folder, source: .chrome).sourceBrowserVersion == nil)
+    try Data(#"{"extensions":{"last_chrome_version":"1;rm -rf"}}"#.utf8)
+        .write(to: profile.folder.appendingPathComponent("Preferences"))
+    #expect(try importer.preview(at: profile.folder, source: .chrome).sourceBrowserVersion == nil)
+}
+
+private func writeChromeCookies(_ profile: FakeChromeProfile, metaVersion: Int?, plaintext: (String) -> Data) throws -> Data {
+    let network = profile.folder.appendingPathComponent("Network", isDirectory: true)
+    try FileManager.default.createDirectory(at: network, withIntermediateDirectories: true)
+    let key = try ChromeCredentialCrypto.derivedKey(safeStoragePassword: "fixture-only")
+    let queue = try DatabaseQueue(path: network.appendingPathComponent("Cookies").path)
+    try queue.write { db in
+        try db.execute(sql: """
+            CREATE TABLE cookies (
+                host_key TEXT, name TEXT, value TEXT, encrypted_value BLOB,
+                path TEXT, expires_utc INTEGER, is_secure INTEGER, is_httponly INTEGER
+            )
+            """)
+        try db.execute(sql: "CREATE TABLE meta (key LONGVARCHAR NOT NULL UNIQUE PRIMARY KEY, value LONGVARCHAR)")
+        if let metaVersion {
+            try db.execute(sql: "INSERT INTO meta VALUES ('version', ?)", arguments: [String(metaVersion)])
+        }
+        let blob = try ChromeCredentialCrypto.encryptDataForTesting(plaintext(".example.com"), key: key)
+        try db.execute(
+            sql: "INSERT INTO cookies VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            arguments: [".example.com", "session", "", blob, "/", chromeMicros(Date().addingTimeInterval(3600)), 1, 1]
+        )
+    }
+    return key
+}
+
+private func hostHash(_ host: String) -> Data { Data(SHA256.hash(data: Data(host.utf8))) }
+
+@Test
+func chromiumCookieValuesLoseTheHostHashPrefixFromDatabaseVersion24() throws {
+    let profile = try FakeChromeProfile(bookmarks: [], visits: [])
+    defer { profile.cleanUp() }
+    let key = try writeChromeCookies(profile, metaVersion: 24) { host in hostHash(host) + Data("session-token".utf8) }
+    let (importer, _, _, _) = try makeImporter()
+    let preview = try importer.preview(at: profile.folder, source: .chrome)
+    var options = BrowserImportOptions()
+    options.includesCookies = true
+    let result = try importer.apply(preview, options: options, keyProvider: StubKeyProvider(key: key), profile: profile.folder)
+    #expect(result.cookies.first?.value == "session-token")
+}
+
+@Test
+func chromiumCookieValuesBeforeVersion24AreNotTrimmed() throws {
+    let profile = try FakeChromeProfile(bookmarks: [], visits: [])
+    defer { profile.cleanUp() }
+    let longValue = String(repeating: "a", count: 40)
+    let key = try writeChromeCookies(profile, metaVersion: 23) { _ in Data(longValue.utf8) }
+    let (importer, _, _, _) = try makeImporter()
+    let preview = try importer.preview(at: profile.folder, source: .chrome)
+    var options = BrowserImportOptions()
+    options.includesCookies = true
+    let result = try importer.apply(preview, options: options, keyProvider: StubKeyProvider(key: key), profile: profile.folder)
+    #expect(result.cookies.first?.value == longValue)
+}
+
+@Test
+func aCookieShorterThanTheHostHashIsReportedNotInvented() throws {
+    let profile = try FakeChromeProfile(bookmarks: [], visits: [])
+    defer { profile.cleanUp() }
+    let key = try writeChromeCookies(profile, metaVersion: 24) { _ in Data("short".utf8) }
+    let (importer, _, _, _) = try makeImporter()
+    let preview = try importer.preview(at: profile.folder, source: .chrome)
+    var options = BrowserImportOptions()
+    options.includesCookies = true
+    let result = try importer.apply(preview, options: options, keyProvider: StubKeyProvider(key: key), profile: profile.folder)
+    #expect(result.cookies.isEmpty)
+    #expect(result.report.items.contains { $0.category == .cookie && $0.reason == .decryptionFailed })
 }
 
 @Test

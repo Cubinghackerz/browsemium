@@ -536,10 +536,12 @@ ordinary user-list rules do not broaden into main-frame blocking.
   maps each source profile into a separate Browsemium profile. The existing
   preview remains the gate before writing.
 - Chromium and Firefox cookies have an explicit opt-in. Chromium `v10`
-  values use the same source key as logins, but source-key queries now disallow
-  authentication UI. Direct import works only for already-accessible keys;
-  otherwise passwords use the explicit CSV route and encrypted cookies remain
-  unavailable. The no-key/no-write gate stays intact. Safari
+  values (and `v24` values with a 32-byte host-hash prefix) use the same source
+  key as logins. The key is read at Import only: silently first, then, after an
+  in-sheet consent, once through the standard macOS prompt per browser. If it is
+  declined, passwords and cookies are left out and the rest imports; passwords
+  can still use the explicit CSV route. The importer's no-key/no-write gate
+  stays intact. Safari
   `Cookies.binarycookies` is parsed only when readable. Cookies are placed in
   the selected profile's WebKit store. Password-manager CSV imports use an
   explicit column map and Keychain storage; plaintext CSV export requires a
@@ -561,10 +563,13 @@ ordinary user-list rules do not broaden into main-frame blocking.
   Generated-fixture regressions cover the three browser families, malformed
   bookmarks, rollback, repeat import, and secret-free reports. Native report
   light/dark QA remains a user check before release.
-- Still open: direct Firefox `key4.db` login decryption, Safari cookie access
-  when sandbox scope does not cover the file, custom search engine/keyword
-  lists, batch extension reinstall, autofill addresses, open/pinned session
-  restoration, and bookmark/history portable backups.
+- Done since: Firefox `key4.db` login decryption (no Primary Password), and
+  Firefox and Safari open-tab restoration (Firefox pins stay pinned; Safari
+  tabs come across unpinned because the session reader does not expose pins).
+- Still open: Safari cookie access when sandbox scope does not cover the file,
+  custom search engine/keyword lists, batch extension reinstall, autofill
+  addresses, Chromium open-tab restoration, and bookmark/history portable
+  backups.
   The ordered reporting/session/Firefox follow-on scope is recorded in
   `Plans/6-import-completion.md`; session and Firefox crypto units remain open.
 - This cycle's quality gate is a whole-app visual pass in light and dark plus

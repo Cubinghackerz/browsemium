@@ -27,13 +27,16 @@ struct ImportBatchSheet: View {
     let currentProfile: String?
     let report: [String]
     let detailedReports: [BrowserImportReport]
+    var offersCookies = true
+    let keyConsentSources: [BrowserImportSource]
+    let onKeyConsent: (_ allow: Bool) -> Void
     let onCancel: () -> Void
     let onImport: () -> Void
 
     private var bookmarkCount: Int { entries.reduce(0) { $0 + $1.preview.bookmarkCount } }
     private var historyCount: Int { entries.reduce(0) { $0 + $1.preview.historyCount } }
     private var passwordCount: Int { entries.reduce(0) { $0 + $1.preview.credentialCount } }
-    private var cookieCount: Int { entries.reduce(0) { $0 + $1.preview.cookieCount } }
+    private var cookieCount: Int { offersCookies ? entries.reduce(0) { $0 + $1.preview.cookieCount } : 0 }
     private var searchCount: Int { entries.filter { $0.preview.searchEngine != nil }.count }
     private var hasSelectedData: Bool {
         (options.includesBookmarks && bookmarkCount > 0)
@@ -54,7 +57,7 @@ struct ImportBatchSheet: View {
                 .controlSize(.small)
             }
             if report.isEmpty {
-                Text("Each source profile gets its own Browsemium profile and separate site data. Review the totals before importing.")
+                Text("Each source profile gets its own Browsemium profile and separate site data. Importing again later adds to those profiles instead of making new ones. Review the totals before importing.")
                     .font(BrowserType.font(.small))
                     .foregroundStyle(Color.browsemiumSecondary)
                 ForEach(entries, id: \.candidate.id) { entry in
@@ -76,13 +79,13 @@ struct ImportBatchSheet: View {
                 Toggle("History (\(historyCount))", isOn: $options.includesHistory)
                 if passwordCount > 0 {
                     Toggle("Passwords (\(passwordCount))", isOn: $options.includesPasswords)
-                    Text("Direct import does not request access to locked browser keys. If passwords are inaccessible, use the password CSV option in the import guide for each destination profile.")
+                    Text("You will be asked once per browser before its encryption key is read; macOS shows its own prompt. If you decline, everything else still imports and the password CSV option in the import guide can add the passwords.")
                         .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumSecondary)
                 }
                 if cookieCount > 0 {
                     Toggle("Cookies and sign-ins (\(cookieCount))", isOn: $options.includesCookies)
-                    Text("Cookies can grant account access and are off by default. Encrypted cookies need an already-accessible browser key; otherwise sign in again.")
+                    Text("Cookies can grant account access and are off by default. Encrypted cookies use the same browser key, asked once per browser; if you decline, sign in again.")
                         .font(BrowserType.font(.caption))
                         .foregroundStyle(Color.browsemiumWarning)
                 }
@@ -100,13 +103,16 @@ struct ImportBatchSheet: View {
                     ImportReportDetails(report: detailedReports[index])
                 }
             }
+            if !keyConsentSources.isEmpty {
+                ImportKeyConsentCard(sources: keyConsentSources, onChoice: onKeyConsent)
+            }
             HStack {
                 BrowsemiumTextButton(report.isEmpty ? "Cancel" : "Done", action: onCancel)
                     .disabled(isImporting)
                 Spacer()
                 if report.isEmpty {
                     BrowsemiumPrimaryButton(isImporting ? "Importing…" : "Import \(entries.count) profiles",
-                                            isDisabled: isImporting || entries.isEmpty || !hasSelectedData,
+                                            isDisabled: isImporting || entries.isEmpty || !hasSelectedData || !keyConsentSources.isEmpty,
                                             action: onImport)
                 }
             }

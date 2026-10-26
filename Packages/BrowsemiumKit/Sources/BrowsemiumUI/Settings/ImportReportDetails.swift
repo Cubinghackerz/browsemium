@@ -70,6 +70,9 @@ struct ImportReportDetails: View {
         case .primaryPasswordRequired: "Firefox protects these logins with a Primary Password, which Browsemium never asks for"
         case .unsupportedFormat: "This item uses a format Browsemium cannot read"
         case .privateWindow: "Private windows do not keep imported tabs"
+        case .expired: "Already expired in the source, so it was not brought over"
+        case .missingUsername: "Saved without a username, which Browsemium cannot store; add it by hand if you need it"
+        case .containerScoped: "Belongs to a Firefox container or partition, so it stays out of your default cookies"
         }
     }
 }

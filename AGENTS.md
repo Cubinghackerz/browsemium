@@ -202,6 +202,15 @@ Scripts/dev-loop.sh   # rebuild + relaunch the app whenever sources change
 
 ## Keychain behaviour
 
+A source browser's key ("Chrome Safe Storage" and its siblings) is read only
+by `ImportKeyAccess` when the person presses Import on a selection that needs
+it. The first read is silent (`secretWithoutInteraction`). If the key is
+locked, the import sheet shows `ImportKeyConsentCard`; only its Continue allows
+one interactive read per browser (`allowsAuthorizationPrompt`), held in memory
+for that import. A denial is final for that import: no retry, passwords and
+cookies are dropped, everything else imports. Preview, Settings and the CSV
+route never read a source key.
+
 Opening Settings must never trigger a macOS keychain prompt. Check for stored
 secrets with `KeychainStore.hasSecret(account:)`, which queries attributes only;
 reading `secret(account:)` decrypts the item and macOS asks for permission.

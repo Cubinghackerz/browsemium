@@ -2,10 +2,13 @@ import BrowsemiumData
 import Foundation
 import BrowsemiumEngineKit
 
-/// Reads an already-accessible Chromium source key only after import selection.
-/// Never asks macOS to authorize it; unavailable keys require the CSV route.
+/// Reads a Chromium source key only for an explicit import. By default it never
+/// asks macOS to authorize the read. `ImportKeyAccess` sets
+/// `allowsAuthorizationPrompt` only after the person pressed Continue on the
+/// consent sheet; it then makes one interactive read and never retries.
 struct ChromeSafeStorageKeyProvider: BrowserCredentialKeyProviding {
     let keychain: KeychainStore
+    var allowsAuthorizationPrompt = false
 
     func safeStorageKey(for source: BrowserImportSource) throws -> Data? {
         // Every Chromium-family browser shares the scheme but each stores its
@@ -18,7 +21,17 @@ struct ChromeSafeStorageKeyProvider: BrowserCredentialKeyProviding {
             }
             password = value
         } catch is KeychainStore.KeychainError {
-            throw BrowserDataImporter.ImportError.credentialsLocked(source.displayName)
+            guard allowsAuthorizationPrompt else {
+                throw BrowserDataImporter.ImportError.credentialsLocked(source.displayName)
+            }
+            do {
+                guard let value = try keychain.secret(service: service), !value.isEmpty else {
+                    throw BrowserDataImporter.ImportError.credentialsLocked(source.displayName)
+                }
+                password = value
+            } catch is KeychainStore.KeychainError {
+                throw BrowserDataImporter.ImportError.credentialsLocked(source.displayName)
+            }
         }
         return try ChromeCredentialCrypto.derivedKey(safeStoragePassword: password)
     }

@@ -87,6 +87,17 @@ public protocol ChromeWebStoreDownloading: Sendable {
     /// service returns a CRX container, `.zip` when it returns a bare
     /// archive. Callers pass the file to `ExtensionStore.install(from:)`.
     func downloadPackage(for extensionID: String) async throws -> URL
+
+    /// Same, asking the service for a package compatible with the given Chrome
+    /// version (the version of the browser the extension came from). Nil or a
+    /// malformed version means "use the built-in fallback".
+    func downloadPackage(for extensionID: String, chromeVersion: String?) async throws -> URL
+}
+
+public extension ChromeWebStoreDownloading {
+    func downloadPackage(for extensionID: String, chromeVersion: String?) async throws -> URL {
+        try await downloadPackage(for: extensionID)
+    }
 }
 
 public struct ChromeWebStoreDownloader: ChromeWebStoreDownloading {
@@ -121,13 +132,30 @@ public struct ChromeWebStoreDownloader: ChromeWebStoreDownloading {
     /// Chrome version hint the service needs to pick a compatible package;
     /// `x` is `id=<id>&uc`, the "user-initiated install" marker.
     public static func updateURL(for extensionID: String) -> URL {
+        updateURL(for: extensionID, chromeVersion: nil)
+    }
+
+    /// Used when the source browser's version is unknown. It is an old release,
+    /// so a package that needs a newer Chrome can come back unavailable.
+    public static let fallbackChromeVersion = "131.0.6778.86"
+
+    /// A Chrome version is two to four dot-separated numbers. Anything else is
+    /// dropped rather than placed in a request.
+    public static func normalizedChromeVersion(_ candidate: String?) -> String? {
+        guard let candidate,
+              candidate.range(of: #"^[0-9]{1,4}(\.[0-9]{1,6}){1,3}$"#, options: .regularExpression) != nil
+        else { return nil }
+        return candidate
+    }
+
+    public static func updateURL(for extensionID: String, chromeVersion: String?) -> URL {
         var components = URLComponents()
         components.scheme = "https"
         components.host = "clients2.google.com"
         components.path = "/service/update2/crx"
         components.queryItems = [
             URLQueryItem(name: "response", value: "redirect"),
-            URLQueryItem(name: "prodversion", value: "131.0.6778.86"),
+            URLQueryItem(name: "prodversion", value: normalizedChromeVersion(chromeVersion) ?? fallbackChromeVersion),
             URLQueryItem(name: "acceptformat", value: "crx3"),
             URLQueryItem(name: "x", value: "id=\(extensionID)&uc")
         ]
@@ -137,8 +165,12 @@ public struct ChromeWebStoreDownloader: ChromeWebStoreDownloading {
     }
 
     public func downloadPackage(for extensionID: String) async throws -> URL {
+        try await downloadPackage(for: extensionID, chromeVersion: nil)
+    }
+
+    public func downloadPackage(for extensionID: String, chromeVersion: String?) async throws -> URL {
         _ = try ChromeWebStoreReference(extensionID: extensionID)
-        let (tempURL, response) = try await fetch(Self.updateURL(for: extensionID))
+        let (tempURL, response) = try await fetch(Self.updateURL(for: extensionID, chromeVersion: chromeVersion))
         defer { try? FileManager.default.removeItem(at: tempURL) }
         guard let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode) else {

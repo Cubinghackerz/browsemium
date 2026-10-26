@@ -1,6 +1,12 @@
 import Foundation
 
 /// A cookie is an account capability. Values never enter previews or logs.
+/// A cookie's SameSite attribute as the source browser stored it. Nil on the
+/// cookie means the source did not say.
+public enum SameSite: Sendable, Hashable {
+    case none, lax, strict
+}
+
 public struct BrowserImportCookie: Sendable, Hashable {
     public let domain: String
     public let name: String
@@ -9,8 +15,9 @@ public struct BrowserImportCookie: Sendable, Hashable {
     public let expires: Date?
     public let isSecure: Bool
     public let isHTTPOnly: Bool
+    public let sameSite: SameSite?
 
-    public init?(domain: String, name: String, value: String, path: String, expires: Date?, isSecure: Bool, isHTTPOnly: Bool) {
+    public init?(domain: String, name: String, value: String, path: String, expires: Date?, isSecure: Bool, isHTTPOnly: Bool, sameSite: SameSite? = nil) {
         let host = domain.hasPrefix(".") ? String(domain.dropFirst()) : domain
         guard !host.isEmpty, host.count <= 253,
               host.unicodeScalars.allSatisfy({ CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-").contains($0) }),
@@ -27,6 +34,28 @@ public struct BrowserImportCookie: Sendable, Hashable {
         self.expires = expires
         self.isSecure = isSecure
         self.isHTTPOnly = isHTTPOnly
+        self.sameSite = sameSite
+    }
+
+    /// The native cookie handed to WebKit. A domain with a leading dot applies
+    /// to subdomains; without one the cookie is host-only. Foundation can
+    /// express Lax and Strict but has no explicit None.
+    public var httpCookie: HTTPCookie? {
+        var properties: [HTTPCookiePropertyKey: Any] = [
+            .domain: domain,
+            .path: path,
+            .name: name,
+            .value: value,
+            .secure: isSecure ? "TRUE" : "FALSE",
+            HTTPCookiePropertyKey("HttpOnly"): isHTTPOnly ? "TRUE" : "FALSE"
+        ]
+        if let expires { properties[.expires] = expires }
+        switch sameSite {
+        case .lax: properties[.sameSitePolicy] = HTTPCookieStringPolicy.sameSiteLax
+        case .strict: properties[.sameSitePolicy] = HTTPCookieStringPolicy.sameSiteStrict
+        case .some(.none), nil: break
+        }
+        return HTTPCookie(properties: properties)
     }
 }
 

@@ -49,14 +49,20 @@ that require an account.
   never auto-submits
 - The import guide detects Chrome, Brave, Edge, Vivaldi, Arc, Dia, Helium,
   Opera, Chromium, Firefox, and Safari. It previews bookmarks, history,
-  Chromium-family passwords, and cookies per profile. Direct source-key reads
-  disallow authentication UI: inaccessible browser keys require CSV password
-  export/import, not a bypass of macOS authorization. Cookies can carry account
+  Chromium-family passwords, and cookies per profile. A browser's encryption key
+  is read only when you press Import on a selection that needs it: silently
+  first, and if it is locked, only after you press Continue on an in-sheet
+  consent card, which lets macOS show its own authorization prompt once per
+  browser. The key is held in memory for that import and never stored. If you
+  decline or macOS refuses, passwords and cookies are left out, everything else
+  still imports, and a password CSV can add the passwords. Nothing reads the key
+  while a preview is built or Settings is open. Cookies can carry account
   access and are off by default. Chromium-family default search engines are
   imported when selected. Password CSV from browsers, Apple Passwords, 1Password,
   Bitwarden, LastPass, and Dashlane can be mapped and imported into Keychain.
-  Direct Firefox password decryption is not yet supported. Site storage does
-  not transfer; detected Chromium extensions require a separate, confirmed
+  Firefox passwords decrypt directly when no Primary Password is set; a
+  Primary Password or a legacy key3.db profile is reported as unsupported.
+  Site storage does not transfer; detected Chromium extensions require a separate, confirmed
   reinstall and start disabled.
 - Site routing: send a site to a space; the tab moves with a notice and Undo,
   and a locked space asks before anything moves into it

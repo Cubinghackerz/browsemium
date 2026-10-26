@@ -8,12 +8,6 @@ import WebKit
 import UniformTypeIdentifiers
 import BrowsemiumEngineKit
 
-private struct UnlockedImportKeyProvider: BrowserCredentialKeyProviding {
-    let key: Data
-
-    func safeStorageKey(for source: BrowserImportSource) throws -> Data? { key }
-}
-
 @MainActor
 struct SettingsView: View {
     @Bindable var model: BrowserWindowModel
@@ -70,7 +64,10 @@ struct SettingsView: View {
     @State private var isBatchImporting = false
     @State private var batchCompletedCount = 0
     @State private var batchCurrentProfile: String?
+    @State private var importKeyConsentSources: [BrowserImportSource] = []
+    @State private var batchKeyConsentSources: [BrowserImportSource] = []
     @State private var pendingExtensionIDs: [String] = []
+    @State private var pendingExtensionVersion: String?
     @State private var isConfirmingExtensionReinstall = false
 
     private let retentionOptions: [(label: String, days: Int?)] = [
@@ -81,109 +78,7 @@ struct SettingsView: View {
     ]
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Rectangle().fill(Color.browsemiumBorder).frame(height: 1)
-
-            if importOnly {
-                page { importSection }
-            } else {
-                ViewThatFits(in: .horizontal) {
-                    // Wide: a section list beside the cards.
-                    HStack(spacing: 0) {
-                        sectionSidebar
-                            .frame(width: 176)
-                        Rectangle().fill(Color.browsemiumBorder).frame(width: 1)
-                        page { cards }
-                    }
-                    .frame(minWidth: 700)
-
-                    // Narrow (for instance with the assistant open): the list
-                    // becomes a row of choices above the cards.
-                    VStack(spacing: 0) {
-                        sectionPicker
-                        page { cards }
-                    }
-                }
-            }
-        }
-        .background(Color.browsemiumRaised)
-        .onAppear {
-            settings = model.environment.loadSettings()
-            refreshCredentials()
-            refreshProfiles()
-            model.refreshSavedCredentials()
-            refreshImportCandidates()
-        }
-        .onChange(of: model.profileSwitchToken) {
-            refreshProfiles()
-        }
-        .onChange(of: model.searchEngineTemplate) { _, template in
-            settings.searchEngineTemplate = template
-        }
-        .sheet(item: $importPreview, onDismiss: {
-            if wantsBrowserPasswordCSV {
-                wantsBrowserPasswordCSV = false
-                choosePasswordCSV(target: csvImportTarget)
-            }
-        }) { preview in
-            ImportPreviewSheet(
-                preview: preview,
-                options: $importOptions,
-                destination: $importDestination,
-                newProfileName: $importNewProfileName,
-                currentProfileName: model.activeProfile.name,
-                isImporting: isImporting,
-                errorMessage: importPreviewError,
-                onCancel: {
-                    importPreview = nil
-                    importFolder = nil
-                },
-                onImport: commitImport,
-                onImportPasswordCSV: {
-                    csvImportTarget = PasswordCSVImportTarget(destination: importDestination,
-                        currentProfile: model.activeProfile, newProfileName: importNewProfileName)
-                    wantsBrowserPasswordCSV = true
-                    importPreview = nil
-                    importFolder = nil
-                    importAccessRoot = nil
-                    importPreviewError = nil
-                }
-            )
-        }
-        .sheet(isPresented: $isAddingPassword) {
-            PasswordEditorSheet(
-                host: $credentialHost,
-                username: $credentialUsername,
-                password: $credentialPassword,
-                onCancel: { isAddingPassword = false },
-                onSave: savePassword
-            )
-        }
-        .sheet(isPresented: $isShowingCSVImport, onDismiss: {
-            csvImport = nil
-            csvImportTarget = nil
-            csvImportError = nil
-        }) {
-            if let csvImport {
-                PasswordCSVImportSheet(csv: csvImport,
-                                       destinationName: csvImportTarget?.displayName ?? model.activeProfile.name,
-                                       errorMessage: csvImportError,
-                                       onCancel: { isShowingCSVImport = false },
-                                       onImport: importPasswordsFromCSV)
-            }
-        }
-        .sheet(isPresented: $isShowingBatch) {
-            ImportBatchSheet(entries: batchEntries,
-                             options: $batchOptions,
-                             isImporting: isBatchImporting,
-                             completedCount: batchCompletedCount,
-                             currentProfile: batchCurrentProfile,
-                             report: batchReport,
-                             detailedReports: batchDetailedReports,
-                             onCancel: { isShowingBatch = false },
-                             onImport: commitBatchImport)
-        }
+        importFlowContent
         .confirmationDialog("Export passwords as an unencrypted CSV?",
                             isPresented: $isConfirmingCSVExport,
                             titleVisibility: .visible) {
@@ -197,13 +92,15 @@ struct SettingsView: View {
                             titleVisibility: .visible) {
             Button("Reinstall from Chrome Web Store") {
                 let ids = pendingExtensionIDs
+                let version = pendingExtensionVersion
                 pendingExtensionIDs = []
+                pendingExtensionVersion = nil
                 Task {
-                    let outcome = await model.reinstallImportedExtensions(ids)
-                    statusMessage = "\(outcome.installed) extensions installed disabled; \(outcome.skipped) skipped."
+                    let results = await model.reinstallImportedExtensions(ids, chromeVersion: version)
+                    statusMessage = results.summary
                 }
             }
-            Button("Not now", role: .cancel) { pendingExtensionIDs = [] }
+            Button("Not now", role: .cancel) { pendingExtensionIDs = []; pendingExtensionVersion = nil }
         } message: {
             Text("Browsemium downloads each selected extension from the Chrome Web Store. Every new extension starts disabled and needs your approval to run.")
         }
@@ -292,6 +189,123 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) { profileDeleteTarget = nil }
         } message: {
             Text("Its bookmarks, history, passwords, logins, and site data are removed from this Mac.")
+        }
+    }
+
+    /// The first half of the modifier chain, split out because one chain this
+    /// long exceeds the compiler's type-check budget.
+    private var importFlowContent: some View {
+        VStack(spacing: 0) {
+            header
+            Rectangle().fill(Color.browsemiumBorder).frame(height: 1)
+
+            if importOnly {
+                page { importSection }
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    // Wide: a section list beside the cards.
+                    HStack(spacing: 0) {
+                        sectionSidebar
+                            .frame(width: 176)
+                        Rectangle().fill(Color.browsemiumBorder).frame(width: 1)
+                        page { cards }
+                    }
+                    .frame(minWidth: 700)
+
+                    // Narrow (for instance with the assistant open): the list
+                    // becomes a row of choices above the cards.
+                    VStack(spacing: 0) {
+                        sectionPicker
+                        page { cards }
+                    }
+                }
+            }
+        }
+        .background(Color.browsemiumRaised)
+        .onAppear {
+            settings = model.environment.loadSettings()
+            refreshCredentials()
+            refreshProfiles()
+            model.refreshSavedCredentials()
+            refreshImportCandidates()
+        }
+        .onChange(of: model.profileSwitchToken) {
+            refreshProfiles()
+        }
+        .onChange(of: model.searchEngineTemplate) { _, template in
+            settings.searchEngineTemplate = template
+        }
+        .sheet(item: $importPreview, onDismiss: {
+            if wantsBrowserPasswordCSV {
+                wantsBrowserPasswordCSV = false
+                choosePasswordCSV(target: csvImportTarget)
+            }
+        }) { preview in
+            ImportPreviewSheet(
+                preview: preview,
+                options: $importOptions,
+                destination: $importDestination,
+                newProfileName: $importNewProfileName,
+                currentProfileName: model.activeProfile.name,
+                isImporting: isImporting,
+                errorMessage: importPreviewError,
+                onCancel: {
+                    importPreview = nil
+                    importFolder = nil
+                    importKeyConsentSources = []
+                },
+                onImport: { commitImport() },
+                onImportPasswordCSV: {
+                    csvImportTarget = PasswordCSVImportTarget(destination: importDestination,
+                        currentProfile: model.activeProfile, newProfileName: importNewProfileName)
+                    wantsBrowserPasswordCSV = true
+                    importPreview = nil
+                    importFolder = nil
+                    importAccessRoot = nil
+                    importPreviewError = nil
+                },
+                offersCookies: model.environment.canImportCookies,
+                keyConsentSources: importKeyConsentSources,
+                onKeyConsent: { allow in commitImport(allow ? .allow : .skip) }
+            )
+        }
+        .sheet(isPresented: $isAddingPassword) {
+            PasswordEditorSheet(
+                host: $credentialHost,
+                username: $credentialUsername,
+                password: $credentialPassword,
+                onCancel: { isAddingPassword = false },
+                onSave: savePassword
+            )
+        }
+        .sheet(isPresented: $isShowingCSVImport, onDismiss: {
+            csvImport = nil
+            csvImportTarget = nil
+            csvImportError = nil
+        }) {
+            if let csvImport {
+                PasswordCSVImportSheet(csv: csvImport,
+                                       destinationName: csvImportTarget?.displayName ?? model.activeProfile.name,
+                                       errorMessage: csvImportError,
+                                       onCancel: { isShowingCSVImport = false },
+                                       onImport: importPasswordsFromCSV)
+            }
+        }
+        .sheet(isPresented: $isShowingBatch, onDismiss: {
+            if !pendingExtensionIDs.isEmpty { isConfirmingExtensionReinstall = true }
+        }) {
+            ImportBatchSheet(entries: batchEntries,
+                             options: $batchOptions,
+                             isImporting: isBatchImporting,
+                             completedCount: batchCompletedCount,
+                             currentProfile: batchCurrentProfile,
+                             report: batchReport,
+                             detailedReports: batchDetailedReports,
+                             offersCookies: model.environment.canImportCookies,
+                             keyConsentSources: batchKeyConsentSources,
+                             onKeyConsent: { allow in commitBatchImport(allow ? .allow : .skip) },
+                             onCancel: { isShowingBatch = false; batchKeyConsentSources = [] },
+                             onImport: { commitBatchImport() })
         }
     }
 
@@ -1600,27 +1614,59 @@ struct SettingsView: View {
         }
     }
 
-    private func commitBatchImport() {
-        guard let root = batchAccessRoot else { return }
+    private func commitBatchImport(_ choice: KeyChoice = .ask) {
+        guard batchAccessRoot != nil else { return }
+        let options = model.environment.canImportCookies ? batchOptions : ImportKeyAccess.withoutCookies(batchOptions)
+        let selections = batchEntries.map { ($0.preview, options) }
+        let keychain = model.environment.keychain
+        // One consent per browser, however many profiles it has.
+        guard choice == .allow else {
+            continueBatchImport(options, ImportKeyAccess.plan(for: selections, keychain: keychain, consented: false), choice)
+            return
+        }
+        isBatchImporting = true
+        Task {
+            let plan = await Task.detached { ImportKeyAccess.plan(for: selections, keychain: keychain, consented: true) }.value
+            continueBatchImport(options, plan, choice)
+        }
+    }
+
+    private func continueBatchImport(_ options: BrowserImportOptions, _ plan: ImportKeyAccess.Plan, _ choice: KeyChoice) {
+        guard let root = batchAccessRoot else { isBatchImporting = false; return }
         let entries = batchEntries
-        let options = batchOptions
+        if choice == .ask, !plan.needsConsent.isEmpty {
+            batchKeyConsentSources = plan.needsConsent
+            return
+        }
+        batchKeyConsentSources = []
         isBatchImporting = true
         Task {
             var report: [String] = []
+            var extensionIDs: [String] = []
+            var extensionVersion: String?
             for entry in entries {
                 batchCurrentProfile = entry.candidate.label
                 defer { batchCompletedCount += 1 }
-                let keyProvider: any BrowserCredentialKeyProviding
-                do {
-                    keyProvider = try importKeyProvider(for: entry.preview, options: options)
-                } catch {
-                    report.append("\(entry.candidate.label): \(error.localizedDescription)")
-                    continue
+                let source = entry.preview.source
+                var chosenOptions = options
+                var chosenProvider: any BrowserCredentialKeyProviding = ChromeSafeStorageKeyProvider(keychain: model.environment.keychain)
+                var secretsNote: String?
+                if let provider = plan.providers[source] {
+                    chosenProvider = provider
+                } else if let reason = plan.skipped[source] {
+                    chosenOptions = ImportKeyAccess.withoutSecrets(options)
+                    secretsNote = ImportKeyAccess.skipNote(for: source, reason)
+                } else if plan.needsConsent.contains(source) {
+                    chosenOptions = ImportKeyAccess.withoutSecrets(options)
+                    secretsNote = "Passwords and cookies were left out at your request."
                 }
-                guard let destinationProfile = model.createProfile(named: entry.candidate.profileName) else {
+                let entryOptions = chosenOptions
+                let keyProvider = chosenProvider
+                guard let destination = model.profileForImport(of: entry.candidate) else {
                     report.append("\(entry.candidate.label): profile could not be created.")
                     continue
                 }
+                let destinationProfile = destination.profile
                 do {
                     let database = try model.environment.profileStore.database(for: destinationProfile)
                     let importer = BrowserDataImporter(
@@ -1635,7 +1681,7 @@ struct SettingsView: View {
                                 "macOS access to this browser folder expired. Choose the folder again to continue."
                             )
                         }
-                        return try importer.apply(entry.preview, options: options,
+                        return try importer.apply(entry.preview, options: entryOptions,
                                                   keyProvider: keyProvider, profile: entry.candidate.folder)
                     }.value
                     let passwordOutcomes = storeCredentials(result.credentials, profile: destinationProfile)
@@ -1648,12 +1694,15 @@ struct SettingsView: View {
                     let finalReport = completedImportReport(result, passwords: passwordOutcomes, cookies: cookieOutcomes, searchSaved: searchSaved,
                                                             sessions: sessionSkips, sessionsUnopenedReason: .destinationNotOpen)
                     batchDetailedReports.append(finalReport)
+                    for id in result.extensionIDs where !extensionIDs.contains(id) { extensionIDs.append(id) }
+                    extensionVersion = [extensionVersion, result.sourceBrowserVersion].compactMap { $0 }
+                        .max { $0.compare($1, options: .numeric) == .orderedAscending }
                     if destinationProfile.id == model.activeProfile.id { model.refreshBookmarks() }
-                    let summary = importSummary(entry.preview, options: options, result: result,
+                    let summary = importSummary(entry.preview, options: entryOptions, result: result,
                         storedCredentials: passwordOutcomes.filter { $0 == .accepted }.count,
                         storedCookies: cookieOutcomes.filter { $0 == .accepted }.count,
                         report: finalReport, searchSaved: searchSaved)
-                    report.append("\(entry.candidate.label): \(summary).")
+                    report.append("\(entry.candidate.label): \(summary)." + (destination.reused ? " Added to the profile from your earlier import." : "") + (secretsNote.map { " " + $0 } ?? ""))
                 } catch {
                     report.append("\(entry.candidate.label): \(error.localizedDescription)")
                 }
@@ -1661,6 +1710,13 @@ struct SettingsView: View {
             batchReport = report
             batchCurrentProfile = nil
             isBatchImporting = false
+            // One confirmation for every extension found in the whole batch.
+            // It is asked when the batch report sheet closes: a dialog cannot
+            // present over a sheet that is still on screen.
+            if !extensionIDs.isEmpty {
+                pendingExtensionIDs = extensionIDs
+                pendingExtensionVersion = extensionVersion
+            }
         }
     }
 
@@ -1680,18 +1736,50 @@ struct SettingsView: View {
         handleGrantedFolder(granted, source: candidate.source, candidate: candidate)
     }
 
-    private func commitImport() {
-        guard let preview = importPreview, let folder = importFolder else { return }
+    private enum KeyChoice { case ask, allow, skip }
+
+    private func commitImport(_ choice: KeyChoice = .ask) {
+        guard let preview = importPreview, importFolder != nil else { return }
         importPreviewError = nil
-        let options = importOptions
-        let keyProvider: any BrowserCredentialKeyProviding
-        do {
-            keyProvider = try importKeyProvider(for: preview, options: options)
-        } catch {
-            statusMessage = error.localizedDescription
-            importPreviewError = error.localizedDescription
+        importKeyConsentSources = []
+        let chosenOptions = model.environment.canImportCookies ? importOptions : ImportKeyAccess.withoutCookies(importOptions)
+        let keychain = model.environment.keychain
+        // The source browser's key is read only now, at Confirm. A locked key
+        // pauses for the person's consent before macOS shows its prompt, and the
+        // consented read runs off the main actor because the prompt is inside it.
+        guard choice == .allow else {
+            continueImport(preview, chosenOptions, ImportKeyAccess.plan(for: [(preview, chosenOptions)], keychain: keychain, consented: false), choice)
             return
         }
+        isImporting = true
+        Task {
+            let plan = await Task.detached { ImportKeyAccess.plan(for: [(preview, chosenOptions)], keychain: keychain, consented: true) }.value
+            continueImport(preview, chosenOptions, plan, choice)
+        }
+    }
+
+    private func continueImport(_ preview: BrowserImportPreview, _ requestedOptions: BrowserImportOptions,
+                                _ plan: ImportKeyAccess.Plan, _ choice: KeyChoice) {
+        guard let folder = importFolder else { isImporting = false; return }
+        var chosenOptions = requestedOptions
+        if choice == .ask, !plan.needsConsent.isEmpty {
+            importKeyConsentSources = plan.needsConsent
+            return
+        }
+        var chosenProvider: any BrowserCredentialKeyProviding = ChromeSafeStorageKeyProvider(keychain: model.environment.keychain)
+        var secretsNote: String?
+        if let provider = plan.providers[preview.source] {
+            chosenProvider = provider
+        } else if let reason = plan.skipped[preview.source] {
+            chosenOptions = ImportKeyAccess.withoutSecrets(chosenOptions)
+            secretsNote = ImportKeyAccess.skipNote(for: preview.source, reason)
+        } else if plan.needsConsent.contains(preview.source) {
+            chosenOptions = ImportKeyAccess.withoutSecrets(chosenOptions)
+            secretsNote = "Passwords and cookies were left out at your request. Everything else was imported."
+        }
+        let options = chosenOptions
+        let keyProvider = chosenProvider
+        let finalSecretsNote = secretsNote
         // Create and switch to the new profile first, so the import writes to
         // that profile's database rather than the current one.
         let destinationProfile: BrowserProfile
@@ -1700,6 +1788,7 @@ struct SettingsView: View {
             let name = trimmed.isEmpty ? "\(preview.source.displayName) import" : trimmed
             guard let createdProfile = model.createProfile(named: name) else {
                 statusMessage = "Could not create the new profile."
+                isImporting = false
                 importPreview = nil
                 importFolder = nil
                 return
@@ -1717,6 +1806,7 @@ struct SettingsView: View {
             )
         } catch {
             statusMessage = "Could not open the destination profile: \(error.localizedDescription)"
+            isImporting = false
             importPreview = nil
             importFolder = nil
             return
@@ -1753,9 +1843,11 @@ struct SettingsView: View {
                     storedCookies: cookieOutcomes.filter { $0 == .accepted }.count,
                     storedTabs: sessionOutcomes.filter { $0 == .accepted }.count,
                     report: finalReport, searchSaved: searchSaved)
+                if let finalSecretsNote { importLastSummary = (importLastSummary ?? "") + " " + finalSecretsNote }
                 statusMessage = importLastSummary
                 if !result.extensionIDs.isEmpty {
                     pendingExtensionIDs = result.extensionIDs
+                    pendingExtensionVersion = result.sourceBrowserVersion
                     isConfirmingExtensionReinstall = true
                 }
             } catch {
@@ -1770,25 +1862,13 @@ struct SettingsView: View {
     /// Saved logins go straight into the keychain, never to disk in the clear.
     private func storeCredentials(_ credentials: [ChromeLogin], profile: BrowserProfile) -> [BrowserImportReport.Outcome] {
         credentials.map { credential in
-            model.saveCredential(
+            model.importCredential(
                 host: credential.url.host ?? credential.url.absoluteString,
                 username: credential.username,
                 password: credential.password,
                 profile: profile
-            ) ? .accepted : .failed
+            )
         }
-    }
-
-    private func importKeyProvider(for preview: BrowserImportPreview, options: BrowserImportOptions) throws -> any BrowserCredentialKeyProviding {
-        let provider = ChromeSafeStorageKeyProvider(keychain: model.environment.keychain)
-        let needsKey = preview.source.family == .chromium
-            && ((options.includesPasswords && preview.credentialCount > 0)
-                || (options.includesCookies && preview.cookieCount > 0))
-        guard needsKey else { return provider }
-        guard let key = try provider.safeStorageKey(for: preview.source) else {
-            throw BrowserDataImporter.ImportError.credentialsLocked(preview.source.displayName)
-        }
-        return UnlockedImportKeyProvider(key: key)
     }
 
     private func storeCookies(_ cookies: [BrowserImportCookie], profile: BrowserProfile) async -> [BrowserImportReport.Outcome] {
@@ -1796,16 +1876,7 @@ struct SettingsView: View {
         let store = WKWebsiteDataStore(forIdentifier: profile.dataStoreUUID).httpCookieStore
         var expected: [HTTPCookie?] = []
         for imported in cookies {
-            var properties: [HTTPCookiePropertyKey: Any] = [
-                .domain: imported.domain,
-                .path: imported.path,
-                .name: imported.name,
-                .value: imported.value,
-                .secure: imported.isSecure ? "TRUE" : "FALSE",
-                HTTPCookiePropertyKey("HttpOnly"): imported.isHTTPOnly ? "TRUE" : "FALSE"
-            ]
-            if let expires = imported.expires { properties[.expires] = expires }
-            let cookie = HTTPCookie(properties: properties)
+            let cookie = imported.httpCookie
             expected.append(cookie)
             guard let cookie else { continue }
             await store.setCookie(cookie)
@@ -1859,7 +1930,7 @@ struct SettingsView: View {
                                        sessions: [BrowserImportReport.Outcome] = [],
                                        sessionsUnopenedReason: BrowserImportReport.Reason? = nil) -> BrowserImportReport {
         var report = result.report
-        report.completeTransfer(.password, outcomes: passwords)
+        report.completeTransfer(.password, outcomes: passwords, reasonFor: BrowserImportReport.passwordReason)
         report.completeTransfer(.cookie, outcomes: cookies)
         if result.searchEngine != nil {
             report.completeTransfer(.searchEngine, outcomes: [searchSaved ? .accepted : .failed])
@@ -1895,11 +1966,23 @@ struct SettingsView: View {
         if storedCookies > 0 { moved.append("\(storedCookies) cookies") }
         if storedTabs > 0 { moved.append("\(storedTabs) tabs") }
         if searchSaved { moved.append("default search engine") }
-        if options.includesPasswords && storedCredentials < preview.credentialCount {
-            notes.append("\(preview.credentialCount - storedCredentials) passwords skipped or unreadable")
+        let alreadySaved = report.items.filter {
+            $0.category == .password && $0.stage == .persistence && $0.reason == .alreadyPresent
+        }.count
+        if alreadySaved > 0 { notes.append("\(alreadySaved) passwords already saved and kept") }
+        func transferSkips(_ category: BrowserImportReport.Category, _ reason: BrowserImportReport.Reason) -> Int {
+            report.items.filter { $0.category == category && $0.stage == .transfer && $0.reason == reason }.count
         }
+        let noUsername = transferSkips(.password, .missingUsername)
+        if noUsername > 0 { notes.append("\(noUsername) logins have no username and were left out") }
+        if options.includesPasswords && storedCredentials + alreadySaved < preview.credentialCount {
+            notes.append("\(preview.credentialCount - storedCredentials - alreadySaved) passwords skipped or unreadable")
+        }
+        let containers = transferSkips(.cookie, .containerScoped)
+        if containers > 0 { notes.append("\(containers) Firefox container cookies left out") }
         if options.includesCookies && storedCookies < preview.cookieCount {
-            notes.append("\(preview.cookieCount - storedCookies) cookies skipped, expired, or unreadable")
+            let expired = transferSkips(.cookie, .expired)
+            notes.append("\(preview.cookieCount - storedCookies) cookies not brought over" + (expired > 0 ? " (\(expired) already expired)" : ""))
         }
         if options.includesSessionTabs && storedTabs < preview.sessionTabCount {
             notes.append("\(preview.sessionTabCount - storedTabs) tabs already open, over the limit, or not opened in a private window")

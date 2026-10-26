@@ -54,11 +54,34 @@ public enum ChromeCredentialCrypto {
     }
 
     public static func decrypt(_ blob: Data, key: Data) throws -> String {
+        guard let value = String(data: try decryptData(blob, key: key), encoding: .utf8) else {
+            throw CryptoError.decryptionFailed
+        }
+        return value
+    }
+
+    /// Since cookie database version 24 Chrome prepends the SHA-256 of the
+    /// cookie's host to the plaintext before encrypting it. That binary prefix
+    /// is not part of the value.
+    public static let cookieHostHashLength = 32
+    public static let cookieHostHashDatabaseVersion = 24
+
+    public static func decryptCookie(_ blob: Data, key: Data, databaseVersion: Int?) throws -> String {
+        var plaintext = try decryptData(blob, key: key)
+        if let databaseVersion, databaseVersion >= cookieHostHashDatabaseVersion {
+            guard plaintext.count >= cookieHostHashLength else { throw CryptoError.decryptionFailed }
+            plaintext = plaintext.dropFirst(cookieHostHashLength)
+        }
+        guard let value = String(data: plaintext, encoding: .utf8) else { throw CryptoError.decryptionFailed }
+        return value
+    }
+
+    static func decryptData(_ blob: Data, key: Data) throws -> Data {
         guard blob.count > prefix.count, blob.prefix(prefix.count) == prefix else {
             throw CryptoError.unsupportedPrefix
         }
         let ciphertext = blob.dropFirst(prefix.count)
-        guard !ciphertext.isEmpty else { return "" }
+        guard !ciphertext.isEmpty else { return Data() }
         // Chrome uses a fixed IV of sixteen spaces.
         let iv = [UInt8](repeating: 0x20, count: kCCBlockSizeAES128)
 
@@ -85,16 +108,16 @@ public enum ChromeCredentialCrypto {
         }
         guard status == kCCSuccess else { throw CryptoError.decryptionFailed }
         output.removeSubrange(moved..<output.count)
-        guard let value = String(data: output, encoding: .utf8) else {
-            throw CryptoError.decryptionFailed
-        }
-        return value
+        return output
     }
 
     /// Used by tests to build fixtures that match Chrome's format exactly.
     public static func encryptForTesting(_ plaintext: String, key: Data) throws -> Data {
+        try encryptDataForTesting(Data(plaintext.utf8), key: key)
+    }
+
+    public static func encryptDataForTesting(_ input: Data, key: Data) throws -> Data {
         let iv = [UInt8](repeating: 0x20, count: kCCBlockSizeAES128)
-        let input = Data(plaintext.utf8)
         var output = Data(count: input.count + kCCBlockSizeAES128)
         var moved = 0
         let status = output.withUnsafeMutableBytes { outputBuffer -> CCCryptorStatus in

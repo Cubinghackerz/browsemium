@@ -70,6 +70,31 @@ public final class ProfileStore: @unchecked Sendable {
         return profile
     }
 
+    // MARK: - Import links
+
+    public func importSource(for id: UUID) throws -> String? {
+        try root.databaseQueue.read { database in
+            try String.fetchOne(database, sql: "SELECT import_source FROM profiles WHERE id = ?", arguments: [id.uuidString])
+        }
+    }
+
+    public func linkedProfile(forImportSource key: String) throws -> BrowserProfile? {
+        guard let id = try root.databaseQueue.read({ database in
+            try String.fetchOne(database, sql: "SELECT id FROM profiles WHERE import_source = ?", arguments: [key])
+        }), let uuid = UUID(uuidString: id) else { return nil }
+        return try profile(id: uuid)
+    }
+
+    /// A source maps to at most one profile: linking it again moves the link.
+    public func setImportSource(_ key: String?, for id: UUID) throws {
+        try root.databaseQueue.write { database in
+            if let key {
+                try database.execute(sql: "UPDATE profiles SET import_source = NULL WHERE import_source = ?", arguments: [key])
+            }
+            try database.execute(sql: "UPDATE profiles SET import_source = ? WHERE id = ?", arguments: [key, id.uuidString])
+        }
+    }
+
     public func rename(id: UUID, to name: String) throws {
         try root.databaseQueue.write { database in
             try database.execute(

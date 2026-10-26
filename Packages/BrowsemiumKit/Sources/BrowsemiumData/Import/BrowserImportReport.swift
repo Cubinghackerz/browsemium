@@ -20,6 +20,7 @@ public struct BrowserImportReport: Codable, Sendable, Equatable {
         case unsupportedURL, invalidItem, sourceUnreadable, destinationWriteFailed
         case decryptionFailed, notSelected, outsideSelection, preparedForTransfer, limitExceeded
         case destinationNotOpen, primaryPasswordRequired, unsupportedFormat, privateWindow
+        case expired, missingUsername, containerScoped
     }
 
     public struct Item: Codable, Sendable, Equatable {
@@ -58,6 +59,16 @@ public struct BrowserImportReport: Codable, Sendable, Equatable {
                    reason: reasonFor(outcome))
         }
         return true
+    }
+
+    /// Reasons for saved logins: a login that already exists in the destination
+    /// is reported as already saved, never as a write failure.
+    public static func passwordReason(_ outcome: Outcome) -> Reason {
+        switch outcome {
+        case .accepted: .imported
+        case .duplicate: .alreadyPresent
+        default: .destinationWriteFailed
+        }
     }
 
     /// Appended by the import UI when it finishes a transfer the importer only

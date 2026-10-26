@@ -48,6 +48,31 @@ public enum BrowserImportSource: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// Used only to ask Launch Services whether the browser is running; the
+    /// profile is not touched. A wrong identifier for a rarely seen browser
+    /// means no warning, never a wrong import.
+    public var bundleIdentifier: String {
+        switch self {
+        case .chrome: "com.google.Chrome"
+        case .brave: "com.brave.Browser"
+        case .edge: "com.microsoft.edgemac"
+        case .vivaldi: "com.vivaldi.Vivaldi"
+        case .arc: "company.thebrowser.Browser"
+        case .dia: "company.thebrowser.dia"
+        case .helium: "net.imput.helium"
+        case .opera: "com.operasoftware.Opera"
+        case .chromium: "org.chromium.Chromium"
+        case .firefox: "org.mozilla.firefox"
+        case .safari: "com.apple.Safari"
+        }
+    }
+
+    /// Shown before an import while the source browser is open: its files are
+    /// being written, so what is read may be missing recent changes.
+    public var runningWarning: String {
+        "\(displayName) is open. Quit it first so everything is read from a settled copy; recent changes may be missing, and cookies and passwords can be incomplete."
+    }
+
     /// The keychain item holding this browser's password-encryption key.
     /// Chromium-family browsers all use the same scheme with their own item.
     public var safeStorageService: String? {
@@ -107,6 +132,9 @@ public struct BrowserImportResult: Sendable {
     public let cookies: [BrowserImportCookie]
     /// IDs to offer for reinstall. No extension is installed by this importer.
     public let extensionIDs: [String]
+    /// The source Chromium browser's version, used only to ask the Chrome Web
+    /// Store for compatible packages. Nil when the profile does not say.
+    public let sourceBrowserVersion: String?
     /// The source browser's default search engine, when it could be converted.
     public let searchEngine: BrowserImportPreview.SearchEngine?
     /// Open tabs to reopen in the destination profile. Opened by the caller
@@ -119,6 +147,7 @@ public struct BrowserImportResult: Sendable {
         credentials: [ChromeLogin] = [],
         cookies: [BrowserImportCookie] = [],
         extensionIDs: [String] = [],
+        sourceBrowserVersion: String? = nil,
         searchEngine: BrowserImportPreview.SearchEngine? = nil,
         sessionTabs: [BrowserImportPreview.SessionTab] = [],
         report: BrowserImportReport = BrowserImportReport()
@@ -128,6 +157,7 @@ public struct BrowserImportResult: Sendable {
         self.credentials = credentials
         self.cookies = cookies
         self.extensionIDs = extensionIDs
+        self.sourceBrowserVersion = sourceBrowserVersion
         self.searchEngine = searchEngine
         self.sessionTabs = sessionTabs
         self.report = report
@@ -185,6 +215,7 @@ public struct BrowserImportPreview: Sendable {
     /// Count only; values are read after explicit consent.
     public let cookieCount: Int
     public let extensionIDs: [String]
+    public internal(set) var sourceBrowserVersion: String?
     public let searchEngine: SearchEngine?
     /// What this browser keeps encrypted and Browsemium will not touch.
     public let notImportable: [String]
@@ -287,6 +318,13 @@ public struct BrowserProfileCandidate: Identifiable, Sendable, Hashable {
         self.email = email
         self.profileName = profileName ?? label.components(separatedBy: " — ").last ?? label
     }
+}
+
+public extension BrowserProfileCandidate {
+    /// Names the browser and the profile folder, never the home directory.
+    /// Stored on the Browsemium profile an import created, so a later import
+    /// of the same source profile lands in it.
+    var linkKey: String { "\(source.rawValue)/\(folder.lastPathComponent)" }
 }
 
 public enum BrowserImportSourceDetector {
@@ -743,7 +781,7 @@ public final class BrowserDataImporter: @unchecked Sendable {
         let credentials = credentialSummary(in: profile, source: source, report: &recorder.report)
         let cookies = cookieCount(in: profile, source: source, report: &recorder.report)
         let extensionIDs = Self.extensionIDs(in: profile, source: source)
-        let engine = searchEngine(in: profile, source: source)
+        let engine = searchEngine(in: profile, source: source, report: &recorder.report)
         let sessionTabs = Self.dedupeSessionTabs(Self.readSessionTabs(in: profile, source: source, recorder: &recorder))
         for index in 0..<(source.family == .safari ? 0 : cookies) {
             recorder.report.record(.cookie, ordinal: index + 1, outcome: .accepted, reason: .parsed)
@@ -767,6 +805,7 @@ public final class BrowserDataImporter: @unchecked Sendable {
             credentials: credentials,
             cookieCount: cookies,
             extensionIDs: extensionIDs,
+            sourceBrowserVersion: Self.sourceBrowserVersion(in: profile, source: source),
             searchEngine: engine,
             notImportable: Self.notImportable(for: source),
             sessionTabs: sessionTabs.map {
@@ -931,6 +970,29 @@ public final class BrowserDataImporter: @unchecked Sendable {
         }.sorted()
     }
 
+    /// Chrome records the version that last wrote the profile in `Preferences`.
+    /// Only a plain dotted version is accepted; it ends up in a request URL.
+    static func sourceBrowserVersion(in profile: URL, source: BrowserImportSource) -> String? {
+        guard source.family == .chromium,
+              let data = try? Data(contentsOf: profile.appendingPathComponent("Preferences")),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let version = (root["extensions"] as? [String: Any])?["last_chrome_version"] as? String,
+              version.range(of: #"^[0-9]{1,4}(\.[0-9]{1,6}){1,3}$"#, options: .regularExpression) != nil
+        else { return nil }
+        return version
+    }
+
+    /// Chromium and Firefox both store SameSite as 0 None, 1 Lax, 2 Strict, with
+    /// anything else (Chromium's -1) meaning unspecified.
+    private static func sameSite(_ value: Int) -> SameSite? {
+        switch value {
+        case 0: SameSite.none
+        case 1: .lax
+        case 2: .strict
+        default: nil
+        }
+    }
+
     private static func chromiumCookieURL(in profile: URL) -> URL? {
         for path in ["Network/Cookies", "Cookies"] {
             let url = profile.appendingPathComponent(path)
@@ -947,22 +1009,34 @@ public final class BrowserDataImporter: @unchecked Sendable {
         return candidate
     }
 
-    private func searchEngine(in profile: URL, source: BrowserImportSource) -> BrowserImportPreview.SearchEngine? {
+    /// Chrome writes `default_search_provider_data` only after the person picked
+    /// or added an engine. No entry means the built-in default is in use and
+    /// there is nothing to import. An entry that cannot be converted is
+    /// reported, not dropped silently.
+    private func searchEngine(in profile: URL, source: BrowserImportSource,
+                              report: inout BrowserImportReport) -> BrowserImportPreview.SearchEngine? {
         guard source.family == .chromium else { return nil }
         let preferencesURL = profile.appendingPathComponent("Preferences")
         guard let data = try? Data(contentsOf: preferencesURL),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let providerData = root["default_search_provider_data"] as? [String: Any],
-              let templateURL = providerData["template_url_data"] as? [String: Any],
-              let searchURL = templateURL["search_url"] as? String else {
+              let templateURL = providerData["template_url_data"] as? [String: Any] else {
+            return nil
+        }
+        // `url` is the key Chrome writes; `search_url` is accepted as an alias.
+        guard let searchURL = (templateURL["url"] as? String) ?? (templateURL["search_url"] as? String) else {
+            report.record(.searchEngine, ordinal: 1, outcome: .unsupported, reason: .invalidItem)
             return nil
         }
         let name = (templateURL["short_name"] as? String) ?? (templateURL["keyword"] as? String) ?? "Default search"
         // Browsemium stores the query prefix; only a trailing placeholder can be
         // converted without guessing.
-        guard searchURL.hasSuffix("{searchTerms}") else { return nil }
-        let template = String(searchURL.dropLast("{searchTerms}".count))
-        guard let url = URL(string: template + "test"), url.scheme == "https" else { return nil }
+        guard searchURL.hasSuffix("{searchTerms}"),
+              case let template = String(searchURL.dropLast("{searchTerms}".count)),
+              let url = URL(string: template + "test"), url.scheme == "https" else {
+            report.record(.searchEngine, ordinal: 1, outcome: .unsupported, reason: .unsupportedFormat)
+            return nil
+        }
         return BrowserImportPreview.SearchEngine(name: name, template: template)
     }
 
@@ -977,11 +1051,13 @@ public final class BrowserDataImporter: @unchecked Sendable {
         case .firefox:
             [
                 "Passwords import only without a Firefox Primary Password; protected logins stay in Firefox — export a CSV from Firefox to move those.",
+                "Firefox's default search engine is not read; choose yours under Search engine in Settings.",
                 "Site storage does not move; some accounts may still ask you to sign in again."
             ]
         case .safari:
             [
                 "Apple Passwords cannot be read directly; export a CSV from Passwords to move them.",
+                "Safari's default search engine is not stored in a readable file; choose yours under Search engine in Settings.",
                 "Only Safari cookies in a readable Cookies.binarycookies file can be offered."
             ]
         }
@@ -1145,6 +1221,7 @@ public final class BrowserDataImporter: @unchecked Sendable {
             credentials: credentials,
             cookies: cookies,
             extensionIDs: options.includesExtensions ? preview.extensionIDs : [],
+            sourceBrowserVersion: preview.sourceBrowserVersion,
             searchEngine: options.includesSearchEngine ? preview.searchEngine : nil,
             sessionTabs: sessionTabs,
             report: report
@@ -1164,15 +1241,27 @@ public final class BrowserDataImporter: @unchecked Sendable {
         case .chromium:
             guard let url = Self.chromiumCookieURL(in: profile), let key else { return [] }
             return try readSQLite(url) { db in
-                let rows = try Row.fetchAll(db, sql: "SELECT host_key, name, value, encrypted_value, path, expires_utc, is_secure, is_httponly FROM cookies WHERE length(value) > 0 OR length(encrypted_value) > 0 ORDER BY rowid LIMIT 50000")
+                // A missing meta table or version row means an older database.
+                let databaseVersion = (try? String.fetchOne(db, sql: "SELECT value FROM meta WHERE key = 'version'")).flatMap { Int($0) }
+                let hasSameSite = try db.columns(in: "cookies").contains { $0.name == "samesite" }
+                let sameSiteColumn = hasSameSite ? "samesite" : "-1 AS samesite"
+                let rows = try Row.fetchAll(db, sql: "SELECT host_key, name, value, encrypted_value, path, expires_utc, is_secure, is_httponly, \(sameSiteColumn) FROM cookies WHERE length(value) > 0 OR length(encrypted_value) > 0 ORDER BY rowid LIMIT 50000")
                 return rows.enumerated().compactMap { index, row in
                     let plaintext = row["value"] as String? ?? ""
                     let encrypted = row["encrypted_value"] as Data? ?? Data()
-                    let value = plaintext.isEmpty ? (try? ChromeCredentialCrypto.decrypt(encrypted, key: key)) : plaintext
+                    let value = plaintext.isEmpty
+                        ? (try? ChromeCredentialCrypto.decryptCookie(encrypted, key: key, databaseVersion: databaseVersion))
+                        : plaintext
                     let rawExpiry = row["expires_utc"] as Int64? ?? 0
                     let expiry = rawExpiry > 0 ? Date(timeIntervalSince1970: Double(rawExpiry) / 1_000_000 - 11_644_473_600) : nil
                     guard let value else {
                         report.record(.cookie, ordinal: index + 1, stage: .transfer, outcome: .failed, reason: .decryptionFailed)
+                        return nil
+                    }
+                    // WebKit ignores a cookie that is already expired, which
+                    // would otherwise read back as a write failure.
+                    if let expiry, expiry < Date() {
+                        report.record(.cookie, ordinal: index + 1, stage: .transfer, outcome: .skipped, reason: .expired)
                         return nil
                     }
                     let cookie = BrowserImportCookie(
@@ -1182,7 +1271,8 @@ public final class BrowserDataImporter: @unchecked Sendable {
                         path: row["path"] as String? ?? "/",
                         expires: expiry,
                         isSecure: (row["is_secure"] as Int? ?? 0) != 0,
-                        isHTTPOnly: (row["is_httponly"] as Int? ?? 0) != 0
+                        isHTTPOnly: (row["is_httponly"] as Int? ?? 0) != 0,
+                        sameSite: Self.sameSite(row["samesite"] as Int? ?? -1)
                     )
                     report.record(.cookie, ordinal: index + 1, stage: .transfer,
                                   outcome: cookie == nil ? .unsupported : .accepted,
@@ -1193,9 +1283,25 @@ public final class BrowserDataImporter: @unchecked Sendable {
         case .firefox:
             let url = profile.appendingPathComponent("cookies.sqlite")
             return try readSQLiteIfPresent(url) { db in
-                let rows = try Row.fetchAll(db, sql: "SELECT host, name, value, path, expiry, isSecure, isHttpOnly FROM moz_cookies WHERE length(value) > 0 ORDER BY rowid LIMIT 50000")
+                // Containers and state partitioning live in originAttributes;
+                // profiles that predate the column have only default cookies.
+                let hasOriginAttributes = try db.columns(in: "moz_cookies").contains { $0.name == "originAttributes" }
+                let scope = hasOriginAttributes ? "originAttributes" : "'' AS originAttributes"
+                let hasSameSite = try db.columns(in: "moz_cookies").contains { $0.name == "sameSite" }
+                let sameSiteColumn = hasSameSite ? "sameSite" : "-1 AS sameSite"
+                let rows = try Row.fetchAll(db, sql: "SELECT host, name, value, path, expiry, isSecure, isHttpOnly, \(sameSiteColumn), \(scope) FROM moz_cookies WHERE length(value) > 0 ORDER BY rowid LIMIT 50000")
                 return rows.enumerated().compactMap { index, row in
+                    // A container's cookies belong to another identity. Merging
+                    // them into the default jar could sign the wrong account in.
+                    if !(row["originAttributes"] as String? ?? "").isEmpty {
+                        report.record(.cookie, ordinal: index + 1, stage: .transfer, outcome: .skipped, reason: .containerScoped)
+                        return nil
+                    }
                     let rawExpiry = row["expiry"] as Int64? ?? 0
+                    if rawExpiry > 0, Date(timeIntervalSince1970: TimeInterval(rawExpiry)) < Date() {
+                        report.record(.cookie, ordinal: index + 1, stage: .transfer, outcome: .skipped, reason: .expired)
+                        return nil
+                    }
                     let cookie = BrowserImportCookie(
                         domain: row["host"] as String? ?? "",
                         name: row["name"] as String? ?? "",
@@ -1203,7 +1309,8 @@ public final class BrowserDataImporter: @unchecked Sendable {
                         path: row["path"] as String? ?? "/",
                         expires: rawExpiry > 0 ? Date(timeIntervalSince1970: TimeInterval(rawExpiry)) : nil,
                         isSecure: (row["isSecure"] as Int? ?? 0) != 0,
-                        isHTTPOnly: (row["isHttpOnly"] as Int? ?? 0) != 0
+                        isHTTPOnly: (row["isHttpOnly"] as Int? ?? 0) != 0,
+                        sameSite: Self.sameSite(row["sameSite"] as Int? ?? -1)
                     )
                     report.record(.cookie, ordinal: index + 1, stage: .transfer,
                                   outcome: cookie == nil ? .unsupported : .accepted,
@@ -1435,7 +1542,8 @@ public final class BrowserDataImporter: @unchecked Sendable {
     /// read-only open of a live database can fail. Copying the file with its
     /// WAL and shared-memory sidecars retains uncheckpointed writes without
     /// writing to the source. It is not an atomic snapshot of a concurrent
-    /// writer; a source that changes during copying may require a retry.
+    /// writer, so the copy is verified (see `SQLiteSnapshot`) and retried before
+    /// the import gives up with a message instead of reading a torn copy.
     private func readSQLite<T>(_ url: URL, body: (Database) throws -> T) throws -> T {
         let workdir = FileManager.default.temporaryDirectory
             .appendingPathComponent("browsemium-import-\(UUID().uuidString)", isDirectory: true)
@@ -1449,21 +1557,7 @@ public final class BrowserDataImporter: @unchecked Sendable {
         }
         defer { try? FileManager.default.removeItem(at: workdir) }
 
-        let copy = workdir.appendingPathComponent(url.lastPathComponent)
-        do {
-            try FileManager.default.copyItem(at: url, to: copy)
-            for suffix in ["-wal", "-shm"] {
-                let sidecar = URL(fileURLWithPath: url.path + suffix)
-                if FileManager.default.fileExists(atPath: sidecar.path) {
-                    try FileManager.default.copyItem(
-                        at: sidecar,
-                        to: URL(fileURLWithPath: copy.path + suffix)
-                    )
-                }
-            }
-        } catch {
-            throw ImportError.unreadableData("The source database could not be copied. Close the source browser and retry.")
-        }
+        let copy = try SQLiteSnapshot.copy(url, into: workdir)
 
         do {
             var configuration = Configuration()

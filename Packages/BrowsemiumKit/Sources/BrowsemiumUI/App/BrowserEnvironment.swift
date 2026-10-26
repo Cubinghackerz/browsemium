@@ -17,6 +17,11 @@ public final class BrowserEnvironment {
     /// The web engine this window browses with. WebKit by default; the
     /// Chromium edition passes its own.
     public let engine: any BrowserEngine
+
+    /// Imported cookies are written to the profile's WebKit cookie store, so
+    /// only the WebKit edition can use them. The Chromium edition has no
+    /// cookie writer yet and does not offer cookie import.
+    public var canImportCookies: Bool { engine is BrowserRuntimeController }
     private(set) var userFilterLists: UserFilterListController?
     public private(set) var settingsRepository: SettingsRepository
     public private(set) var sessionRepository: BrowserSessionRepository

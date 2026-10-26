@@ -44,9 +44,9 @@ enum PasswordCSVImportTarget: Sendable {
             profile = created
         }
         return credentials.reduce(0) { count, credential in
-            let saved = model.saveCredential(host: credential.url.host ?? credential.url.absoluteString,
-                                             username: credential.username, password: credential.password, profile: profile)
-            return count + (saved ? 1 : 0)
+            let outcome = model.importCredential(host: credential.url.host ?? credential.url.absoluteString,
+                                                 username: credential.username, password: credential.password, profile: profile)
+            return count + (outcome == .accepted ? 1 : 0)
         }
     }
 }
